@@ -1,0 +1,54 @@
+= Modélisation du jeu Take it Easy avec TDD et Rust
+
+Pour modéliser le jeu *Take it Easy* en utilisant les principes du Test-Driven Development (TDD) et le langage Rust, il est important de structurer les tests autour des règles du jeu et des comportements attendus. Voici quelques questions clés que vous devriez poser pour commencer vos premiers tests en TDD :
+
+== 1. Quel est l'objectif du jeu et comment fonctionne la règle de base ?
+
+* Comment le plateau de jeu est-il structuré ?
+* Comment les tuiles sont-elles placées sur le plateau ?
+* Comment les points sont-ils calculés en fonction de la disposition des tuiles ?
+
+== 2. Quelles sont les différentes entités du jeu ?
+
+* Quelles structures de données doivent représenter les tuiles (par exemple, chaque tuile a-t-elle une forme ou des couleurs spécifiques) ?
+* Comment modéliser les joueurs et leur progression sur le plateau ?
+* Existe-t-il un état global du jeu qui doit être suivi (plateau, score, tours, etc.) ?
+
+== 3. Quelles sont les actions d’un joueur dans le jeu ?
+
+* Comment le joueur place-t-il une tuile sur le plateau ?
+* Comment vérifier qu'une tuile a été placée correctement (par exemple, correspondance de couleurs ou de formes) ?
+* Comment gérer la main d'un joueur et la pioche de tuiles ?
+
+== 4. Comment gérer la validité d’un coup ?
+
+* Qu'est-ce qui constitue un coup valide ou invalide (par exemple, placer une tuile qui ne correspond pas aux règles) ?
+* Quels mécanismes doivent être vérifiés lors de l'ajout d'une tuile (alignement, position, etc.) ?
+
+== 5. Comment évaluer les scores ?
+
+* Quelle logique utiliser pour calculer les points en fonction de la disposition des tuiles sur le plateau ?
+* Comment un score est-il mis à jour lorsque les tuiles sont placées ?
+* Comment tester différentes configurations de tuiles pour vérifier le calcul des scores ?
+
+== 6. Gestion des tours et de la fin du jeu
+
+* Comment gérer l'alternance des tours de jeu ?
+* Quand le jeu se termine-t-il et comment est-ce détecté ?
+* Quelle logique doit être mise en place pour gérer la fin du jeu (par exemple, pioche vide, fin du tour) ?
+
+== 7. Tests de la logique de placement des tuiles
+
+* Quelle est la logique exacte derrière la position des tuiles et l'alignement des couleurs ?
+* Comment tester si un joueur a placé la tuile dans la bonne zone du plateau (ex. : tester les cases voisines pour la correspondance des couleurs) ?
+
+== 8. Tests de la gestion de la main du joueur
+
+* Comment tester la pioche des tuiles et les choix du joueur ?
+* Quand un joueur ne peut plus jouer (ex. : est-ce que la pioche est vide ou que les tuiles ne peuvent pas être placées) ?
+
+== 9. Tests de la logique de victoire
+
+* Comment tester que le jeu détecte la victoire ou la fin ?
+* Quels sont les critères de victoire ?
+* Comment s'assurer que la logique de victoire fonctionne correctement (par exemple, vérification de la configuration de tuiles) ?
