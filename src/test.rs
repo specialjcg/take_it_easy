@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use rand::Rng;
+
     #[derive(Debug, Clone,PartialEq)]
     struct Plateau{
         tiles: Vec<Tile>,
@@ -48,19 +50,22 @@ mod tests {
 
         Deck { tiles}
     }
-    #[test]
-    fn test_placement_tuile_valide_take_it_easy() {
-        let mut plateau:Plateau=create_plateau_empty();
-        let deckSfuffle:Deck= create_shuffle_deck();
-        let tuile = deckSfuffle.tiles[5].clone();
-        assert!(placer_tile(&mut plateau, tuile.clone(), 1));
-        assert_eq!(plateau.tiles[1], tuile);
-    }
 
     fn create_plateau_empty() -> Plateau {
         Plateau {
             tiles: vec![Tile(0, 0, 0); 19],
         }
+    }
+    fn remove_tile_from_deck(deck: &Deck, tile_to_remove: &Tile) -> Deck {
+        // Filtre toutes les tuiles sauf celle à retirer
+        let new_tiles: Vec<Tile> = deck
+            .tiles
+            .iter()
+            .filter(|&tile| tile != tile_to_remove) // Conserve uniquement les tuiles différentes
+            .cloned() // Copie chaque tuile dans le nouveau vecteur
+            .collect();
+
+        Deck { tiles: new_tiles } // Crée un nouveau deck
     }
 
 
@@ -70,6 +75,67 @@ mod tests {
         }
         plateau.tiles[position] = tuile;
         true
+    }
+    #[test]
+    fn test_placement_tuile_valide_take_it_easy() {
+        let mut plateau:Plateau=create_plateau_empty();
+        let deckSfuffle:Deck= create_shuffle_deck();
+        let tuile = deckSfuffle.tiles[5].clone();
+        assert!(placer_tile(&mut plateau, tuile.clone(), 1));
+        assert_eq!(plateau.tiles[1], tuile);
+    }
+    #[test]
+    fn test_placement_tuile_not_valide_take_it_easy() {
+        let mut plateau:Plateau=create_plateau_empty();
+        let deckSfuffle:Deck= create_shuffle_deck();
+        let tile = deckSfuffle.tiles[5].clone();
+        assert!(placer_tile(&mut plateau, tile.clone(), 1));
+        assert_eq!(plateau.tiles[1], tile);
+        let tile = deckSfuffle.tiles[5].clone();
+        assert!(!placer_tile(&mut plateau, tile.clone(), 1));
+    }
+    #[test]
+    fn test_choix_aleatoire_tuile() {
+        // Crée un deck
+        let deck_shuffle: Deck = create_shuffle_deck();
+
+        // Génère un index aléatoire
+        let mut rng = rand::thread_rng();
+        let index = rng.gen_range(0..deck_shuffle.tiles.len());
+
+        // Sélectionne une tuile aléatoire
+        let tuile = deck_shuffle.tiles[index].clone();
+
+        // Vérifie que la tuile existe dans le deck
+        assert!(deck_shuffle.tiles.contains(&tuile));
+        println!("Tuile choisie aléatoirement : {:?}", tuile);
+    }
+    #[test]
+    fn test_retirer_tuile_aleatoire_du_deck() {
+        use rand::Rng; // Pour générer un indice aléatoire
+
+        // Crée un deck initial
+        let deck_shuffle: Deck = create_shuffle_deck();
+
+        // Génère un indice aléatoire
+        let mut rng = rand::thread_rng();
+        let index = rng.gen_range(0..deck_shuffle.tiles.len());
+
+        // Récupère la tuile choisie aléatoirement
+        let tuile_choisie = deck_shuffle.tiles[index].clone();
+
+        // Supprime la tuile du deck
+        let nouveau_deck = remove_tile_from_deck(&deck_shuffle, &tuile_choisie);
+
+        // Vérifie que la nouvelle taille du deck est réduite de 1
+        assert_eq!(nouveau_deck.tiles.len(), deck_shuffle.tiles.len() - 1);
+
+        // Vérifie que la tuile choisie n'est plus présente dans le nouveau deck
+        assert!(!nouveau_deck.tiles.contains(&tuile_choisie));
+
+        println!("Tuile retirée : {:?}", tuile_choisie);
+        println!("Taille du deck initial : {}", deck_shuffle.tiles.len());
+        println!("Taille du nouveau deck : {}", nouveau_deck.tiles.len());
     }
 
 }
