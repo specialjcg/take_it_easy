@@ -68,7 +68,32 @@ mod tests {
         Deck { tiles: new_tiles } // Crée un nouveau deck
     }
 
+    fn choisir_et_placer(deck: &mut Deck, plateau: &mut Plateau) {
+        let mut rng = rand::thread_rng();
 
+        // Répéter jusqu'à ce que le plateau soit plein
+        while plateau.tiles.contains(&Tile(0, 0, 0)) {
+            // Choisir une tuile aléatoirement dans le deck
+            let deck_len = deck.tiles.len();
+            if deck_len == 0 {
+                break; // Plus de tuiles disponibles
+            }
+            let tile_index = rng.gen_range(0..deck_len);
+            let tuile = deck.tiles.remove(tile_index); // Retirer la tuile du deck
+
+            // Choisir une position aléatoire dans le plateau
+            let mut position;
+            loop {
+                position = rng.gen_range(0..plateau.tiles.len());
+                if plateau.tiles[position] == Tile(0, 0, 0) {
+                    break; // Trouver une case vide
+                }
+            }
+
+            // Placer la tuile dans le plateau
+            plateau.tiles[position] = tuile;
+        }
+    }
     fn placer_tile(plateau: &mut Plateau, tuile: Tile, position: usize) -> bool {
         if plateau.tiles[position] != Tile(0, 0, 0) {
             return false; // Case déjà occupée
@@ -95,7 +120,7 @@ mod tests {
         assert!(!placer_tile(&mut plateau, tile.clone(), 1));
     }
     #[test]
-    fn test_choix_aleatoire_tuile() {
+    fn test_choir_aleatorytile() {
         // Crée un deck
         let deck_shuffle: Deck = create_shuffle_deck();
 
@@ -137,5 +162,92 @@ mod tests {
         println!("Taille du deck initial : {}", deck_shuffle.tiles.len());
         println!("Taille du nouveau deck : {}", nouveau_deck.tiles.len());
     }
+    #[test]
+    fn test_remplir_plateau_take_it_easy() {
+        let mut deck = create_shuffle_deck();
+        let mut plateau = create_plateau_empty();
 
+        // Remplir le plateau
+        choisir_et_placer(&mut deck, &mut plateau);
+
+        // Vérifier que le plateau est plein
+        assert!(!plateau.tiles.contains(&Tile(0, 0, 0)));
+        println!("Deck restant : {:?}", deck.tiles);
+        println!("Plateau final : {:?}", plateau.tiles);
+        // Vérifier que le deck est vide ou contient moins de tuiles
+        assert!(deck.tiles.len() + plateau.tiles.len() == 27);
+
+
+
+    }
+    #[test]
+    fn test_remplir_plateau_take_it_easy_count_first_3_plateau_3_1() {
+        let mut deck = create_shuffle_deck();
+        let mut plateau = create_plateau_empty();
+        placer_tile(&mut plateau, deck.tiles[0].clone(), 0);
+        placer_tile(&mut plateau, deck.tiles[1].clone(), 1);
+        placer_tile(&mut plateau, deck.tiles[2].clone(), 2);
+
+
+        let point=result(&plateau);
+        assert_eq!(point,3);
+
+        // Vérifier que le plateau est plein
+
+
+
+
+    }
+    #[test]
+    fn test_remplir_plateau_take_it_easy_count_first_3_plateau_3_2() {
+        let mut deck = create_shuffle_deck();
+        let mut plateau = create_plateau_empty();
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 0);
+        placer_tile(&mut plateau, deck.tiles[10].clone(), 1);
+        placer_tile(&mut plateau, deck.tiles[11].clone(), 2);
+
+
+
+        let point=result(&plateau);
+        assert_eq!(point,15);
+
+        // Vérifier que le plateau est plein
+
+
+
+
+    }
+    #[test]
+    fn test_remplir_plateau_take_it_easy_count_2_column_plateau_4_2() {
+        let mut deck = create_shuffle_deck();
+        let mut plateau = create_plateau_empty();
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 3);
+        placer_tile(&mut plateau, deck.tiles[10].clone(), 4);
+        placer_tile(&mut plateau, deck.tiles[11].clone(), 5);
+        placer_tile(&mut plateau, deck.tiles[12].clone(), 6);
+        println!("{:?}", plateau.tiles);
+
+
+        let point=result(&plateau);
+        assert_eq!(point,20);
+
+        // Vérifier que le plateau est plein
+
+
+
+
+    }
+    fn result(plateau: &Plateau) -> i32 {
+        let mut result =0;
+        if (plateau.tiles[0].0 == plateau.tiles[1].0) && (plateau.tiles[0].0 == plateau.tiles[2].0) {
+            result=result+ plateau.tiles[0].0*3;
+        }
+        if (plateau.tiles[3].0 == plateau.tiles[4].0)
+            && (plateau.tiles[3].0 == plateau.tiles[5].0)
+            &&(plateau.tiles[3].0 == plateau.tiles[6].0)
+           {
+            result=result+ plateau.tiles[3].0*4;
+        }
+        result
+    }
 }
