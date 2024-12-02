@@ -230,12 +230,21 @@ mod tests {
 
         let point=result(&plateau);
         assert_eq!(point,20);
+    }
+    #[test]
+    fn test_remplir_plateau_take_it_easy_count_column_center_plateau_5_2() {
+        let mut deck = create_shuffle_deck();
+        let mut plateau = create_plateau_empty();
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 7);
+        placer_tile(&mut plateau, deck.tiles[10].clone(), 8);
+        placer_tile(&mut plateau, deck.tiles[11].clone(), 9);
+        placer_tile(&mut plateau, deck.tiles[12].clone(), 10);
+        placer_tile(&mut plateau, deck.tiles[13].clone(), 11);
+        println!("{:?}", plateau.tiles);
 
-        // Vérifier que le plateau est plein
 
-
-
-
+        let point=result(&plateau);
+        assert_eq!(point,25);
     }
     fn result(plateau: &Plateau) -> i32 {
         let mut result =0;
@@ -247,6 +256,13 @@ mod tests {
             &&(plateau.tiles[3].0 == plateau.tiles[6].0)
            {
             result=result+ plateau.tiles[3].0*4;
+        }
+        if (plateau.tiles[7].0 == plateau.tiles[8].0)
+            && (plateau.tiles[7].0 == plateau.tiles[9].0)
+            &&(plateau.tiles[7].0 == plateau.tiles[10].0)
+            &&(plateau.tiles[7].0 == plateau.tiles[11].0)
+        {
+            result=result+ plateau.tiles[7].0*5;
         }
         result
     }
