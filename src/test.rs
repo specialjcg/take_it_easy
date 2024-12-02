@@ -187,16 +187,8 @@ mod tests {
         placer_tile(&mut plateau, deck.tiles[0].clone(), 0);
         placer_tile(&mut plateau, deck.tiles[1].clone(), 1);
         placer_tile(&mut plateau, deck.tiles[2].clone(), 2);
-
-
         let point=result(&plateau);
         assert_eq!(point,3);
-
-        // Vérifier que le plateau est plein
-
-
-
-
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_first_3_plateau_3_2() {
@@ -205,17 +197,8 @@ mod tests {
         placer_tile(&mut plateau, deck.tiles[9].clone(), 0);
         placer_tile(&mut plateau, deck.tiles[10].clone(), 1);
         placer_tile(&mut plateau, deck.tiles[11].clone(), 2);
-
-
-
         let point=result(&plateau);
         assert_eq!(point,15);
-
-        // Vérifier que le plateau est plein
-
-
-
-
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_2_column_plateau_4_2() {
@@ -246,6 +229,30 @@ mod tests {
         let point=result(&plateau);
         assert_eq!(point,25);
     }
+    #[test]
+    fn test_remplir_plateau_take_it_easy_count_column_4_plateau_4_2() {
+        let mut deck = create_shuffle_deck();
+        let mut plateau = create_plateau_empty();
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 12);
+        placer_tile(&mut plateau, deck.tiles[10].clone(), 13);
+        placer_tile(&mut plateau, deck.tiles[11].clone(), 14);
+        placer_tile(&mut plateau, deck.tiles[12].clone(), 15);
+        println!("{:?}", plateau.tiles);
+
+
+        let point=result(&plateau);
+        assert_eq!(point,20);
+    }
+    #[test]
+    fn test_remplir_plateau_take_it_easy_count_last_column_3_plateau_3_1() {
+        let mut deck = create_shuffle_deck();
+        let mut plateau = create_plateau_empty();
+        placer_tile(&mut plateau, deck.tiles[0].clone(), 16);
+        placer_tile(&mut plateau, deck.tiles[1].clone(),17);
+        placer_tile(&mut plateau, deck.tiles[2].clone(), 18);
+        let point=result(&plateau);
+        assert_eq!(point,3);
+    }
     fn result(plateau: &Plateau) -> i32 {
         let mut result =0;
         if (plateau.tiles[0].0 == plateau.tiles[1].0) && (plateau.tiles[0].0 == plateau.tiles[2].0) {
@@ -263,6 +270,15 @@ mod tests {
             &&(plateau.tiles[7].0 == plateau.tiles[11].0)
         {
             result=result+ plateau.tiles[7].0*5;
+        }
+        if (plateau.tiles[12].0 == plateau.tiles[13].0)
+            && (plateau.tiles[12].0 == plateau.tiles[14].0)
+            &&(plateau.tiles[12].0 == plateau.tiles[15].0)
+        {
+            result=result+ plateau.tiles[12].0*4;
+        }
+        if (plateau.tiles[16].0 == plateau.tiles[17].0) && (plateau.tiles[16].0 == plateau.tiles[18].0) {
+            result=result+ plateau.tiles[16].0*3;
         }
         result
     }
