@@ -98,49 +98,12 @@ fn placer_tile(plateau: &mut Plateau, tuile: Tile, position: usize) -> bool {
     plateau.tiles[position] = tuile;
     true
 }
-pub fn result(plateau: &Plateau) -> i32 {
-    let line_indices = vec![
-        (vec![0, 1, 2], 3),
-        (vec![3, 4, 5, 6], 4),
-        (vec![7, 8, 9, 10, 11], 5),
-        (vec![12, 13, 14, 15], 4),
-        (vec![16, 17, 18], 3),
-        (vec![0,3, 7], 3),
-        (vec![1,4, 8,12], 4),
-        (vec![2,5,9,13,16], 5),
-        (vec![6,10, 14,17], 4),
-        (vec![11,15, 18], 3),
-        (vec![7,12, 16], 3),
-        (vec![3,8, 13,17], 4),
-        (vec![0,4,9,14,18], 5),
-        (vec![1,5, 10,15], 4),
-        (vec![2,6, 11], 3),
-    ];
 
-    let mut result = 0;
-
-    for (index_group, multiplier) in line_indices.iter() {
-        if is_equal_group(&plateau.tiles, index_group) {
-            result += plateau.tiles[index_group[0]].0 * *multiplier;
-        }
-    }
-
-    result
-}
-
-/// Helper function to check if all tiles in the group are equal.
-fn is_equal_group(tiles: &[Tile], indices: &[usize]) -> bool {
-    if let Some(first_tile) = tiles.get(indices[0]) {
-        indices.iter().all(|&i| tiles[i].0 == first_tile.0)
-    } else {
-        false
-    }
-}
 #[cfg(test)]
 pub(crate) mod tests {
     use rand::Rng;
     use crate::plateau::Plateau;
-    use crate::test::{choisir_et_placer, create_plateau_empty, create_shuffle_deck, Deck, placer_tile, remove_tile_from_deck, result, Tile};
+    use crate::test::{choisir_et_placer, create_plateau_empty, create_shuffle_deck, Deck, placer_tile, remove_tile_from_deck,  Tile};
 
 
 
@@ -297,133 +260,201 @@ pub(crate) mod tests {
         assert_eq!(point,3);
     }
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_first_diag_3_plateau_3_1() {
+    fn test_remplir_plateau_take_it_easy_count_first_diag_plateau_0_3_7() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 0);
-        placer_tile(&mut plateau, deck.tiles[1].clone(),3);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 7);
+        placer_tile(&mut plateau, deck.tiles[4].clone(),3);
+        placer_tile(&mut plateau, deck.tiles[5].clone(), 7);
         let point=result(&plateau);
-        assert_eq!(point,3);
+        assert_eq!(point,6);
     }
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_0_3_7() {
-        let mut deck = create_shuffle_deck();
-        let mut plateau = create_plateau_empty();
-        placer_tile(&mut plateau, deck.tiles[0].clone(), 0);
-        placer_tile(&mut plateau, deck.tiles[3].clone(), 3);
-        placer_tile(&mut plateau, deck.tiles[7].clone(), 7);
-        let point = result(&plateau);
-        assert_eq!(point, 3);
-    }
-
-    #[test]
-    fn test_remplir_plateau_take_it_easy_count_1_4_8_12() {
+    fn test_remplir_plateau_take_it_easy_count_second_diag_plateau_1_4_8_12() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 1);
-        placer_tile(&mut plateau, deck.tiles[1].clone(), 4);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 8);
-        placer_tile(&mut plateau, deck.tiles[3].clone(), 12);
-        let point = result(&plateau);
-        assert_eq!(point, 4);
+        placer_tile(&mut plateau, deck.tiles[4].clone(),4);
+        placer_tile(&mut plateau, deck.tiles[5].clone(), 8);
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 12);
+        let point=result(&plateau);
+        assert_eq!(point,8);
     }
-
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_2_5_9_13_16() {
+    fn test_remplir_plateau_take_it_easy_count_third_diag_plateau_2_5_9_13_16() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 2);
-        placer_tile(&mut plateau, deck.tiles[1].clone(), 5);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 9);
-        placer_tile(&mut plateau, deck.tiles[3].clone(), 13);
-        placer_tile(&mut plateau, deck.tiles[4].clone(), 16);
-        let point = result(&plateau);
-        assert_eq!(point, 5);
+        placer_tile(&mut plateau, deck.tiles[4].clone(),5);
+        placer_tile(&mut plateau, deck.tiles[5].clone(), 9);
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 13);
+        placer_tile(&mut plateau, deck.tiles[13].clone(), 16);
+        let point=result(&plateau);
+        assert_eq!(point,10);
     }
-
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_6_10_14_17() {
+    fn test_remplir_plateau_take_it_easy_count_fourth_diag_plateau_6_10_14_17() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 6);
-        placer_tile(&mut plateau, deck.tiles[1].clone(), 10);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 14);
-        placer_tile(&mut plateau, deck.tiles[3].clone(), 17);
-        let point = result(&plateau);
-        assert_eq!(point, 4);
-    }
+        placer_tile(&mut plateau, deck.tiles[4].clone(),10);
+        placer_tile(&mut plateau, deck.tiles[5].clone(), 14);
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 17);
 
+        let point=result(&plateau);
+        assert_eq!(point,8);
+    }
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_11_15_18() {
+    fn test_remplir_plateau_take_it_easy_count_last_diag_plateau_11_15_18() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 11);
-        placer_tile(&mut plateau, deck.tiles[1].clone(), 15);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 18);
-        let point = result(&plateau);
-        assert_eq!(point, 3);
+        placer_tile(&mut plateau, deck.tiles[4].clone(),15);
+        placer_tile(&mut plateau, deck.tiles[5].clone(), 18);
+
+
+        let point=result(&plateau);
+        assert_eq!(point,6);
     }
-
-    // Add other tests for all the other specified groups...
-
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_7_12_16() {
+    fn test_remplir_plateau_take_it_easy_count_firdt_diag_left_plateau_7_12_16() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 7);
-        placer_tile(&mut plateau, deck.tiles[1].clone(), 12);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 16);
-        let point = result(&plateau);
-        assert_eq!(point, 3);
-    }
+        placer_tile(&mut plateau, deck.tiles[2].clone(),12);
+        placer_tile(&mut plateau, deck.tiles[3].clone(), 16);
 
+
+        let point=result(&plateau);
+        assert_eq!(point,9);
+    }
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_3_8_13_17() {
+    fn test_remplir_plateau_take_it_easy_count_second_diag_left_plateau_3_8_13_17() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 3);
-        placer_tile(&mut plateau, deck.tiles[1].clone(), 8);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 13);
-        placer_tile(&mut plateau, deck.tiles[3].clone(), 17);
-        let point = result(&plateau);
-        assert_eq!(point, 4);
-    }
+        placer_tile(&mut plateau, deck.tiles[2].clone(),8);
+        placer_tile(&mut plateau, deck.tiles[3].clone(), 13);
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 17);
 
+
+        let point=result(&plateau);
+        assert_eq!(point,12);
+    }
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_0_4_9_14_18() {
+    fn test_remplir_plateau_take_it_easy_count_third_diag_left_plateau_0_4_9_14_18() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 0);
-        placer_tile(&mut plateau, deck.tiles[1].clone(), 4);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 9);
-        placer_tile(&mut plateau, deck.tiles[3].clone(), 14);
-        placer_tile(&mut plateau, deck.tiles[4].clone(), 18);
-        let point = result(&plateau);
-        assert_eq!(point, 5);
-    }
+        placer_tile(&mut plateau, deck.tiles[2].clone(),4);
+        placer_tile(&mut plateau, deck.tiles[3].clone(), 9);
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 14);
+        placer_tile(&mut plateau, deck.tiles[11].clone(), 18);
 
+
+        let point=result(&plateau);
+        assert_eq!(point,15);
+    }
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_1_5_10_15() {
+    fn test_remplir_plateau_take_it_easy_count_fourth_diag_left_plateau_1_5_10_15() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 1);
-        placer_tile(&mut plateau, deck.tiles[1].clone(), 5);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 10);
-        placer_tile(&mut plateau, deck.tiles[3].clone(), 15);
-        let point = result(&plateau);
-        assert_eq!(point, 4);
-    }
+        placer_tile(&mut plateau, deck.tiles[2].clone(),5);
+        placer_tile(&mut plateau, deck.tiles[3].clone(), 10);
+        placer_tile(&mut plateau, deck.tiles[9].clone(), 15);
 
+
+        let point=result(&plateau);
+        assert_eq!(point,12);
+    }
     #[test]
-    fn test_remplir_plateau_take_it_easy_count_2_6_11() {
+    fn test_remplir_plateau_take_it_easy_count_last_diag_left_plateau_2_6_11() {
         let mut deck = create_shuffle_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 2);
-        placer_tile(&mut plateau, deck.tiles[1].clone(), 6);
-        placer_tile(&mut plateau, deck.tiles[2].clone(), 11);
-        let point = result(&plateau);
-        assert_eq!(point, 3);
+        placer_tile(&mut plateau, deck.tiles[2].clone(),6);
+        placer_tile(&mut plateau, deck.tiles[3].clone(), 11);
+
+
+        let point=result(&plateau);
+        assert_eq!(point,9);
+    }
+    pub fn result(plateau: &Plateau) -> i32 {
+        let mut result =0;
+        if (plateau.tiles[0].0 == plateau.tiles[1].0) && (plateau.tiles[0].0 == plateau.tiles[2].0) {
+            result=result+ plateau.tiles[0].0*3;
+        }
+        if (plateau.tiles[3].0 == plateau.tiles[4].0)
+            && (plateau.tiles[3].0 == plateau.tiles[5].0)
+            &&(plateau.tiles[3].0 == plateau.tiles[6].0)
+           {
+            result=result+ plateau.tiles[3].0*4;
+        }
+        if (plateau.tiles[7].0 == plateau.tiles[8].0)
+            && (plateau.tiles[7].0 == plateau.tiles[9].0)
+            &&(plateau.tiles[7].0 == plateau.tiles[10].0)
+            &&(plateau.tiles[7].0 == plateau.tiles[11].0)
+        {
+            result=result+ plateau.tiles[7].0*5;
+        }
+        if (plateau.tiles[12].0 == plateau.tiles[13].0)
+            && (plateau.tiles[12].0 == plateau.tiles[14].0)
+            &&(plateau.tiles[12].0 == plateau.tiles[15].0)
+        {
+            result=result+ plateau.tiles[12].0*4;
+        }
+        if (plateau.tiles[16].0 == plateau.tiles[17].0) && (plateau.tiles[16].0 == plateau.tiles[18].0) {
+            result=result+ plateau.tiles[16].0*3;
+        }
+        if (plateau.tiles[0].1 == plateau.tiles[3].1) && (plateau.tiles[0].1 == plateau.tiles[7].1) {
+            result=result+ plateau.tiles[0].1*3;
+        }
+        if (plateau.tiles[1].1 == plateau.tiles[4].1)
+            && (plateau.tiles[1].1 == plateau.tiles[8].1)
+            &&(plateau.tiles[1].1 == plateau.tiles[12].1)
+        {
+            result=result+ plateau.tiles[1].1*4;
+        }
+        if (plateau.tiles[2].1 == plateau.tiles[5].1)
+            && (plateau.tiles[2].1 == plateau.tiles[9].1)
+            &&(plateau.tiles[2].1 == plateau.tiles[13].1)
+            &&(plateau.tiles[2].1 == plateau.tiles[16].1)
+        {
+            result=result+ plateau.tiles[2].1*5;
+        }
+        if (plateau.tiles[6].1 == plateau.tiles[10].1)
+            && (plateau.tiles[6].1 == plateau.tiles[14].1)
+            &&(plateau.tiles[6].1 == plateau.tiles[17].1)
+        {
+            result=result+ plateau.tiles[6].1*4;
+        }
+        if (plateau.tiles[11].1 == plateau.tiles[15].1) && (plateau.tiles[11].1 == plateau.tiles[18].1) {
+            result=result+ plateau.tiles[11].1*3;
+        }
+        if (plateau.tiles[7].2 == plateau.tiles[12].2) && (plateau.tiles[7].2 == plateau.tiles[16].2) {
+            result=result+ plateau.tiles[7].2*3;
+        }
+        if (plateau.tiles[3].2 == plateau.tiles[8].2) && (plateau.tiles[3].2 == plateau.tiles[13].2 && plateau.tiles[3].2 == plateau.tiles[17].2) {
+            result=result+ plateau.tiles[3].2*4;
+        }
+        if (plateau.tiles[0].2 == plateau.tiles[4].2)
+            && (plateau.tiles[0].2 == plateau.tiles[9].2)
+            &&(plateau.tiles[0].2 == plateau.tiles[14].2)
+            &&(plateau.tiles[0].2 == plateau.tiles[18].2)
+        {
+            result=result+ plateau.tiles[0].2*5;
+        }
+        if (plateau.tiles[1].2 == plateau.tiles[5].2)
+            && (plateau.tiles[1].2 == plateau.tiles[10].2)
+            &&(plateau.tiles[1].2 == plateau.tiles[15].2)
+        {
+            result=result+ plateau.tiles[1].2*4;
+        }
+        if (plateau.tiles[2].2 == plateau.tiles[6].2) && (plateau.tiles[2].2 == plateau.tiles[11].2) {
+            result=result+ plateau.tiles[2].2*3;
+        }
+        result
     }
 
 }
