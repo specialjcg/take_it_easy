@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hexagonal Grid</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #000; /* Background color for contrast */
+    }
+
+    canvas {
+      border: 1px solid white; /* Optional: border to visualize the canvas */
+    }
+  </style>
+</head>
+<body>
+<canvas id="myCanvas" width="800" height="800"></canvas>
+
+<script>
+  // Setup canvas and context
+  const canvas = document.getElementById('myCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // Array of image paths
+  const images = ["../image/924.png", "../image/164.png", "../image/564.png", "../image/968.png", "../image/528.png", "../image/573.png", "../image/123.png", "../image/978.png", "../image/974.png", "../image/523.png", "../image/168.png", "../image/524.png", "../image/963.png", "../image/928.png", "../image/973.png", "../image/923.png", "../image/174.png", "../image/964.png", "../image/568.png"]
+
+
+  // Define hexagonal positions
+  const hexPositions_each_image = [[-2, 2],[-2.3, 4],[-2.65, 6], [-1, 1],[-1.3, 3],[-1.6, 5],[-1.95, 7],
+    [0, 0], // Center
+
+    [-0.3, 2],[-0.6, 4], [-0.9, 6],[-1.25, 8],
+    [0.7, 1], [0.4, 3], [0.1, 5],[-0.2, 7],
+      [1.4, 2],
+      [1.1, 4],
+       [0.8, 6],
+  ];
+
+  // Constants for hexagon layout
+  const hexRadius = 50; // Radius of each hexagon
+  const hexWidth = Math.sqrt(3) * hexRadius; // Width of a hexagon
+  const hexHeight = 2 * hexRadius; // Height of a hexagon
+  const offsetY = 0.45 * hexHeight; // Vertical spacing between hexagons
+
+  // Center the grid on the canvas
+  const gridOriginX = canvas.width / 2 - hexWidth;
+  const gridOriginY = canvas.height / 2 - 2 * offsetY;
+
+  // Draw the hexagonal grid with images
+  function drawHexagonalGrid() {
+    hexPositions_each_image.forEach((position, index) => {
+      const [q, r] = position;
+
+      // Convert axial coordinates to pixel coordinates
+      const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 70;
+      const y = gridOriginY + r * offsetY - 70;
+
+      // Load the corresponding image for each position
+      const img = new Image();
+      img.src = images[index];  // Select the image from the array based on the index
+
+      // When the image is loaded, draw it on the canvas
+      img.onload = function() {
+        const scaledWidth = img.width / 2;
+        const scaledHeight = img.height / 2;
+
+        // Draw the image in the hexagonal position
+        ctx.drawImage(img, x - scaledWidth / 2, y - scaledHeight / 2, scaledWidth, scaledHeight);
+
+        // Optional: draw hexagon outlines for visualization
+        drawHexagon(ctx, x, y, hexRadius);
+      };
+    });
+  }
+
+  // Function to draw hexagon outline
+  function drawHexagon(ctx, x, y, radius) {
+    const angleStep = Math.PI / 3; // 60 degrees
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = angleStep * i;
+      const xOffset = x + radius * Math.cos(angle);
+      const yOffset = y + radius * Math.sin(angle);
+      if (i === 0) ctx.moveTo(xOffset, yOffset);
+      else ctx.lineTo(xOffset, yOffset);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = 'white'; // Hexagon outline color
+    ctx.stroke();
+  }
+
+  // Start drawing the grid once the window is loaded
+  window.onload = drawHexagonalGrid;
+</script>
+</body>
+</html>
