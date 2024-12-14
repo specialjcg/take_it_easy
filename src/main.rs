@@ -1,17 +1,23 @@
-use rand::{thread_rng, Rng};
-use crate::plateau::Plateau;
-use crate::test::{choisir_et_placer, create_plateau_empty, create_shuffle_deck,  Tile};
-use crate::test::tests::result;
+use std::thread::sleep;
+use std::time::Duration;
+use tokio::net::TcpListener;
+use tokio_tungstenite::accept_async;
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::protocol::Message;
+use serde_json;
+use rand::{thread_rng, Rng, SeedableRng};
+use rand::rngs::{OsRng, StdRng};
+use crate::test::{choisir_et_placer, create_plateau_empty, create_shuffle_deck, Plateau, result, Tile};
+
 
 mod test;
-mod plateau;
 
 /// Simule 100 parties à partir d'un état donné pour calculer le meilleur score
-fn simulate_games(deck: &mut test::Deck, plateau: &mut plateau::Plateau) -> (i32, Plateau) {
+fn simulate_games(deck: &mut test::Deck, plateau: &mut Plateau) -> (i32, Plateau) {
     let mut best_score = 0;
     let mut best_plateau = plateau.clone();
 
-    for _ in 0..1000 {
+    for _ in 0..20000 {
         let mut simulation_deck = deck.clone(); // Clone du deck
         let mut simulation_plateau = plateau.clone(); // Clone du plateau
 
@@ -33,7 +39,7 @@ fn simulate_games(deck: &mut test::Deck, plateau: &mut plateau::Plateau) -> (i32
 }
 
 /// Trouve la meilleure position pour placer une tuile en simulant 100 parties pour chaque position
-fn find_best_position(deck: &mut test::Deck, plateau: &mut plateau::Plateau, tuile: Tile) -> (usize, i32, Plateau) {
+fn find_best_position(deck: &mut test::Deck, plateau: &mut Plateau, tuile: Tile) -> (usize, i32, Plateau) {
     let mut best_score = 0;
     let mut best_position = 0;
     let mut best_plateau_score = plateau.clone();
@@ -53,7 +59,6 @@ fn find_best_position(deck: &mut test::Deck, plateau: &mut plateau::Plateau, tui
                 best_score = best_position_score;
                 best_position = position;
                 best_plateau_score = best_plateau.clone();
-                println!("Plateau après placement : {:?}", best_plateau.tiles);
             }
         }
     }
@@ -65,34 +70,67 @@ fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
         format!("../image/{}{}{}.png", tile.0, tile.1, tile.2)
     }).collect()
 }
-fn main() {
-    let mut rng = thread_rng();
 
-    // Initialisation du plateau et du deck
+#[tokio::main]
+async fn main() {
+    let seed = [42u8; 32];
+    let mut rng = StdRng::from_seed(seed);
+
+
+    // Initialize the plateau and deck
     let mut deck = create_shuffle_deck();
     let mut plateau = create_plateau_empty();
 
-    // Choix d'une tuile aléatoire
-    let deck_len = deck.tiles.len();
-    let tile_index = rng.gen_range(0..deck_len);
-    let tuile_choisie = deck.tiles[tile_index].clone();
+    // WebSocket server setup
+    let listener = TcpListener::bind("127.0.0.1:9000").await.expect("Failed to bind WebSocket server");
+    println!("WebSocket server running at ws://127.0.0.1:9000");
 
-    // Suppression de la tuile du deck
-    deck = crate::test::remove_tile_from_deck(&deck, &tuile_choisie);
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            let ws_stream = accept_async(stream).await.expect("Failed to accept WebSocket");
+            let (mut write, _) = ws_stream.split();
 
-    // Trouve la meilleure position pour la tuile choisie en utilisant le meilleur score
-    let (best_position, best_score,best_plateau) = find_best_position(&mut deck, &mut plateau, tuile_choisie);
+            loop {
+                if is_plateau_full(&plateau) {
+                    let point=result(&plateau);
+                    println!("The game has ended! The plateau is full. {}", point);
+                    break;
+                }
 
-    // Placement final de la tuile
-    plateau.tiles[best_position] = tuile_choisie;
+                // Choose a random tile from the deck
+                let deck_len = deck.tiles.len();
+                let tile_index = rng.gen_range(0..deck_len);
+                let chosen_tile = deck.tiles[tile_index].clone();
 
-    println!("Tuile choisie : {:?}", tuile_choisie);
-    println!("Meilleure position pour la tuile : {}", best_position);
-    println!("Meilleur score pour cette position : {}", best_score);
-    println!("Plateau après placement : {:?}", plateau.tiles);
-    // Generate image filenames based on the tiles in plateau
-    let image_names = generate_tile_image_names(&best_plateau.tiles);
+                // Remove the tile from the deck
+                deck = crate::test::remove_tile_from_deck(&deck, &chosen_tile);
 
-    // Output the list of image filenames (you can use this in the frontend)
-    println!("List of image filenames: {:?}", image_names);
+                // Find the best position for the chosen tile
+                let (best_position, best_score, _) = find_best_position(&mut deck, &mut plateau, chosen_tile);
+
+                // Place the tile on the plateau
+                plateau.tiles[best_position] = chosen_tile;
+
+                // Generate image filenames for the plateau
+                let image_names = generate_tile_image_names(&plateau.tiles);
+
+                // Serialize image names to JSON
+                let serialized = serde_json::to_string(&image_names).unwrap();
+                write.send(Message::Text(serialized)).await.unwrap();
+
+                println!("Tile placed: {:?}", chosen_tile);
+                println!("Best position: {}", best_position);
+                println!("Current plateau: {:?}", plateau.tiles);
+
+                // Sleep for 1 second before the next placement
+            }
+        }
+    })
+        .await
+        .unwrap();
+}
+
+/// Checks if the plateau is full
+fn is_plateau_full(plateau: &Plateau) -> bool {
+    plateau.tiles.iter().all(|tile| *tile != Tile(0, 0, 0))
 }
