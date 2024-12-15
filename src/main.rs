@@ -1,70 +1,17 @@
-use std::thread::sleep;
-use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use serde_json;
-use rand::{thread_rng, Rng, SeedableRng};
-use rand::rngs::{OsRng, StdRng};
-use crate::test::{choisir_et_placer, create_plateau_empty, create_shuffle_deck, Plateau, result, Tile};
+use rand::{Rng, SeedableRng, thread_rng};
+use rand::rngs::StdRng;
+use result::result;
+use crate::test::{create_plateau_empty, create_shuffle_deck, Deck, Plateau, remove_tile_from_deck, Tile};
 
 
 mod test;
+mod result;
 
-/// Simule 100 parties à partir d'un état donné pour calculer le meilleur score
-fn simulate_games(deck: &mut test::Deck, plateau: &mut Plateau) -> (i32, Plateau) {
-    let mut best_score = 0;
-    let mut best_plateau = plateau.clone();
-
-    for _ in 0..20000 {
-        let mut simulation_deck = deck.clone(); // Clone du deck
-        let mut simulation_plateau = plateau.clone(); // Clone du plateau
-
-        // Simule une partie complète avec les clones
-        choisir_et_placer(&mut simulation_deck, &mut simulation_plateau);
-
-        // Calcule le score pour cette partie
-        let score = result(&simulation_plateau);
-
-        // Met à jour si ce score est le meilleur
-        if score > best_score {
-            best_score = score;
-            best_plateau = simulation_plateau.clone();
-        }
-    }
-
-    // Retourne le meilleur score trouvé parmi les simulations
-    (best_score,best_plateau)
-}
-
-/// Trouve la meilleure position pour placer une tuile en simulant 100 parties pour chaque position
-fn find_best_position(deck: &mut test::Deck, plateau: &mut Plateau, tuile: Tile) -> (usize, i32, Plateau) {
-    let mut best_score = 0;
-    let mut best_position = 0;
-    let mut best_plateau_score = plateau.clone();
-
-    for position in 0..plateau.tiles.len() {
-        // Vérifie si la case est vide
-        if plateau.tiles[position] == Tile(0, 0, 0) {
-            // Clone le plateau pour tester ce placement
-            let mut temp_plateau = plateau.clone();
-            temp_plateau.tiles[position] = tuile;
-
-            // Simule 100 parties avec cette configuration
-             let (best_position_score,best_plateau) = simulate_games(deck, &mut temp_plateau);
-
-            // Met à jour si ce score est le meilleur
-            if best_position_score > best_score {
-                best_score = best_position_score;
-                best_position = position;
-                best_plateau_score = best_plateau.clone();
-            }
-        }
-    }
-
-    (best_position, best_score,best_plateau_score)
-}
 fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
     tiles.iter().map(|tile| {
         format!("../image/{}{}{}.png", tile.0, tile.1, tile.2)
@@ -76,61 +23,152 @@ async fn main() {
     let seed = [42u8; 32];
     let mut rng = StdRng::from_seed(seed);
 
-
-    // Initialize the plateau and deck
-    let mut deck = create_shuffle_deck();
-    let mut plateau = create_plateau_empty();
-
-    // WebSocket server setup
-    let listener = TcpListener::bind("127.0.0.1:9000").await.expect("Failed to bind WebSocket server");
+    // WebSocket server setup (optional if you want to visualize live games)
+    let listener = TcpListener::bind("127.0.0.1:9000")
+        .await
+        .expect("Failed to bind WebSocket server");
     println!("WebSocket server running at ws://127.0.0.1:9000");
+
+    // Collect statistics
+    let mut scores = Vec::new();
 
     tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
             let ws_stream = accept_async(stream).await.expect("Failed to accept WebSocket");
             let (mut write, _) = ws_stream.split();
 
-            loop {
-                if is_plateau_full(&plateau) {
-                    let point=result(&plateau);
-                    println!("The game has ended! The plateau is full. {}", point);
-                    break;
+            for game in 0..10 {
+                // Initialize the plateau and deck
+                let mut deck = create_shuffle_deck();
+                let mut plateau = create_plateau_empty();
+                let mut first_move: Option<(usize, Tile)> = None; // To track the first move
+
+
+                println!("Starting game {}", game + 1);
+
+                while !is_plateau_full(&plateau) {
+                    // Select the best tile and position using MCTS
+                    if let Some((best_position, chosen_tile)) = mcts_find_best_move(&mut deck, &mut plateau) {
+                        if first_move.is_none() {
+                            first_move = Some((best_position, chosen_tile));
+                        }
+                        // Place the tile on the plateau
+                        plateau.tiles[best_position] = chosen_tile;
+
+                        // Remove the chosen tile from the deck
+                        deck = remove_tile_from_deck(&deck, &chosen_tile);
+
+                        // Track (position, tile) pair frequency
+
+
+                        // Generate image filenames for the plateau
+                        let image_names = generate_tile_image_names(&plateau.tiles);
+
+                        // Serialize image names to JSON and send to WebSocket
+                        let serialized = serde_json::to_string(&image_names).unwrap();
+                        write.send(Message::Text(serialized)).await.unwrap();
+
+
+                    }
                 }
 
-                // Choose a random tile from the deck
-                let deck_len = deck.tiles.len();
-                let tile_index = rng.gen_range(0..deck_len);
-                let chosen_tile = deck.tiles[tile_index].clone();
+                // Calculate the score for the current game
+                let game_score = result(&plateau);
+                scores.push(game_score);
 
-                // Remove the tile from the deck
-                deck = crate::test::remove_tile_from_deck(&deck, &chosen_tile);
-
-                // Find the best position for the chosen tile
-                let (best_position, best_score, _) = find_best_position(&mut deck, &mut plateau, chosen_tile);
-
-                // Place the tile on the plateau
-                plateau.tiles[best_position] = chosen_tile;
-
-                // Generate image filenames for the plateau
-                let image_names = generate_tile_image_names(&plateau.tiles);
-
-                // Serialize image names to JSON
-                let serialized = serde_json::to_string(&image_names).unwrap();
-                write.send(Message::Text(serialized)).await.unwrap();
-
-                println!("Tile placed: {:?}", chosen_tile);
-                println!("Best position: {}", best_position);
-                println!("Current plateau: {:?}", plateau.tiles);
-
-                // Sleep for 1 second before the next placement
+                if let Some((position, tile)) = first_move {
+                    println!(
+                        "Game {} finished with score: {}, First move: Tile {:?} at Position {}",
+                        game + 1,
+                        game_score,
+                        tile,
+                        position
+                    );
+                } else {
+                    println!("Game {} finished with score: {}. No valid moves were made.", game + 1, game_score);
+                }
             }
+
+            // Post-game analysis
         }
     })
         .await
         .unwrap();
 }
 
+
+
+
+
 /// Checks if the plateau is full
 fn is_plateau_full(plateau: &Plateau) -> bool {
     plateau.tiles.iter().all(|tile| *tile != Tile(0, 0, 0))
+}
+
+/// Finds the best move using MCTS
+fn mcts_find_best_move(deck: &mut Deck, plateau: &mut Plateau) -> Option<(usize, Tile)> {
+    let mut best_position = None;
+    let mut best_score = i32::MIN;
+    let mut chosen_tile = None;
+
+    for tile in &deck.tiles {
+        for position in get_legal_moves(plateau.clone()) {
+            let mut temp_plateau = plateau.clone();
+            let mut temp_deck = deck.clone();
+
+            // Simulate placing the tile
+            temp_plateau.tiles[position] = *tile;
+            temp_deck = remove_tile_from_deck(&temp_deck, tile);
+
+            // Simulate games to evaluate the score
+            let score = simulate_games(temp_plateau.clone(), temp_deck.clone(), 100);
+
+            if score > best_score {
+                best_score = score;
+                best_position = Some(position);
+                chosen_tile = Some(*tile);
+            }
+        }
+    }
+
+    best_position.zip(chosen_tile)
+}
+
+/// Simulates `num_simulations` games and returns the average score
+fn simulate_games(mut plateau: Plateau, mut deck: Deck, num_simulations: usize) -> i32 {
+    let mut total_score = 0;
+
+    for _ in 0..num_simulations {
+        let mut simulated_plateau = plateau.clone();
+        let mut simulated_deck = deck.clone();
+
+        while !is_plateau_full(&simulated_plateau) {
+            let legal_moves = get_legal_moves(simulated_plateau.clone());
+            if legal_moves.is_empty() {
+                break;
+            }
+
+            let mut rng = thread_rng();
+            let position = legal_moves[rng.gen_range(0..legal_moves.len())];
+            let tile_index = rng.gen_range(0..simulated_deck.tiles.len());
+            let chosen_tile = simulated_deck.tiles[tile_index];
+
+            simulated_plateau.tiles[position] = chosen_tile;
+            simulated_deck = remove_tile_from_deck(&simulated_deck, &chosen_tile);
+        }
+
+        total_score += result(&simulated_plateau);
+    }
+
+    total_score / num_simulations as i32
+}
+
+/// Get all legal moves (empty positions) on the plateau
+fn get_legal_moves(plateau: Plateau) -> Vec<usize> {
+    plateau
+        .tiles
+        .iter()
+        .enumerate()
+        .filter_map(|(i, tile)| if *tile == Tile(0, 0, 0) { Some(i) } else { None })
+        .collect()
 }
