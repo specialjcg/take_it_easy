@@ -1,38 +1,5 @@
 use rand::Rng;
 
-pub fn create_shuffle_deck() -> Deck {
-    let tiles = vec![
-        new_tiles(1, 2, 3),
-        new_tiles(1, 6, 8),
-        new_tiles(1, 7, 3),
-        new_tiles(1, 6, 3),
-        new_tiles(1, 2, 8),
-        new_tiles(1, 2, 4),
-        new_tiles(1, 7, 4),
-        new_tiles(1, 6, 4),
-        new_tiles(1, 7, 8),
-        new_tiles(5, 2, 3),
-        new_tiles(5, 6, 8),
-        new_tiles(5, 7, 3),
-        new_tiles(5, 6, 3),
-        new_tiles(5, 2, 8),
-        new_tiles(5, 2, 4),
-        new_tiles(5, 7, 4),
-        new_tiles(5, 6, 4),
-        new_tiles(5, 7, 8),
-        new_tiles(9, 2, 3),
-        new_tiles(9, 6, 8),
-        new_tiles(9, 7, 3),
-        new_tiles(9, 6, 3),
-        new_tiles(9, 2, 8),
-        new_tiles(9, 2, 4),
-        new_tiles(9, 7, 4),
-        new_tiles(9, 6, 4),
-        new_tiles(9, 7, 8),
-    ];
-
-   Deck { tiles}
-}
 #[derive(Debug, Clone, PartialEq)]
 pub struct MCTSNode {
     pub state: GameState,             // Current game state
@@ -63,67 +30,10 @@ pub struct GameState {
     pub plateau: Plateau,
     pub deck: Deck,
 }
-fn new_tiles(x: i32, y: i32, z: i32) -> Tile {
-    Tile(x, y, z)
-}
-
-
-
-
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Deck{
     pub(crate) tiles: Vec<Tile>,
-}
-pub(crate) fn create_plateau_empty() -> Plateau {
-    Plateau {
-        tiles: vec![Tile(0, 0, 0); 19],
-    }
-}
-pub(crate) fn remove_tile_from_deck(deck: &Deck, tile_to_remove: &Tile) -> Deck {
-    // Filtre toutes les tuiles sauf celle à retirer
-    let new_tiles: Vec<Tile> = deck
-        .tiles
-        .iter()
-        .filter(|&tile| tile != tile_to_remove) // Conserve uniquement les tuiles différentes
-        .cloned() // Copie chaque tuile dans le nouveau vecteur
-        .collect();
-
-    Deck { tiles: new_tiles } // Crée un nouveau deck
-}
-pub fn choisir_et_placer(deck: &mut Deck, plateau: &mut Plateau) {
-    let mut rng = rand::thread_rng();
-
-    // Répéter jusqu'à ce que le plateau soit plein
-    while plateau.tiles.contains(&Tile(0, 0, 0)) {
-        // Choisir une tuile aléatoirement dans le deck
-        let deck_len = deck.tiles.len();
-        if deck_len == 0 {
-            break; // Plus de tuiles disponibles
-        }
-        let tile_index = rng.gen_range(0..deck_len);
-        let tuile = deck.tiles.remove(tile_index); // Retirer la tuile du deck
-
-        // Choisir une position aléatoire dans le plateau
-        let mut position;
-        loop {
-            position = rng.gen_range(0..plateau.tiles.len());
-            if plateau.tiles[position] == Tile(0, 0, 0) {
-                break; // Trouver une case vide
-            }
-        }
-
-        // Placer la tuile dans le plateau
-        plateau.tiles[position] = tuile;
-    }
-}
-fn placer_tile(plateau: &mut Plateau, tuile: Tile, position: usize) -> bool {
-    if plateau.tiles[position] != Tile(0, 0, 0) {
-        return false; // Case déjà occupée
-    }
-    plateau.tiles[position] = tuile;
-    true
 }
 
 #[cfg(test)]
@@ -132,8 +42,13 @@ pub(crate) mod tests {
 
 
     use rand::Rng;
+    use crate::choisir_et_placer::choisir_et_placer;
+    use crate::create_plateau_empty::create_plateau_empty;
+    use crate::create_shuffle_deck::create_shuffle_deck;
+    use crate::place_tile::placer_tile;
+    use crate::remove_tile_from_deck::remove_tile_from_deck;
     use crate::result::result;
-    use crate::test::{choisir_et_placer, create_mcts_node, create_plateau_empty, create_shuffle_deck, Deck, GameState, MCTSNode, placer_tile, Plateau, remove_tile_from_deck, Tile};
+    use crate::test::{create_mcts_node, Deck, GameState, MCTSNode, Plateau, Tile};
     #[test]
     fn test_placement_tuile_valide_take_it_easy() {
         let mut plateau:Plateau=create_plateau_empty();
