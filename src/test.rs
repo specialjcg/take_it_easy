@@ -1,4 +1,8 @@
 use rand::Rng;
+use crate::create_plateau_empty::create_plateau_empty;
+use crate::create_shuffle_deck::create_shuffle_deck;
+use crate::place_tile::placer_tile;
+use crate::remove_tile_from_deck::remove_tile_from_deck;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MCTSNode {
@@ -17,7 +21,15 @@ pub fn create_mcts_node(state: GameState, parent: Option<*mut MCTSNode>) -> MCTS
         parent,
     }
 }
-
+pub fn get_legal_moves(state: GameState) -> Vec<(usize)> {
+    let mut moves = Vec::new();
+    for i in 0..state.plateau.tiles.len() {
+        if state.plateau.tiles[i] == Tile(0, 0, 0) {
+            moves.push(i);
+        }
+    }
+    moves
+}
 #[derive(Debug, Clone, PartialEq, Copy,Hash,Eq)]
 pub(crate) struct Tile(pub i32, pub i32, pub i32);
 #[derive(Debug, Clone, PartialEq)]
@@ -35,7 +47,87 @@ pub struct GameState {
 pub struct Deck{
     pub(crate) tiles: Vec<Tile>,
 }
+pub fn create_game_state() -> GameState {
+    let plateau = create_plateau_empty();
+    let deck = create_shuffle_deck();
+    GameState { plateau, deck }
+}
+pub fn apply_move(mut game_state: GameState, tile: Tile, position: usize) -> Option<GameState> {
+    if !placer_tile(&mut game_state.plateau, tile, position){
+        return None; // Invalid move
+    }
+    else {
+        placer_tile(&mut game_state.plateau, tile, position);
+        let mut new_plateau = game_state.plateau.clone();
+        let mut new_deck = game_state.deck.clone();
+        new_deck = remove_tile_from_deck(&new_deck, &tile);
 
+
+        Some(GameState {
+            plateau: new_plateau,
+            deck: new_deck,
+        })
+
+    }
+}
+pub fn select_ucb1<'a>(node: &'a mut MCTSNode, exploration: f64) -> &'a mut MCTSNode {
+    let total_visits = node.visits as f64;
+
+    node.children
+        .iter_mut()
+        .map(|child| {
+            let ucb_score = if child.visits == 0 {
+                f64::INFINITY // Prioritize unvisited nodes
+            } else if total_visits > 0.0 {
+                let exploitation = child.value / child.visits as f64;
+                let exploration_term = exploration * ((total_visits.ln() / child.visits as f64).sqrt());
+                exploitation + exploration_term
+            } else {
+                0.0 // No valid exploration term if parent has zero visits
+            };
+            (ucb_score, child)
+        })
+        .inspect(|(ucb_score, child)| {
+            println!(
+                "Child: visits={}, value={}, UCB1 score={}",
+                child.visits, child.value, ucb_score
+            );
+        })
+        .max_by(|(score_a, _), (score_b, _)| score_a.partial_cmp(score_b).unwrap_or(std::cmp::Ordering::Equal))
+        .expect("No children to select")
+        .1
+}
+pub fn expand(mut root: MCTSNode, new_state: GameState)->MCTSNode {
+    let new_node = MCTSNode {
+        state: new_state.clone(),
+        visits: 0,
+        value: 0.0,
+        children: Vec::new(),
+        parent: None,
+    };
+    root.children.push(new_node);
+    root
+}
+pub fn backpropagate(node: &mut MCTSNode, score: f64) {
+    // Start from the current node
+    let mut current: *mut MCTSNode = node;
+
+    unsafe {
+        // Traverse up the tree
+        while let Some(parent) = (*current).parent {
+            // Update the current node
+            (*current).visits += 1;
+            (*current).value += score;
+
+            // Move to the parent node
+            current = parent;
+        }
+
+        // Update the root node
+        (*current).visits += 1;
+        (*current).value += score;
+    }
+}
 #[cfg(test)]
 pub(crate) mod tests {
 
@@ -48,7 +140,7 @@ pub(crate) mod tests {
     use crate::place_tile::placer_tile;
     use crate::remove_tile_from_deck::remove_tile_from_deck;
     use crate::result::result;
-    use crate::test::{create_mcts_node, Deck, GameState, MCTSNode, Plateau, Tile};
+    use crate::test::{apply_move, backpropagate, create_game_state, create_mcts_node, Deck, expand, GameState, get_legal_moves, MCTSNode, Plateau, select_ucb1, Tile};
     #[test]
     fn test_placement_tuile_valide_take_it_easy() {
         let mut plateau:Plateau=create_plateau_empty();
@@ -324,11 +416,6 @@ pub(crate) mod tests {
         assert_eq!(point,9);
     }
 
-    pub fn create_game_state() -> GameState {
-        let plateau = create_plateau_empty();
-        let deck = create_shuffle_deck();
-        GameState { plateau, deck }
-    }
 
     #[test]
     fn test_get_legal_moves() {
@@ -347,15 +434,7 @@ pub(crate) mod tests {
 
         assert_eq!(moves.len(), expectedly);
     }
-    fn get_legal_moves(state: GameState) -> Vec<(usize)> {
-        let mut moves = Vec::new();
-        for i in 0..state.plateau.tiles.len() {
-            if state.plateau.tiles[i] == Tile(0, 0, 0) {
-                moves.push(i);
-            }
-        }
-        moves
-    }
+
 
     #[test]
     fn test_apply_move() {
@@ -373,24 +452,7 @@ pub(crate) mod tests {
         assert!(!new_state.clone().unwrap().deck.tiles.contains(&tile));
     }
 
-    fn apply_move(mut game_state: GameState, tile: Tile, position: usize) -> Option<GameState> {
-        if !placer_tile(&mut game_state.plateau, tile, position){
-            return None; // Invalid move
-        }
-        else {
-            placer_tile(&mut game_state.plateau, tile, position);
-            let mut new_plateau = game_state.plateau.clone();
-            let mut new_deck = game_state.deck.clone();
-            new_deck = remove_tile_from_deck(&new_deck, &tile);
 
-
-            Some(GameState {
-                plateau: new_plateau,
-                deck: new_deck,
-            })
-
-        }
-    }
 
 
     #[test]
@@ -489,33 +551,7 @@ pub(crate) mod tests {
     }
 
 
-    pub fn select_ucb1<'a>(node: &'a mut MCTSNode, exploration: f64) -> &'a mut MCTSNode {
-        let total_visits = node.visits as f64;
 
-        node.children
-            .iter_mut()
-            .map(|child| {
-                let ucb_score = if child.visits == 0 {
-                    f64::INFINITY // Prioritize unvisited nodes
-                } else if total_visits > 0.0 {
-                    let exploitation = child.value / child.visits as f64;
-                    let exploration_term = exploration * ((total_visits.ln() / child.visits as f64).sqrt());
-                    exploitation + exploration_term
-                } else {
-                    0.0 // No valid exploration term if parent has zero visits
-                };
-                (ucb_score, child)
-            })
-            .inspect(|(ucb_score, child)| {
-                println!(
-                    "Child: visits={}, value={}, UCB1 score={}",
-                    child.visits, child.value, ucb_score
-                );
-            })
-            .max_by(|(score_a, _), (score_b, _)| score_a.partial_cmp(score_b).unwrap_or(std::cmp::Ordering::Equal))
-            .expect("No children to select")
-            .1
-    }
 
 
 
@@ -540,37 +576,7 @@ pub(crate) mod tests {
 
 
 
-    pub fn expand(mut root: MCTSNode, new_state: GameState)->MCTSNode {
-        let new_node = MCTSNode {
-            state: new_state.clone(),
-            visits: 0,
-            value: 0.0,
-            children: Vec::new(),
-            parent: None,
-        };
-        root.children.push(new_node);
-        root
-    }
-    pub fn backpropagate(node: &mut MCTSNode, score: f64) {
-        // Start from the current node
-        let mut current: *mut MCTSNode = node;
 
-        unsafe {
-            // Traverse up the tree
-            while let Some(parent) = (*current).parent {
-                // Update the current node
-                (*current).visits += 1;
-                (*current).value += score;
-
-                // Move to the parent node
-                current = parent;
-            }
-
-            // Update the root node
-            (*current).visits += 1;
-            (*current).value += score;
-        }
-    }
 
 
     #[test]

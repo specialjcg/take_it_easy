@@ -21,6 +21,8 @@ mod choisir_et_placer;
 mod remove_tile_from_deck;
 mod create_plateau_empty;
 mod create_shuffle_deck;
+
+mod policy_value_net;
 fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
     tiles.iter().map(|tile| {
         format!("../image/{}{}{}.png", tile.0, tile.1, tile.2)
@@ -28,6 +30,10 @@ fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
 }
 
 use clap::Parser;
+use serde_json::json;
+use tch::{nn, Tensor};
+use tch::nn::OptimizerConfig;
+use crate::policy_value_net::PolicyValueNet;
 
 #[derive(Parser)]
 struct Config {
@@ -36,7 +42,7 @@ struct Config {
     num_games: usize,
 
     /// Number of simulations per game state in MCTS
-    #[arg(short = 's', long, default_value_t = 10000)]
+    #[arg(short = 's', long, default_value_t = 100)]
     num_simulations: usize,
 }
 
@@ -45,6 +51,8 @@ struct Config {
 async fn main() {
     let config = Config::parse();
 
+    let policy_value_net = PolicyValueNet::new(57 + 3 + 81, 128); // Adjust input/output sizes
+    let mut optimizer = nn::Adam::default().build(&policy_value_net.vs, 1e-3).unwrap();
 
     // Rest of your main function
     let listener = TcpListener::bind("127.0.0.1:9000")
@@ -54,6 +62,159 @@ async fn main() {
 
     // Pass parameters where needed
     run_simulations(config.num_games, config.num_simulations, listener).await;
+}
+/// Finds the best move using MCTS with neural network guidance
+fn mcts_find_best_position_for_tile_with_nn(
+    plateau: &mut Plateau,
+    deck: &mut Deck,
+    chosen_tile: Tile,
+    policy_value_net: &PolicyValueNet,
+    num_simulations: usize,
+) -> Option<usize> {
+    let legal_moves = get_legal_moves(plateau.clone());
+    if legal_moves.is_empty() {
+        return None;
+    }
+
+    let board_tensor = convert_plateau_to_tensor(plateau, &chosen_tile, deck);
+    let (policy_logits, _value) = policy_value_net.forward(&board_tensor);
+    let policy = policy_logits.softmax(-1, tch::Kind::Float);
+
+    let mut ucb_scores = HashMap::new();
+    for _ in 0..num_simulations {
+        for &position in &legal_moves {
+            let mut temp_plateau = plateau.clone();
+            let mut temp_deck = deck.clone();
+
+            // Simulate placing the tile at this position
+            temp_plateau.tiles[position] = chosen_tile;
+            temp_deck = remove_tile_from_deck(&temp_deck, &chosen_tile);
+
+            // Simulate games to evaluate the score
+            let simulated_score = simulate_games(temp_plateau.clone(), temp_deck.clone(), 1);
+
+            let visits = 1.0; // Replace with real visit count tracking if needed
+            let exploration_param = 1.4;
+            let prior_prob = policy.double_value(&[position as i64]);
+            let ucb_score = (simulated_score as f64) / visits
+                + exploration_param * (prior_prob * ((1.0 / visits).ln() + 1.0).sqrt());
+            ucb_scores.insert(position, ucb_score);
+        }
+    }
+
+    // Return the position with the highest UCB score
+    legal_moves
+        .into_iter()
+        .max_by(|&a, &b| {
+            ucb_scores
+                .get(&a)
+                .unwrap_or(&f64::NEG_INFINITY)
+                .partial_cmp(ucb_scores.get(&b).unwrap_or(&f64::NEG_INFINITY))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+/// Self-play training loop
+async fn run_simulations_with_training(
+    num_games: usize,
+    num_simulations: usize,
+    listener: TcpListener,
+    policy_value_net: &PolicyValueNet,
+    optimizer: &mut nn::Optimizer,
+) {
+    while let Ok((stream, _)) = listener.accept().await {
+        let ws_stream = accept_async(stream).await.expect("Failed to accept WebSocket");
+        let (mut write, _) = ws_stream.split();
+
+        for game in 0..num_games {
+            let mut deck = create_shuffle_deck();
+            let mut plateau = create_plateau_empty();
+            let mut game_data = Vec::new();
+
+            println!("Starting game {}", game + 1);
+
+            while !is_plateau_full(&plateau) {
+                let tile_index = thread_rng().gen_range(0..deck.tiles.len());
+                let chosen_tile = deck.tiles[tile_index];
+
+                if let Some(best_position) = mcts_find_best_position_for_tile_with_nn(
+                    &mut plateau,
+                    &mut deck,
+                    chosen_tile,
+                    &policy_value_net,
+                    num_simulations,
+                ) {
+                    plateau.tiles[best_position] = chosen_tile;
+                    deck = remove_tile_from_deck(&deck, &chosen_tile);
+
+                    // Save state, policy, and value for training
+                    let board_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &mut deck);
+                    let (policy_logits, value) = policy_value_net.forward(&board_tensor);
+                    game_data.push((board_tensor, policy_logits, value));
+
+                    let image_names = generate_tile_image_names(&plateau.tiles);
+                    let serialized = serde_json::to_string(&image_names).unwrap();
+                    write.send(Message::Text(serialized)).await.unwrap();
+                }
+            }
+
+            let final_score = result(&plateau);
+            train_network_with_game_data(&game_data, final_score, policy_value_net, optimizer);
+            println!("Game {} finished with score: {}", game + 1, final_score);
+        }
+    }
+}
+
+/// Train the neural network with game data
+fn train_network_with_game_data(
+    game_data: &[(Tensor, Tensor, Tensor)],
+    final_score: i32,
+    policy_value_net: &PolicyValueNet,
+    optimizer: &mut nn::Optimizer,
+) {
+    let final_value = Tensor::of_slice(&[final_score as f32]);
+    let loss = game_data.iter().fold(Tensor::zeros(&[], tch::kind::FLOAT_CPU), |loss, (state, policy, value)| {
+        let (pred_policy, pred_value) = policy_value_net.forward(state);
+        let policy_loss = -(policy * pred_policy.log()).sum(tch::Kind::Float);
+        let value_loss = (final_value.shallow_clone() - pred_value).pow(&Tensor::of_slice(&[2.0]));
+        loss + policy_loss + value_loss
+    });
+
+    optimizer.backward_step(&loss);
+}
+
+
+/// Converts the plateau, the chosen tile, and the remaining deck into a tensor representation.
+///
+/// - `plateau`: The game board with 19 tiles.
+/// - `tile`: The chosen tile to be placed.
+/// - `deck`: The current deck of remaining tiles.
+///
+/// Returns a tensor combining plateau, tile, and deck features.
+fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Tensor {
+    let mut features = Vec::new();
+
+    // Flatten the plateau tiles into a vector of features (3 features per tile)
+    for t in &plateau.tiles {
+        features.push(t.0 as f32);
+        features.push(t.1 as f32);
+        features.push(t.2 as f32);
+    }
+
+    // Add the chosen tile features
+    features.push(tile.0 as f32);
+    features.push(tile.1 as f32);
+    features.push(tile.2 as f32);
+
+    // Add the deck features
+    for t in &deck.tiles {
+        features.push(t.0 as f32);
+        features.push(t.1 as f32);
+        features.push(t.2 as f32);
+    }
+
+    // Convert the feature vector into a tensor
+    Tensor::of_slice(&features)
 }
 
 async fn run_simulations(num_games: usize, num_simulations: usize, listener: TcpListener) {
