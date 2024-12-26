@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use futures_util::{SinkExt, StreamExt};
@@ -31,9 +33,10 @@ fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
 
 use clap::Parser;
 use serde_json::json;
-use tch::{nn, Tensor};
+use tch::{Device, IndexOp, nn, Tensor};
 use tch::nn::OptimizerConfig;
 use crate::policy_value_net::PolicyValueNet;
+use crate::remove_tile_from_deck::replace_tile_in_deck;
 
 #[derive(Parser)]
 struct Config {
@@ -42,7 +45,7 @@ struct Config {
     num_games: usize,
 
     /// Number of simulations per game state in MCTS
-    #[arg(short = 's', long, default_value_t = 100)]
+    #[arg(short = 's', long, default_value_t = 1000)]
     num_simulations: usize,
 }
 
@@ -50,19 +53,60 @@ struct Config {
 #[tokio::main]
 async fn main() {
     let config = Config::parse();
+    let model_path = "model_weights";
 
-    let policy_value_net = PolicyValueNet::new(57 + 3 + 81, 128); // Adjust input/output sizes
-    let mut optimizer = nn::Adam::default().build(&policy_value_net.vs, 1e-3).unwrap();
+    // Initialize VarStore
+    let mut vs = nn::VarStore::new(Device::Cpu);
+    let mut policy_value_net = PolicyValueNet::new_with_var_store(141, 128, &vs);
 
-    // Rest of your main function
+    // Load weights if the file exists
+    if Path::new(model_path).exists() {
+        println!("Loading model from {}", model_path);
+        if let Err(e) = policy_value_net.load_weights(model_path) {
+            eprintln!("Error while loading: {:?}", e);
+            eprintln!("A fresh model will be used.");
+        }
+    } else {
+        println!("No pre-trained model found. Creating a new model.");
+    }
+
+
+    // Initialize the optimizer
+    let mut optimizer = nn::Adam::default().build(&vs, 1e-3).unwrap();
+
+    // Launch simulations and train the model
     let listener = TcpListener::bind("127.0.0.1:9000")
         .await
-        .expect("Failed to bind WebSocket server");
-    println!("WebSocket server running at ws://127.0.0.1:9000");
+        .expect("Unable to start WebSocket server");
+    println!("WebSocket server started at ws://127.0.0.1:9000");
+    train_and_evaluate(
+        &mut policy_value_net,
+        &mut optimizer,
+        config.num_games,
+        config.num_simulations,
+        50, // Evaluate every 50 games
+        listener.into(),
+    ).await;
 
-    // Pass parameters where needed
-    run_simulations(config.num_games, config.num_simulations, listener).await;
+    // run_simulations_with_training(
+    //     config.num_games,
+    //     config.num_simulations,
+    //     listener,
+    //     &policy_value_net,
+    //     &mut optimizer,
+    // )
+    //     .await;
+
+    // Save the model
+    println!("Saving model to {}", model_path);
+    if let Err(e) = policy_value_net.save_weights(&model_path) {
+        eprintln!("Error while saving: {:?}", e);
+    } else {
+        println!("Model saved successfully.");
+    }
 }
+
+
 /// Finds the best move using MCTS with neural network guidance
 fn mcts_find_best_position_for_tile_with_nn(
     plateau: &mut Plateau,
@@ -80,7 +124,18 @@ fn mcts_find_best_position_for_tile_with_nn(
     let (policy_logits, _value) = policy_value_net.forward(&board_tensor);
     let policy = policy_logits.softmax(-1, tch::Kind::Float);
 
-    let mut ucb_scores = HashMap::new();
+    let mut visit_counts: HashMap<usize, usize> = HashMap::new();
+    let mut total_scores: HashMap<usize, f64> = HashMap::new();
+    let mut ucb_scores: HashMap<usize, f64> = HashMap::new();
+    let mut total_visits = 0;
+
+    // Initialize visit counts, total scores, and UCB scores for each move
+    for &position in &legal_moves {
+        visit_counts.insert(position, 0);
+        total_scores.insert(position, 0.0);
+        ucb_scores.insert(position, f64::NEG_INFINITY);
+    }
+
     for _ in 0..num_simulations {
         for &position in &legal_moves {
             let mut temp_plateau = plateau.clone();
@@ -88,16 +143,27 @@ fn mcts_find_best_position_for_tile_with_nn(
 
             // Simulate placing the tile at this position
             temp_plateau.tiles[position] = chosen_tile;
-            temp_deck = remove_tile_from_deck(&temp_deck, &chosen_tile);
+            temp_deck = replace_tile_in_deck(&temp_deck, &chosen_tile);
 
-            // Simulate games to evaluate the score
+            // Simulate the rest of the game to get the final score
             let simulated_score = simulate_games(temp_plateau.clone(), temp_deck.clone(), 1);
 
-            let visits = 1.0; // Replace with real visit count tracking if needed
+            // Update visit count and total score
+            let visits = visit_counts.entry(position).or_insert(0);
+            *visits += 1;
+            total_visits += 1;
+
+            let total_score = total_scores.entry(position).or_insert(0.0);
+            *total_score += simulated_score as f64;
+
+            // Calculate UCB score
             let exploration_param = 1.4;
-            let prior_prob = policy.double_value(&[position as i64]);
-            let ucb_score = (simulated_score as f64) / visits
-                + exploration_param * (prior_prob * ((1.0 / visits).ln() + 1.0).sqrt());
+            let prior_prob = policy.i((0, position as i64)).double_value(&[]);
+            let average_score = *total_score / (*visits as f64);
+            let ucb_score = average_score
+                + exploration_param
+                * (prior_prob * ((total_visits as f64).ln() / (*visits as f64)).sqrt());
+
             ucb_scores.insert(position, ucb_score);
         }
     }
@@ -114,22 +180,25 @@ fn mcts_find_best_position_for_tile_with_nn(
         })
 }
 
+
 /// Self-play training loop
 async fn run_simulations_with_training(
     num_games: usize,
     num_simulations: usize,
     listener: TcpListener,
-    policy_value_net: &PolicyValueNet,
+    policy_value_net: &PolicyValueNet<'_>,
     optimizer: &mut nn::Optimizer,
 ) {
     while let Ok((stream, _)) = listener.accept().await {
         let ws_stream = accept_async(stream).await.expect("Failed to accept WebSocket");
         let (mut write, _) = ws_stream.split();
+        let mut scores_by_position: HashMap<usize, Vec<i32>> = HashMap::new();
 
         for game in 0..num_games {
             let mut deck = create_shuffle_deck();
             let mut plateau = create_plateau_empty();
             let mut game_data = Vec::new();
+            let mut first_move: Option<(usize, Tile)> = None;
 
             println!("Starting game {}", game + 1);
 
@@ -144,8 +213,11 @@ async fn run_simulations_with_training(
                     &policy_value_net,
                     num_simulations,
                 ) {
+                    if first_move.is_none() {
+                        first_move = Some((best_position, chosen_tile));
+                    }
                     plateau.tiles[best_position] = chosen_tile;
-                    deck = remove_tile_from_deck(&deck, &chosen_tile);
+                    deck = replace_tile_in_deck(&deck, &chosen_tile);
 
                     // Save state, policy, and value for training
                     let board_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &mut deck);
@@ -159,9 +231,33 @@ async fn run_simulations_with_training(
             }
 
             let final_score = result(&plateau);
+            if let Some((position, _)) = first_move {
+                scores_by_position
+                    .entry(position)
+                    .or_insert_with(Vec::new)
+                    .push(final_score);
+            }
             train_network_with_game_data(&game_data, final_score, policy_value_net, optimizer);
             println!("Game {} finished with score: {}", game + 1, final_score);
         }
+        // Calculate and display averages
+        let mut averages: Vec<(usize, f64)> = scores_by_position
+            .iter()
+            .map(|(position, scores)| {
+                let average_score: f64 = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+                (*position, average_score)
+            })
+            .collect();
+
+        // Sort averages by score
+        averages.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Display sorted averages
+        println!("\n--- Average Scores by First Position (Sorted) ---");
+        for (position, average_score) in averages {
+            println!("Position: {}, Average Score: {:.2}", position, average_score);
+        }
+        break;
     }
 }
 
@@ -193,29 +289,202 @@ fn train_network_with_game_data(
 /// Returns a tensor combining plateau, tile, and deck features.
 fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Tensor {
     let mut features = Vec::new();
-
-    // Flatten the plateau tiles into a vector of features (3 features per tile)
+    // Add plateau features
     for t in &plateau.tiles {
         features.push(t.0 as f32);
         features.push(t.1 as f32);
         features.push(t.2 as f32);
     }
 
-    // Add the chosen tile features
+    // Add chosen tile features
     features.push(tile.0 as f32);
     features.push(tile.1 as f32);
     features.push(tile.2 as f32);
 
-    // Add the deck features
+    // Add deck features
     for t in &deck.tiles {
         features.push(t.0 as f32);
         features.push(t.1 as f32);
         features.push(t.2 as f32);
     }
 
-    // Convert the feature vector into a tensor
-    Tensor::of_slice(&features)
+    // Check if the size matches the expected size (141)
+    assert_eq!(features.len(), 141, "Input tensor size does not match expected size!");
+
+    Tensor::of_slice(&features).unsqueeze(0) // Add batch dimension
 }
+/// Train and evaluate the PolicyValueNet model with MCTS-based self-play and performance tracking.
+///
+/// - `policy_value_net`: The PolicyValueNet model to train.
+/// - `optimizer`: The optimizer for training the neural network.
+/// - `num_games`: Number of games to simulate per training iteration.
+/// - `num_simulations`: Number of MCTS simulations per move.
+/// - `evaluation_interval`: Number of games between evaluations.
+/// - `listener`: WebSocket listener for communicating game states.
+/// Train and evaluate the PolicyValueNet model with MCTS-based self-play and performance tracking.
+///
+/// - `policy_value_net`: The PolicyValueNet model to train.
+/// - `optimizer`: The optimizer for training the neural network.
+/// - `num_games`: Number of games to simulate per training iteration.
+/// - `num_simulations`: Number of MCTS simulations per move.
+/// - `evaluation_interval`: Number of games between evaluations.
+/// - `listener`: WebSocket listener for communicating game states.
+async fn train_and_evaluate(
+    policy_value_net: &mut PolicyValueNet<'_>,
+    optimizer: &mut nn::Optimizer,
+    num_games: usize,
+    num_simulations: usize,
+    evaluation_interval: usize,
+    listener: Arc<TcpListener>,
+) {
+    let mut total_policy_loss = 0.0;
+    let mut total_value_loss = 0.0;
+    let mut total_score = 0;
+    let mut games_played = 0;
+
+    while let Ok((stream, _)) = listener.accept().await {
+        let ws_stream = accept_async(stream).await.expect("Failed to accept WebSocket");
+        let (mut write, _) = ws_stream.split();
+        let mut scores_by_position: HashMap<usize, Vec<i32>> = HashMap::new();
+
+        while games_played < num_games {
+            println!(
+                "Starting training iteration {}/{}...",
+                games_played + 1,
+                num_games
+            );
+
+            for game in 0..evaluation_interval {
+                let mut deck = create_shuffle_deck();
+                let mut plateau = create_plateau_empty();
+                let mut game_data = Vec::new();
+                let mut first_move: Option<(usize, Tile)> = None;
+
+                while !is_plateau_full(&plateau) {
+                    let tile_index = thread_rng().gen_range(0..deck.tiles.len());
+                    let chosen_tile = deck.tiles[tile_index];
+
+                    if let Some(best_position) = mcts_find_best_position_for_tile_with_nn(
+                        &mut plateau,
+                        &mut deck,
+                        chosen_tile,
+                        policy_value_net,
+                        num_simulations,
+                    ) {
+                        if first_move.is_none() {
+                            first_move = Some((best_position, chosen_tile));
+                        }
+                        plateau.tiles[best_position] = chosen_tile;
+                        deck = replace_tile_in_deck(&deck, &chosen_tile);
+
+                        // Save state, policy, and value for training
+                        let board_tensor =
+                            convert_plateau_to_tensor(&plateau, &chosen_tile, &deck);
+                        let (policy_logits, value) =
+                            policy_value_net.forward(&board_tensor);
+                        game_data.push((board_tensor, policy_logits, value));
+
+                        let image_names = generate_tile_image_names(&plateau.tiles);
+                        let serialized = serde_json::to_string(&image_names).unwrap();
+                        write.send(Message::Text(serialized)).await.unwrap();
+                    }
+                }
+
+                let final_score = result(&plateau);
+                total_score += final_score;
+                if let Some((position, _)) = first_move {
+                    scores_by_position
+                        .entry(position)
+                        .or_insert_with(Vec::new)
+                        .push(final_score);
+                }
+
+                train_network_with_game_data(
+                    &game_data,
+                    final_score,
+                    policy_value_net,
+                    optimizer,
+                );
+                println!("Game {} finished with score: {}", game + 1, final_score);
+            }
+
+            games_played += evaluation_interval;
+
+            // Calculate and display averages
+            let mut averages: Vec<(usize, f64)> = scores_by_position
+                .iter()
+                .map(|(position, scores)| {
+                    let average_score: f64 =
+                        scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+                    (*position, average_score)
+                })
+                .collect();
+
+            averages.sort_by(|a, b| {
+                b.1.partial_cmp(&a.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            println!("\n--- Average Scores by First Position (Sorted) ---");
+            for (position, average_score) in averages {
+                println!("Position: {}, Average Score: {:.2}", position, average_score);
+            }
+
+            // Pass a cloned Arc for evaluation
+            evaluate_model(policy_value_net, num_simulations, Arc::clone(&listener)).await;
+
+            println!(
+                "Games Played: {}, Total Score: {}, Avg Score: {:.2}",
+                games_played,
+                total_score,
+                total_score as f32 / games_played as f32
+            );
+        }
+
+        // Exit after handling one connection
+        break;
+    }
+}
+
+async fn evaluate_model(
+    policy_value_net: &PolicyValueNet<'_>,
+    num_simulations: usize,
+    listener: Arc<TcpListener>,
+) {
+    println!("Evaluating model...");
+    // Simulate a fixed number of games to test performance
+    let mut scores = Vec::new();
+
+    for _ in 0..10 {
+        let mut deck = create_shuffle_deck();
+        let mut plateau = create_plateau_empty();
+
+        while !is_plateau_full(&plateau) {
+            let tile_index = thread_rng().gen_range(0..deck.tiles.len());
+            let chosen_tile = deck.tiles[tile_index];
+
+            if let Some(best_position) = mcts_find_best_position_for_tile_with_nn(
+                &mut plateau,
+                &mut deck,
+                chosen_tile,
+                policy_value_net,
+                num_simulations,
+            ) {
+                plateau.tiles[best_position] = chosen_tile;
+                deck = replace_tile_in_deck(&deck, &chosen_tile);
+            }
+        }
+
+        let game_score = result(&plateau);
+        scores.push(game_score);
+    }
+
+    let avg_score: f64 = scores.iter().copied().sum::<i32>() as f64 / scores.len() as f64;
+    println!("Model Evaluation Complete. Avg Score: {:.2}", avg_score);
+}
+
+
+
 
 async fn run_simulations(num_games: usize, num_simulations: usize, listener: TcpListener) {
     let mut scores = Vec::new();
@@ -307,7 +576,7 @@ fn mcts_find_best_position_for_tile(plateau: &mut Plateau, deck: &mut Deck, chos
 /// Simulates `num_simulations` games and returns the average score
 fn simulate_games(mut plateau: Plateau, mut deck: Deck, num_simulations: usize) -> i32 {
     let mut total_score = 0;
-
+    let mut rng = thread_rng();
     for _ in 0..num_simulations {
         let mut simulated_plateau = plateau.clone();
         let mut simulated_deck = deck.clone();
@@ -318,7 +587,7 @@ fn simulate_games(mut plateau: Plateau, mut deck: Deck, num_simulations: usize) 
                 break;
             }
 
-            let mut rng = thread_rng();
+
             let position = legal_moves[rng.gen_range(0..legal_moves.len())];
             let tile_index = rng.gen_range(0..simulated_deck.tiles.len());
             let chosen_tile = simulated_deck.tiles[tile_index];
@@ -326,7 +595,7 @@ fn simulate_games(mut plateau: Plateau, mut deck: Deck, num_simulations: usize) 
                 legal_moves.swap_remove(index);
             }
             simulated_plateau.tiles[position] = chosen_tile;
-            simulated_deck = remove_tile_from_deck(&simulated_deck, &chosen_tile);
+            simulated_deck = replace_tile_in_deck(&simulated_deck, &chosen_tile);
 
         }
 
