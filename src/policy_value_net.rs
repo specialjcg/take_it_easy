@@ -1,10 +1,12 @@
 use std::fs;
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 use futures_util::StreamExt;
 use tch::{nn, Tensor};
 use tch::nn::{Module, ModuleT};
 use crate::policy_value_net::res_net_block::ResNetBlock;
-
+use std::io::Write; // Add this import
 mod res_net_block;
 
 // pub struct PolicyValueNet<'a> {
@@ -125,6 +127,8 @@ pub struct PolicyValueNet<'a> {
     flatten: nn::Linear,          // Flatten layer
     policy_head: nn::Linear,
     value_head: nn::Linear,
+    dropout_rate: f64,            // Dropout rate
+
 }
 
 impl<'a> PolicyValueNet<'a> {
@@ -133,17 +137,16 @@ impl<'a> PolicyValueNet<'a> {
         let p = vs.root();
 
         let conv1 = nn::conv2d(&p / "conv1", channels, 64, 3, nn::ConvConfig { padding: 1, ..Default::default() });
-
         let mut res_blocks = Vec::new();
         for i in 0..num_res_blocks {
-            res_blocks.push(ResNetBlock::new(&p / format!("res_block_{}", i), 64, 64));
+            res_blocks.push(ResNetBlock::new(&(&p / format!("res_block_{}", i)), 64, 64));
         }
 
-        let flatten_size = 64 * height * width;
+        let flatten_size = 64 * height * width; // Match dimensions based on expected input
         let flatten = nn::linear(&p / "flatten", flatten_size, 512, Default::default());
         let policy_head = nn::linear(&p / "policy_head", 512, 19, Default::default());
         let value_head = nn::linear(&p / "value_head", 512, 1, Default::default());
-
+        let dropout_rate = 0.2;
         Self {
             vs,
             conv1,
@@ -151,16 +154,48 @@ impl<'a> PolicyValueNet<'a> {
             flatten,
             policy_head,
             value_head,
+            dropout_rate,
+
         }
     }
-
-    pub fn forward(&self, x: &Tensor) -> (Tensor, Tensor) {
-        let mut h = x.apply(&self.conv1).relu();
-        for res_block in &self.res_blocks {
-            h = res_block.forward(&h);
+    fn apply_dropout(&self, x: &Tensor, train: bool) -> Tensor {
+        if train {
+            // Generate a random mask and apply element-wise greater-than comparison
+            let mask = Tensor::rand(&x.size(), (tch::Kind::Float, x.device())).gt(self.dropout_rate);
+            // Scale the output by the dropout probability
+            x * mask.to_kind(tch::Kind::Float) / (1.0 - self.dropout_rate)
+        } else {
+            x.shallow_clone()
         }
-        h = h.view([-1, self.flatten.ws.size()[1]]);
+    }
+    pub fn parameters(&self) -> Vec<Tensor> { // Ensure this is public
+        let mut params = Vec::new();
+        params.push(self.conv1.ws.shallow_clone());
+        params.push(self.flatten.ws.shallow_clone());
+        params.push(self.policy_head.ws.shallow_clone());
+        params.push(self.value_head.ws.shallow_clone());
+        for block in &self.res_blocks {
+            params.push(block.conv1.ws.shallow_clone());
+            params.push(block.conv2.ws.shallow_clone());
+        }
+        params
+    }
+
+    pub fn forward(&self, x: &Tensor, train: bool) -> (Tensor, Tensor) {
+        let mut h = x.apply(&self.conv1).relu();
+
+        for (i, res_block) in self.res_blocks.iter().enumerate() {
+            h = res_block.forward(&h, train);
+            h = self.apply_dropout(&h, train); // Apply dropout after each residual block
+
+        }
+
+        // Dynamically calculate flatten size
+        let flatten_size = h.size()[1] * h.size()[2] * h.size()[3]; // channels * height * width
+        h = h.view([-1, flatten_size]);
+
         h = h.apply(&self.flatten).relu();
+        h = self.apply_dropout(&h, train); // Apply dropout after each residual block
 
         let policy = h.apply(&self.policy_head).softmax(-1, tch::Kind::Float);
         let value = h.apply(&self.value_head).tanh();
@@ -168,7 +203,11 @@ impl<'a> PolicyValueNet<'a> {
         (policy, value)
     }
 
+
     pub fn save_weights(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Ensure the directory exists
+        fs::create_dir_all(path)?;
+
         self.conv1.ws.set_requires_grad(false);
         for (i, block) in self.res_blocks.iter().enumerate() {
             block.conv1.ws.set_requires_grad(false);
@@ -176,8 +215,9 @@ impl<'a> PolicyValueNet<'a> {
         }
         self.flatten.ws.set_requires_grad(false);
         self.policy_head.ws.set_requires_grad(false);
-        let _ = self.value_head.ws.set_requires_grad(false);
+        self.value_head.ws.set_requires_grad(false);
 
+        // Save model weights
         self.conv1.ws.save(&format!("{}/conv1.pt", path))?;
         for (i, block) in self.res_blocks.iter().enumerate() {
             block.conv1.ws.save(&format!("{}/res_block_{}_conv1.pt", path, i))?;
@@ -187,7 +227,12 @@ impl<'a> PolicyValueNet<'a> {
         self.policy_head.ws.save(&format!("{}/policy_head.pt", path))?;
         self.value_head.ws.save(&format!("{}/value_head.pt", path))?;
 
-        println!("Model weights saved successfully in: {}", path);
+        // Save dropout rate
+        let dropout_file_path = format!("{}/dropout_rate.txt", path);
+        let mut file = File::create(&dropout_file_path)?;
+        writeln!(file, "{}", self.dropout_rate)?;
+
+        println!("Model weights and dropout rate saved successfully in: {}", path);
         Ok(())
     }
 
@@ -218,11 +263,23 @@ impl<'a> PolicyValueNet<'a> {
                 }
             }
 
-            println!("Model weights loaded successfully from: {}", path);
+            // Load dropout rate
+            let dropout_file_path = format!("{}/dropout_rate.txt", path);
+            if Path::new(&dropout_file_path).exists() {
+                let mut file = File::open(&dropout_file_path)?;
+                let mut content = String::new();
+                file.read_to_string(&mut content)?;
+                self.dropout_rate = content.trim().parse::<f64>()?;
+            } else {
+                return Err(format!("Dropout rate file is missing in: {}", path).into());
+            }
+
+            println!("Model weights and dropout rate loaded successfully from: {}", path);
             Ok(())
         } else {
             Err(format!("One or more weight files are missing in: {}", path).into())
         }
     }
 }
+
 

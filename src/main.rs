@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Mul;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -45,7 +46,7 @@ struct Config {
     num_games: usize,
 
     /// Number of simulations per game state in MCTS
-    #[arg(short = 's', long, default_value_t = 2000)]
+    #[arg(short = 's', long, default_value_t = 100)]
     num_simulations: usize,
 }
 
@@ -121,7 +122,7 @@ fn mcts_find_best_position_for_tile_with_nn(
     }
 
     let board_tensor = convert_plateau_to_tensor(plateau, &chosen_tile, deck);
-    let (policy_logits, _value) = policy_value_net.forward(&board_tensor);
+    let (policy_logits, _value) = policy_value_net.forward(&board_tensor,false);
     let policy = policy_logits.softmax(-1, tch::Kind::Float);
 
     let mut visit_counts: HashMap<usize, usize> = HashMap::new();
@@ -221,7 +222,7 @@ async fn run_simulations_with_training(
 
                     // Save state, policy, and value for training
                     let board_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &mut deck);
-                    let (policy_logits, value) = policy_value_net.forward(&board_tensor);
+                    let (policy_logits, value) = policy_value_net.forward(&board_tensor,false);
                     game_data.push((board_tensor, policy_logits, value));
 
                     let image_names = generate_tile_image_names(&plateau.tiles);
@@ -260,7 +261,17 @@ async fn run_simulations_with_training(
         break;
     }
 }
-
+fn adjust_loss_weights(
+    epoch: usize,
+    policy_loss: f64,
+    value_loss: f64,
+) -> (f64, f64) {
+    if epoch % 10 == 0 && value_loss > policy_loss * 1.2 {
+        (0.7, 1.3) // Increase the value weight
+    } else {
+        (1.0, 1.0) // Default weights
+    }
+}
 /// Train the neural network with game data
 fn train_network_with_game_data(
     game_data: &[(Tensor, Tensor, Tensor)],
@@ -268,16 +279,50 @@ fn train_network_with_game_data(
     policy_value_net: &PolicyValueNet,
     optimizer: &mut nn::Optimizer,
 ) {
+    // Final value as tensor
     let final_value = Tensor::of_slice(&[final_score as f32]);
-    let loss = game_data.iter().fold(Tensor::zeros(&[], tch::kind::FLOAT_CPU), |loss, (state, policy, value)| {
-        let (pred_policy, pred_value) = policy_value_net.forward(state);
+    let epoch = 10;
+    let l2_lambda = 0.01;
+    // Initialize total loss
+    let total_loss = game_data.iter().fold(Tensor::zeros(&[], tch::kind::FLOAT_CPU), |loss, (state, policy, value)| {
+        let (pred_policy, pred_value) = policy_value_net.forward(state, true);
+
+        // Compute policy loss (cross-entropy)
         let policy_loss = -(policy * pred_policy.log()).sum(tch::Kind::Float);
+
+        // Compute value loss (mean squared error)
         let value_loss = (final_value.shallow_clone() - pred_value).pow(&Tensor::of_slice(&[2.0]));
+
+        // Accumulate losses
         loss + policy_loss + value_loss
     });
 
-    optimizer.backward_step(&loss);
+    // Dynamically adjust weights
+    let policy_weight = 1.0; // Default
+    let value_weight = 1.0; // Default
+    let (policy_weight, value_weight) = if epoch % 10 == 0 {
+        let last_policy_loss = 0.5; // Example placeholder for real loss tracking
+        let last_value_loss = 0.7;  // Example placeholder for real loss tracking
+        adjust_loss_weights(epoch, last_policy_loss, last_value_loss)
+    } else {
+        (policy_weight, value_weight)
+    };
+
+    // Add weighted policy and value losses
+    let weighted_loss = (policy_weight * total_loss.shallow_clone()) + (value_weight * total_loss.shallow_clone());
+
+    // Add L2 regularization
+    let l2_loss = policy_value_net.parameters().iter().fold(Tensor::zeros(&[], tch::kind::FLOAT_CPU), |l2, param| {
+        l2 + param.pow(&Tensor::of_slice(&[2.0])).mul(0.2).sum(tch::Kind::Float)
+    }) * l2_lambda;
+
+    // Combine all losses
+    let final_loss = weighted_loss + l2_loss;
+
+    // Backward pass and optimizer step
+    optimizer.backward_step(&final_loss);
 }
+
 
 
 /// Converts the plateau, the chosen tile, and the remaining deck into a tensor representation.
@@ -358,6 +403,7 @@ async fn train_and_evaluate(
 ) {
     let mut total_score = 0;
     let mut games_played = 0;
+    let l2_lambda = 0.01; // L2 regularization parameter
 
     while let Ok((stream, _)) = listener.accept().await {
         let ws_stream = accept_async(stream).await.expect("Failed to accept WebSocket");
@@ -400,7 +446,7 @@ async fn train_and_evaluate(
                         let board_tensor =
                             convert_plateau_to_tensor(&plateau, &chosen_tile, &deck);
                         let (policy_logits, value) =
-                            policy_value_net.forward(&board_tensor);
+                            policy_value_net.forward(&board_tensor,false);
                         game_data.push((board_tensor, policy_logits, value));
 
                         let image_names = generate_tile_image_names(&plateau.tiles);
@@ -418,6 +464,7 @@ async fn train_and_evaluate(
                         .push(final_score);
                 }
 
+                // Use L2 regularization and dynamic weighting in training
                 train_network_with_game_data(
                     &game_data,
                     final_score,
@@ -471,6 +518,8 @@ async fn train_and_evaluate(
         break;
     }
 }
+
+
 
 async fn evaluate_model(
     policy_value_net: &PolicyValueNet<'_>,
