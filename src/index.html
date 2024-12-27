@@ -3,24 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hexagonal Grid</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>Hexagonal Grid with Game Results</title>
   <style>
     body {
       margin: 0;
       display: flex;
-      justify-content: center;
+      flex-direction: column;
       align-items: center;
-      height: 100vh;
+      justify-content: center;
       background-color: #000; /* Background color for contrast */
+      color: white; /* Optional text color for contrast */
     }
 
     canvas {
+      margin: 10px;
       border: 1px solid white; /* Optional: border to visualize the canvas */
     }
   </style>
 </head>
 <body>
+<!-- Canvas for hexagonal grid -->
 <canvas id="myCanvas" width="800" height="800"></canvas>
+
+<!-- Canvas for game results chart -->
+<canvas id="resultsChart" width="800" height="400"></canvas>
 
 <script>
   const canvas = document.getElementById('myCanvas');
@@ -88,7 +95,72 @@
     ctx.stroke();
   }
 
-  // Connect to the WebSocket server to receive the list of images
+  // Game results and rolling average tracking
+  const gameResults = []; // Store game results
+  const labels = []; // Store game indices
+  const rollingAverages = []; // Store the rolling averages
+  let gameCounter = 0;
+
+  // Function to calculate rolling average
+  function calculateRollingAverage(data, windowSize) {
+    if (data.length < windowSize) {
+      // Not enough data for a full rolling average window
+      const partialAverage = data.reduce((sum, val) => sum + val, 0) / data.length;
+      return partialAverage;
+    }
+    const windowData = data.slice(data.length - windowSize);
+    return windowData.reduce((sum, val) => sum + val, 0) / windowSize;
+  }
+
+  // Initialize Chart.js graph
+  const resultsChartCtx = document.getElementById('resultsChart').getContext('2d');
+  const resultsChart = new Chart(resultsChartCtx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Game Scores',
+          data: gameResults,
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 2,
+          fill: false,
+        },
+        {
+          label: 'Rolling Average (Last 10 Games)',
+          data: rollingAverages,
+          borderColor: 'rgba(255, 99, 132, 1)',
+          borderWidth: 2,
+          borderDash: [5, 5], // Dashed line for distinction
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Game Number',
+          },
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Score',
+          },
+          min: 0, // Set minimum score
+          max: 307, // Set maximum score
+          ticks: {
+            stepSize: 50, // Optional: step size for y-axis ticks
+          },
+        },
+      },
+    },
+  });
+
+  // Connect to the WebSocket server to receive the list of images and game results
   const ws = new WebSocket('ws://127.0.0.1:9000');
 
   ws.onopen = () => {
@@ -96,12 +168,29 @@
   };
 
   ws.onmessage = (event) => {
-    // Parse the received JSON data (list of image filenames)
-    const images = JSON.parse(event.data);
-    console.log('Received image filenames:', images);
+    const message = event.data;
 
-    // Draw the grid with the received images
-    drawHexagonalGrid(images);
+    // Check if it's a game result
+    if (message.startsWith('GAME_RESULT:')) {
+      const score = parseInt(message.split(':')[1], 10);
+      gameResults.push(score);
+      gameCounter++;
+      labels.push(gameCounter);
+
+      // Calculate rolling average and add to the dataset
+      const avg = calculateRollingAverage(gameResults, 10);
+      rollingAverages.push(avg);
+
+      // Update the chart
+      resultsChart.update();
+    } else {
+      // Parse the received JSON data (list of image filenames)
+      const images = JSON.parse(message);
+      console.log('Received image filenames:', images);
+
+      // Draw the grid with the received images
+      drawHexagonalGrid(images);
+    }
   };
 
   ws.onerror = (error) => {
