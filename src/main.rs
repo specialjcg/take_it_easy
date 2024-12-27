@@ -34,18 +34,18 @@ fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
 use clap::Parser;
 use serde_json::json;
 use tch::{Device, IndexOp, nn, Tensor};
-use tch::nn::OptimizerConfig;
+use tch::nn::{Optimizer, OptimizerConfig};
 use crate::policy_value_net::PolicyValueNet;
 use crate::remove_tile_from_deck::replace_tile_in_deck;
 
 #[derive(Parser)]
 struct Config {
     /// Number of games to simulate
-    #[arg(short = 'g', long, default_value_t = 100)]
+    #[arg(short = 'g', long, default_value_t = 200)]
     num_games: usize,
 
     /// Number of simulations per game state in MCTS
-    #[arg(short = 's', long, default_value_t = 1000)]
+    #[arg(short = 's', long, default_value_t = 2000)]
     num_simulations: usize,
 }
 
@@ -57,8 +57,8 @@ async fn main() {
 
     // Initialize VarStore
     let mut vs = nn::VarStore::new(Device::Cpu);
-    let mut policy_value_net = PolicyValueNet::new_with_var_store(141, 128, &vs);
-
+    let input_dim = (3, 5, 5); // Input: 3 channels, 5x5 grid
+    let mut policy_value_net = PolicyValueNet::new_with_var_store(&vs, 10, input_dim);
     // Load weights if the file exists
     if Path::new(model_path).exists() {
         println!("Loading model from {}", model_path);
@@ -157,7 +157,7 @@ fn mcts_find_best_position_for_tile_with_nn(
             *total_score += simulated_score as f64;
 
             // Calculate UCB score
-            let exploration_param = 1.4;
+            let exploration_param = 2.0;
             let prior_prob = policy.i((0, position as i64)).double_value(&[]);
             let average_score = *total_score / (*visits as f64);
             let ucb_score = average_score
@@ -287,32 +287,51 @@ fn train_network_with_game_data(
 /// - `deck`: The current deck of remaining tiles.
 ///
 /// Returns a tensor combining plateau, tile, and deck features.
+// fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Tensor {
+//     let mut features = Vec::new();
+//     // Add plateau features
+//     for t in &plateau.tiles {
+//         features.push(t.0 as f32);
+//         features.push(t.1 as f32);
+//         features.push(t.2 as f32);
+//     }
+//
+//     // Add chosen tile features
+//     features.push(tile.0 as f32);
+//     features.push(tile.1 as f32);
+//     features.push(tile.2 as f32);
+//
+//     // Add deck features
+//     for t in &deck.tiles {
+//         features.push(t.0 as f32);
+//         features.push(t.1 as f32);
+//         features.push(t.2 as f32);
+//     }
+//
+//     // Check if the size matches the expected size (141)
+//     assert_eq!(features.len(), 141, "Input tensor size does not match expected size!");
+//
+//     Tensor::of_slice(&features).unsqueeze(0) // Add batch dimension
+// }
 fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Tensor {
-    let mut features = Vec::new();
-    // Add plateau features
-    for t in &plateau.tiles {
-        features.push(t.0 as f32);
-        features.push(t.1 as f32);
-        features.push(t.2 as f32);
+    let mut features = vec![0.0; 3 * 5 * 5];
+
+    for (i, t) in plateau.tiles.iter().enumerate() {
+        let row = i / 5;
+        let col = i % 5;
+        features[row * 5 + col] = t.0 as f32 / 10.0; // Normalize
+        features[25 + row * 5 + col] = t.1 as f32 / 10.0; // Normalize
+        features[50 + row * 5 + col] = t.2 as f32 / 10.0; // Normalize
     }
 
-    // Add chosen tile features
-    features.push(tile.0 as f32);
-    features.push(tile.1 as f32);
-    features.push(tile.2 as f32);
+    features[2 * 5 + 2] = tile.0 as f32 / 10.0; // Normalize
+    features[25 + 2 * 5 + 2] = tile.1 as f32 / 10.0; // Normalize
+    features[50 + 2 * 5 + 2] = tile.2 as f32 / 10.0; // Normalize
 
-    // Add deck features
-    for t in &deck.tiles {
-        features.push(t.0 as f32);
-        features.push(t.1 as f32);
-        features.push(t.2 as f32);
-    }
-
-    // Check if the size matches the expected size (141)
-    assert_eq!(features.len(), 141, "Input tensor size does not match expected size!");
-
-    Tensor::of_slice(&features).unsqueeze(0) // Add batch dimension
+    Tensor::of_slice(&features).view([1, 3, 5, 5])
 }
+
+
 /// Train and evaluate the PolicyValueNet model with MCTS-based self-play and performance tracking.
 ///
 /// - `policy_value_net`: The PolicyValueNet model to train.
@@ -331,14 +350,12 @@ fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Ten
 /// - `listener`: WebSocket listener for communicating game states.
 async fn train_and_evaluate(
     policy_value_net: &mut PolicyValueNet<'_>,
-    optimizer: &mut nn::Optimizer,
+    optimizer: &mut Optimizer,
     num_games: usize,
     num_simulations: usize,
     evaluation_interval: usize,
     listener: Arc<TcpListener>,
 ) {
-    let mut total_policy_loss = 0.0;
-    let mut total_value_loss = 0.0;
     let mut total_score = 0;
     let mut games_played = 0;
 
@@ -346,6 +363,8 @@ async fn train_and_evaluate(
         let ws_stream = accept_async(stream).await.expect("Failed to accept WebSocket");
         let (mut write, _) = ws_stream.split();
         let mut scores_by_position: HashMap<usize, Vec<i32>> = HashMap::new();
+        let mut scores = Vec::new(); // Stocke les scores
+        let evaluation_interval_average = 10;
 
         while games_played < num_games {
             println!(
@@ -406,6 +425,13 @@ async fn train_and_evaluate(
                     optimizer,
                 );
                 println!("Game {} finished with score: {}", game + 1, final_score);
+                scores.push(final_score);
+                if game % evaluation_interval_average == 0 {
+                    let moyenne: f64 = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+                    println!("Partie {} - Score moyen: {:.2}", game, moyenne);
+                    write.send(Message::Text(format!("GAME_RESULT:{}", moyenne))).await.unwrap();
+
+                }
             }
 
             games_played += evaluation_interval;
