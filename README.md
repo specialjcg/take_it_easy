@@ -19,10 +19,4 @@ This project implements a reinforcement learning agent for a tile-placement stra
 - **WebSocket Library:** `tokio` and `tokio-tungstenite` are used for WebSocket support.
 - **Machine Learning Framework:** `tch` for neural network functionalities.
 
-### Installation
 
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/yourusername/your-repo-name.git
-   cd your-repo-name
