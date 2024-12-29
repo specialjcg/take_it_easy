@@ -21,7 +21,7 @@ pub fn create_mcts_node(state: GameState, parent: Option<*mut MCTSNode>) -> MCTS
         parent,
     }
 }
-pub fn get_legal_moves(state: GameState) -> Vec<(usize)> {
+pub fn get_legal_moves_test(state: GameState) -> Vec<(usize)> {
     let mut moves = Vec::new();
     for i in 0..state.plateau.tiles.len() {
         if state.plateau.tiles[i] == Tile(0, 0, 0) {
@@ -134,13 +134,15 @@ pub(crate) mod tests {
 
 
     use rand::Rng;
+    use tch::Tensor;
     use crate::choisir_et_placer::choisir_et_placer;
     use crate::create_plateau_empty::create_plateau_empty;
     use crate::create_shuffle_deck::create_shuffle_deck;
+    use crate::{convert_plateau_to_tensor, get_legal_moves, is_plateau_full, mcts_find_best_position_for_tile_with_nn, simulate_games};
     use crate::place_tile::placer_tile;
     use crate::remove_tile_from_deck::remove_tile_from_deck;
     use crate::result::result;
-    use crate::test::{apply_move, backpropagate, create_game_state, create_mcts_node, Deck, expand, GameState, get_legal_moves, MCTSNode, Plateau, select_ucb1, Tile};
+    use crate::test::{apply_move, backpropagate, create_game_state, create_mcts_node, Deck, expand, GameState, get_legal_moves_test, MCTSNode, Plateau, select_ucb1, Tile};
     #[test]
     fn test_placement_tuile_valide_take_it_easy() {
         let mut plateau:Plateau=create_plateau_empty();
@@ -149,6 +151,48 @@ pub(crate) mod tests {
         assert!(placer_tile(&mut plateau, tuile.clone(), 1));
         assert_eq!(plateau.tiles[1], tuile);
     }
+    #[test]
+    fn test_is_plateau_full() {
+        let mut plateau = create_plateau_empty();
+        assert!(!is_plateau_full(&plateau)); // Initially, plateau is empty
+
+        for i in 0..plateau.tiles.len() {
+            plateau.tiles[i] = Tile(1, 2, 3); // Fill the plateau
+        }
+        assert!(is_plateau_full(&plateau)); // Plateau should now be full
+    }
+    #[test]
+    fn test_get_legal_moves_main() {
+        let mut plateau = create_plateau_empty();
+        let legal_moves = get_legal_moves(plateau.clone());
+        assert_eq!(legal_moves.len(), plateau.tiles.len()); // All positions should be legal initially
+
+        plateau.tiles[0] = Tile(1, 2, 3); // Fill one position
+        let legal_moves = get_legal_moves(plateau.clone());
+        assert_eq!(legal_moves.len(), plateau.tiles.len() - 1); // One less legal move
+        assert!(!legal_moves.contains(&0)); // Position 0 should no longer be legal
+    }
+    #[test]
+    fn test_simulate_games() {
+        let plateau = create_plateau_empty();
+        let deck = create_shuffle_deck();
+        let num_simulations = 10;
+
+        let avg_score = simulate_games(plateau, deck, num_simulations);
+        assert!(avg_score >= 0); // Score should be non-negative
+    }
+    #[test]
+    fn test_convert_plateau_to_tensor() {
+        let plateau = create_plateau_empty();
+        let tile = Tile(1, 2, 3);
+        let deck = create_shuffle_deck();
+
+        let tensor = convert_plateau_to_tensor(&plateau, &tile, &deck);
+        assert_eq!(tensor.size(), vec![1, 3, 5, 5]); // Ensure the tensor has the correct shape
+    }
+
+
+
     #[test]
     fn test_placement_tuile_not_valide_take_it_easy() {
         let mut plateau:Plateau=create_plateau_empty();
@@ -424,7 +468,7 @@ pub(crate) mod tests {
         placer_tile(&mut state.plateau, state.deck.tiles[2].clone(),6);
         placer_tile(&mut state.plateau, state.deck.tiles[3].clone(), 11);
         // At the beginning, all positions are empty
-        let moves:Vec< usize>  = get_legal_moves(state.clone());
+        let moves:Vec< usize>  = get_legal_moves_test(state.clone());
         let expectedly: usize = state
             .plateau
             .tiles
@@ -469,7 +513,7 @@ pub(crate) mod tests {
         // Randomly choose and place tiles until the plateau is full
         // Randomly choose and place tiles until the plateau is full
         while simulated_state.plateau.tiles.contains(&Tile(0, 0, 0)) {
-            let legal_moves = get_legal_moves(simulated_state.clone());
+            let legal_moves = get_legal_moves_test(simulated_state.clone());
             if legal_moves.is_empty() {
                 break; // No more moves possible
             }
@@ -704,7 +748,7 @@ pub(crate) mod tests {
             }
 
             // Expansion
-            let legal_moves = get_legal_moves(selected_node.state.clone());
+            let legal_moves = get_legal_moves_test(selected_node.state.clone());
             if !legal_moves.is_empty() {
                 let mut rng = rand::thread_rng();
                 let position = legal_moves[rng.gen_range(0..legal_moves.len())];

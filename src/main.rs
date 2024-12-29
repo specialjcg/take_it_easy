@@ -36,17 +36,17 @@ use clap::Parser;
 use serde_json::json;
 use tch::{Device, IndexOp, nn, Tensor};
 use tch::nn::{Optimizer, OptimizerConfig};
-use crate::policy_value_net::PolicyValueNet;
+use crate::policy_value_net::{PolicyNet, ValueNet};
 use crate::remove_tile_from_deck::replace_tile_in_deck;
 
 #[derive(Parser)]
 struct Config {
     /// Number of games to simulate
-    #[arg(short = 'g', long, default_value_t = 200)]
+    #[arg(short = 'g', long, default_value_t = 500)]
     num_games: usize,
 
     /// Number of simulations per game state in MCTS
-    #[arg(short = 's', long, default_value_t = 100)]
+    #[arg(short = 's', long, default_value_t = 5000)]
     num_simulations: usize,
 }
 
@@ -59,16 +59,26 @@ async fn main() {
     // Initialize VarStore
     let mut vs = nn::VarStore::new(Device::Cpu);
     let input_dim = (3, 5, 5); // Input: 3 channels, 5x5 grid
-    let mut policy_value_net = PolicyValueNet::new_with_var_store(&vs, 10, input_dim);
+
+    // Initialize PolicyNet and ValueNet
+    let mut policy_net = PolicyNet::new(&vs, 2, input_dim);
+    let mut value_net = ValueNet::new(&vs, 2, input_dim);
     // Load weights if the file exists
+    // Load weights for both networks
     if Path::new(model_path).exists() {
-        println!("Loading model from {}", model_path);
-        if let Err(e) = policy_value_net.load_weights(model_path) {
-            eprintln!("Error while loading: {:?}", e);
-            eprintln!("A fresh model will be used.");
+        println!("Loading model weights from {}", model_path);
+        if let Err(e) = policy_net.load_weights("model_weights/policy") {
+            eprintln!("Error loading PolicyNet: {:?}", e);
+            println!("Initializing PolicyNet with random weights.");
         }
+
+        if let Err(e) = value_net.load_weights("model_weights/value") {
+            eprintln!("Error loading ValueNet: {:?}", e);
+            println!("Initializing ValueNet with random weights.");
+        }
+
     } else {
-        println!("No pre-trained model found. Creating a new model.");
+        println!("No pre-trained model found. Initializing new models.");
     }
 
 
@@ -81,7 +91,8 @@ async fn main() {
         .expect("Unable to start WebSocket server");
     println!("WebSocket server started at ws://127.0.0.1:9000");
     train_and_evaluate(
-        &mut policy_value_net,
+        &mut policy_net,
+        &mut value_net,
         &mut optimizer,
         config.num_games,
         config.num_simulations,
@@ -89,21 +100,14 @@ async fn main() {
         listener.into(),
     ).await;
 
-    // run_simulations_with_training(
-    //     config.num_games,
-    //     config.num_simulations,
-    //     listener,
-    //     &policy_value_net,
-    //     &mut optimizer,
-    // )
-    //     .await;
-
-    // Save the model
-    println!("Saving model to {}", model_path);
-    if let Err(e) = policy_value_net.save_weights(&model_path) {
-        eprintln!("Error while saving: {:?}", e);
-    } else {
-        println!("Model saved successfully.");
+    // Save model weights
+    println!("Saving models to {}", model_path);
+    println!("Saving model weights...");
+    if let Err(e) = policy_net.save_weights("model_weights/policy") {
+        eprintln!("Error saving PolicyNet weights: {:?}", e);
+    }
+    if let Err(e) = value_net.save_weights("model_weights/value") {
+        eprintln!("Error saving ValueNet weights: {:?}", e);
     }
 }
 
@@ -113,7 +117,8 @@ fn mcts_find_best_position_for_tile_with_nn(
     plateau: &mut Plateau,
     deck: &mut Deck,
     chosen_tile: Tile,
-    policy_value_net: &PolicyValueNet,
+    policy_net: &PolicyNet,
+    value_net: &ValueNet,
     num_simulations: usize,
 ) -> Option<usize> {
     let legal_moves = get_legal_moves(plateau.clone());
@@ -122,7 +127,7 @@ fn mcts_find_best_position_for_tile_with_nn(
     }
 
     let board_tensor = convert_plateau_to_tensor(plateau, &chosen_tile, deck);
-    let (policy_logits, _value) = policy_value_net.forward(&board_tensor,false);
+    let policy_logits = policy_net.forward(&board_tensor, false);
     let policy = policy_logits.softmax(-1, tch::Kind::Float);
 
     let mut visit_counts: HashMap<usize, usize> = HashMap::new();
@@ -130,7 +135,6 @@ fn mcts_find_best_position_for_tile_with_nn(
     let mut ucb_scores: HashMap<usize, f64> = HashMap::new();
     let mut total_visits = 0;
 
-    // Initialize visit counts, total scores, and UCB scores for each move
     for &position in &legal_moves {
         visit_counts.insert(position, 0);
         total_scores.insert(position, 0.0);
@@ -138,18 +142,29 @@ fn mcts_find_best_position_for_tile_with_nn(
     }
 
     for _ in 0..num_simulations {
-        for &position in &legal_moves {
+        // Prioritize legal moves based on policy priors
+        let subset_size = usize::min(legal_moves.len(), (total_visits as f64).sqrt() as usize + 1);
+        let mut moves_with_prior: Vec<_> = legal_moves
+            .iter()
+            .map(|&pos| (pos, policy.i((0, pos as i64)).double_value(&[])))
+            .collect();
+        moves_with_prior.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let subset_moves: Vec<usize> = moves_with_prior
+            .iter()
+            .take(subset_size)
+            .map(|&(pos, _)| pos)
+            .collect();
+
+        let depth = subset_moves.len(); // Calculate current subset depth
+        for &position in &subset_moves {
             let mut temp_plateau = plateau.clone();
             let mut temp_deck = deck.clone();
 
-            // Simulate placing the tile at this position
             temp_plateau.tiles[position] = chosen_tile;
             temp_deck = replace_tile_in_deck(&temp_deck, &chosen_tile);
 
-            // Simulate the rest of the game to get the final score
             let simulated_score = simulate_games(temp_plateau.clone(), temp_deck.clone(), 1);
 
-            // Update visit count and total score
             let visits = visit_counts.entry(position).or_insert(0);
             *visits += 1;
             total_visits += 1;
@@ -157,8 +172,7 @@ fn mcts_find_best_position_for_tile_with_nn(
             let total_score = total_scores.entry(position).or_insert(0.0);
             *total_score += simulated_score as f64;
 
-            // Calculate UCB score
-            let exploration_param = 2.0;
+            let exploration_param = 1.0 + (depth as f64 / 19.0) + (total_visits as f64).ln() / (10.0 + *visits as f64);
             let prior_prob = policy.i((0, position as i64)).double_value(&[]);
             let average_score = *total_score / (*visits as f64);
             let ucb_score = average_score
@@ -169,7 +183,6 @@ fn mcts_find_best_position_for_tile_with_nn(
         }
     }
 
-    // Return the position with the highest UCB score
     legal_moves
         .into_iter()
         .max_by(|&a, &b| {
@@ -182,12 +195,17 @@ fn mcts_find_best_position_for_tile_with_nn(
 }
 
 
+
+
+
+
 /// Self-play training loop
 async fn run_simulations_with_training(
     num_games: usize,
     num_simulations: usize,
     listener: TcpListener,
-    policy_value_net: &PolicyValueNet<'_>,
+    policy_net: &PolicyNet<'_>,
+    value_net: &ValueNet<'_>,
     optimizer: &mut nn::Optimizer,
 ) {
     while let Ok((stream, _)) = listener.accept().await {
@@ -211,7 +229,8 @@ async fn run_simulations_with_training(
                     &mut plateau,
                     &mut deck,
                     chosen_tile,
-                    &policy_value_net,
+                    policy_net,
+                    value_net,
                     num_simulations,
                 ) {
                     if first_move.is_none() {
@@ -220,10 +239,12 @@ async fn run_simulations_with_training(
                     plateau.tiles[best_position] = chosen_tile;
                     deck = replace_tile_in_deck(&deck, &chosen_tile);
 
-                    // Save state, policy, and value for training
-                    let board_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &mut deck);
-                    let (policy_logits, value) = policy_value_net.forward(&board_tensor,false);
-                    game_data.push((board_tensor, policy_logits, value));
+                    // Save state, policy, and value (converted to scalar reward) for training
+                    let board_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &deck);
+                    let policy_logits = policy_net.forward(&board_tensor, false);
+                    let value = value_net.forward(&board_tensor, false);
+                    let reward = value.double_value(&[]); // Convert Tensor to f64
+                    game_data.push((board_tensor, policy_logits, reward));
 
                     let image_names = generate_tile_image_names(&plateau.tiles);
                     let serialized = serde_json::to_string(&image_names).unwrap();
@@ -238,9 +259,10 @@ async fn run_simulations_with_training(
                     .or_insert_with(Vec::new)
                     .push(final_score);
             }
-            train_network_with_game_data(&game_data, final_score, policy_value_net, optimizer);
+            train_network_with_game_data(&game_data,final_score.into(),  policy_net, value_net, optimizer);
             println!("Game {} finished with score: {}", game + 1, final_score);
         }
+
         // Calculate and display averages
         let mut averages: Vec<(usize, f64)> = scores_by_position
             .iter()
@@ -253,111 +275,75 @@ async fn run_simulations_with_training(
         // Sort averages by score
         averages.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Display sorted averages
         println!("\n--- Average Scores by First Position (Sorted) ---");
         for (position, average_score) in averages {
             println!("Position: {}, Average Score: {:.2}", position, average_score);
         }
+
+        // Exit after handling one connection
         break;
     }
 }
-fn adjust_loss_weights(
-    epoch: usize,
-    policy_loss: f64,
-    value_loss: f64,
-) -> (f64, f64) {
-    if epoch % 10 == 0 && value_loss > policy_loss * 1.2 {
-        (0.7, 1.3) // Increase the value weight
-    } else {
-        (1.0, 1.0) // Default weights
-    }
-}
-/// Train the neural network with game data
+
+
+
 fn train_network_with_game_data(
-    game_data: &[(Tensor, Tensor, Tensor)],
-    final_score: i32,
-    policy_value_net: &PolicyValueNet,
+    game_data: &[(Tensor, Tensor, f64)], // State, policy logits, and value
+    discount_factor: f64,               // Discount factor γ
+    policy_net: &PolicyNet,
+    value_net: &ValueNet,
     optimizer: &mut nn::Optimizer,
 ) {
-    // Final value as tensor
-    let final_value = Tensor::of_slice(&[final_score as f32]);
-    let epoch = 10;
-    let l2_lambda = 0.01;
-    // Initialize total loss
-    let total_loss = game_data.iter().fold(Tensor::zeros(&[], tch::kind::FLOAT_CPU), |loss, (state, policy, value)| {
-        let (pred_policy, pred_value) = policy_value_net.forward(state, true);
+    let mut total_policy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
+    let mut total_value_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
 
-        // Compute policy loss (cross-entropy)
-        let policy_loss = -(policy * pred_policy.log()).sum(tch::Kind::Float);
+    let mut future_value  = 0.0; // Initialize for the final state
+    let mean_reward = 100.0;    // Example mean reward for normalization
+    let std_dev_reward = 50.0;  // Example standard deviation for normalization
+    let mut current_iteration = 0;
+    // Process game data in reverse for TD updates
+    for (state, target_policy, reward) in game_data.iter().rev() {
+        let pred_policy = policy_net.forward(state, true);
+        let pred_value = value_net.forward(state, true);
+        current_iteration += 1;
+        // Normalize reward for stability
+        let mean_reward = game_data.iter().map(|(_, _, r)| *r).sum::<f64>() / game_data.len() as f64;
+        let std_dev_reward = (game_data.iter().map(|(_, _, r)| (*r - mean_reward).powi(2)).sum::<f64>() / game_data.len() as f64).sqrt();
+        let normalized_reward = (reward - mean_reward) / std_dev_reward;
+        // Compute TD target
+        let td_target = normalized_reward
+            + discount_factor
+            * if future_value > pred_value.double_value(&[]) {
+            future_value
+        } else {
+            pred_value.double_value(&[])
+        };
+        let target_tensor = Tensor::from(td_target);
 
-        // Compute value loss (mean squared error)
-        let value_loss = (final_value.shallow_clone() - pred_value).pow(&Tensor::of_slice(&[2.0]));
+        // Compute policy loss
+        let policy_loss = -(target_policy * pred_policy.log()).sum(tch::Kind::Float);
+        total_policy_loss += policy_loss;
 
-        // Accumulate losses
-        loss + policy_loss + value_loss
-    });
+        // Compute value loss (TD learning)
+        let pred_value = pred_value.view([]); // Ensure scalar
+        let value_loss = (target_tensor - pred_value).pow(&Tensor::from(2.0));
+        total_value_loss += value_loss;
 
-    // Dynamically adjust weights
-    let policy_weight = 1.0; // Default
-    let value_weight = 1.0; // Default
-    let (policy_weight, value_weight) = if epoch % 10 == 0 {
-        let last_policy_loss = 0.5; // Example placeholder for real loss tracking
-        let last_value_loss = 0.7;  // Example placeholder for real loss tracking
-        adjust_loss_weights(epoch, last_policy_loss, last_value_loss)
-    } else {
-        (policy_weight, value_weight)
-    };
+        // Update future value
+        future_value = td_target;
+    }
 
-    // Add weighted policy and value losses
-    let weighted_loss = (policy_weight * total_loss.shallow_clone()) + (value_weight * total_loss.shallow_clone());
+    let policy_loss_weight = 1.0;
+    let value_loss_weight = if current_iteration < 100 { 0.5 } else { 1.0 };
 
-    // Add L2 regularization
-    let l2_loss = policy_value_net.parameters().iter().fold(Tensor::zeros(&[], tch::kind::FLOAT_CPU), |l2, param| {
-        l2 + param.pow(&Tensor::of_slice(&[2.0])).mul(0.2).sum(tch::Kind::Float)
-    }) * l2_lambda;
+    let total_loss = policy_loss_weight * total_policy_loss + value_loss_weight * total_value_loss;
 
-    // Combine all losses
-    let final_loss = weighted_loss + l2_loss;
-
-    // Backward pass and optimizer step
-    optimizer.backward_step(&final_loss);
+    // Optimize
+    optimizer.backward_step(&total_loss);
 }
 
 
 
-/// Converts the plateau, the chosen tile, and the remaining deck into a tensor representation.
-///
-/// - `plateau`: The game board with 19 tiles.
-/// - `tile`: The chosen tile to be placed.
-/// - `deck`: The current deck of remaining tiles.
-///
-/// Returns a tensor combining plateau, tile, and deck features.
-// fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Tensor {
-//     let mut features = Vec::new();
-//     // Add plateau features
-//     for t in &plateau.tiles {
-//         features.push(t.0 as f32);
-//         features.push(t.1 as f32);
-//         features.push(t.2 as f32);
-//     }
-//
-//     // Add chosen tile features
-//     features.push(tile.0 as f32);
-//     features.push(tile.1 as f32);
-//     features.push(tile.2 as f32);
-//
-//     // Add deck features
-//     for t in &deck.tiles {
-//         features.push(t.0 as f32);
-//         features.push(t.1 as f32);
-//         features.push(t.2 as f32);
-//     }
-//
-//     // Check if the size matches the expected size (141)
-//     assert_eq!(features.len(), 141, "Input tensor size does not match expected size!");
-//
-//     Tensor::of_slice(&features).unsqueeze(0) // Add batch dimension
-// }
 fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Tensor {
     let mut features = vec![0.0; 3 * 5 * 5];
 
@@ -377,24 +363,9 @@ fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Ten
 }
 
 
-/// Train and evaluate the PolicyValueNet model with MCTS-based self-play and performance tracking.
-///
-/// - `policy_value_net`: The PolicyValueNet model to train.
-/// - `optimizer`: The optimizer for training the neural network.
-/// - `num_games`: Number of games to simulate per training iteration.
-/// - `num_simulations`: Number of MCTS simulations per move.
-/// - `evaluation_interval`: Number of games between evaluations.
-/// - `listener`: WebSocket listener for communicating game states.
-/// Train and evaluate the PolicyValueNet model with MCTS-based self-play and performance tracking.
-///
-/// - `policy_value_net`: The PolicyValueNet model to train.
-/// - `optimizer`: The optimizer for training the neural network.
-/// - `num_games`: Number of games to simulate per training iteration.
-/// - `num_simulations`: Number of MCTS simulations per move.
-/// - `evaluation_interval`: Number of games between evaluations.
-/// - `listener`: WebSocket listener for communicating game states.
 async fn train_and_evaluate(
-    policy_value_net: &mut PolicyValueNet<'_>,
+    policy_net: &mut PolicyNet<'_>,
+    value_net: &mut ValueNet<'_>,
     optimizer: &mut Optimizer,
     num_games: usize,
     num_simulations: usize,
@@ -403,7 +374,6 @@ async fn train_and_evaluate(
 ) {
     let mut total_score = 0;
     let mut games_played = 0;
-    let l2_lambda = 0.01; // L2 regularization parameter
 
     while let Ok((stream, _)) = listener.accept().await {
         let ws_stream = accept_async(stream).await.expect("Failed to accept WebSocket");
@@ -433,7 +403,8 @@ async fn train_and_evaluate(
                         &mut plateau,
                         &mut deck,
                         chosen_tile,
-                        policy_value_net,
+                        policy_net,
+                        value_net,
                         num_simulations,
                     ) {
                         if first_move.is_none() {
@@ -445,10 +416,10 @@ async fn train_and_evaluate(
                         // Save state, policy, and value for training
                         let board_tensor =
                             convert_plateau_to_tensor(&plateau, &chosen_tile, &deck);
-                        let (policy_logits, value) =
-                            policy_value_net.forward(&board_tensor,false);
-                        game_data.push((board_tensor, policy_logits, value));
-
+                        let policy_logits = policy_net.forward(&board_tensor, false);
+                        let value = value_net.forward(&board_tensor, false);
+                        let reward = value.double_value(&[]); // Convert Tensor to f64
+                        game_data.push((board_tensor, policy_logits, reward)); // Use f64 for the third element
                         let image_names = generate_tile_image_names(&plateau.tiles);
                         let serialized = serde_json::to_string(&image_names).unwrap();
                         write.send(Message::Text(serialized)).await.unwrap();
@@ -463,14 +434,17 @@ async fn train_and_evaluate(
                         .or_insert_with(Vec::new)
                         .push(final_score);
                 }
+                let mut batch_game_data = Vec::new();
+                for (state, policy, value) in game_data {
+                    batch_game_data.push((state.shallow_clone(), policy.shallow_clone(), value));
+                }
 
-                // Use L2 regularization and dynamic weighting in training
-                train_network_with_game_data(
-                    &game_data,
-                    final_score,
-                    policy_value_net,
-                    optimizer,
-                );
+                let batch_size = 10;
+                if batch_game_data.len() > batch_size {
+                    train_network_with_game_data(&batch_game_data, final_score.into(), policy_net, value_net, optimizer);
+                    batch_game_data.clear();
+                }
+
                 println!("Game {} finished with score: {}", game + 1, final_score);
                 scores.push(final_score);
                 if game % evaluation_interval_average == 0 {
@@ -503,8 +477,8 @@ async fn train_and_evaluate(
                 println!("Position: {}, Average Score: {:.2}", position, average_score);
             }
 
-            // Pass a cloned Arc for evaluation
-            evaluate_model(policy_value_net, num_simulations, Arc::clone(&listener)).await;
+            // Evaluate model after each interval
+            evaluate_model(policy_net, value_net, num_simulations).await;
 
             println!(
                 "Games Played: {}, Total Score: {}, Avg Score: {:.2}",
@@ -514,20 +488,19 @@ async fn train_and_evaluate(
             );
         }
 
-        // Exit after handling one connection
-        break;
+        break; // Exit after handling one connection
     }
 }
 
 
 
+
 async fn evaluate_model(
-    policy_value_net: &PolicyValueNet<'_>,
+    policy_net: &PolicyNet<'_>,
+    value_net: &ValueNet<'_>,
     num_simulations: usize,
-    listener: Arc<TcpListener>,
 ) {
     println!("Evaluating model...");
-    // Simulate a fixed number of games to test performance
     let mut scores = Vec::new();
 
     for _ in 0..10 {
@@ -542,7 +515,8 @@ async fn evaluate_model(
                 &mut plateau,
                 &mut deck,
                 chosen_tile,
-                policy_value_net,
+                policy_net,
+                value_net,
                 num_simulations,
             ) {
                 plateau.tiles[best_position] = chosen_tile;
@@ -689,3 +663,4 @@ fn get_legal_moves(plateau: Plateau) -> Vec<usize> {
         .filter_map(|(i, tile)| if *tile == Tile(0, 0, 0) { Some(i) } else { None })
         .collect()
 }
+

@@ -4,37 +4,49 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <title>Hexagonal Grid with Game Results</title>
+  <title>Reinforcement Learning Visualization</title>
   <style>
     body {
       margin: 0;
+      padding: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background-color: #000; /* Background color for contrast */
-      color: white; /* Optional text color for contrast */
+      background-color: #1e1e1e;
+      color: #fff;
+      font-family: Arial, sans-serif;
     }
 
     canvas {
-      margin: 10px;
-      border: 1px solid white; /* Optional: border to visualize the canvas */
+      margin: 20px;
+      border: 1px solid #333;
+    }
+
+    .container {
+      max-width: 800px;
+      text-align: center;
     }
   </style>
 </head>
 <body>
+<h1>Reinforcement Learning Visualization</h1>
+
 <!-- Canvas for hexagonal grid -->
 <canvas id="myCanvas" width="800" height="800"></canvas>
 
 <!-- Canvas for game results chart -->
-<canvas id="resultsChart" width="800" height="400"></canvas>
+<div class="container">
+  <h2>Performance Over Games</h2>
+  <canvas id="scoreTrendChart" width="800" height="400"></canvas>
+</div>
 
 <script>
   const canvas = document.getElementById('myCanvas');
   const ctx = canvas.getContext('2d');
 
   // Define hexagonal positions
-  const hexPositions_each_image = [
+  const hexPositions = [
     [-2, 2], [-2.3, 4], [-2.65, 6], [-1, 1], [-1.3, 3], [-1.6, 5], [-1.95, 7],
     [0, 0], // Center
     [-0.3, 2], [-0.6, 4], [-0.9, 6], [-1.25, 8],
@@ -43,45 +55,35 @@
   ];
 
   // Constants for hexagon layout
-  const hexRadius = 50; // Radius of each hexagon
-  const hexWidth = Math.sqrt(3) * hexRadius; // Width of a hexagon
-  const hexHeight = 2 * hexRadius; // Height of a hexagon
-  const offsetY = 0.45 * hexHeight; // Vertical spacing between hexagons
-
-  // Center the grid on the canvas
+  const hexRadius = 50;
+  const hexWidth = Math.sqrt(3) * hexRadius;
+  const hexHeight = 2 * hexRadius;
+  const offsetY = 0.45 * hexHeight;
   const gridOriginX = canvas.width / 2 - hexWidth;
   const gridOriginY = canvas.height / 2 - 2 * offsetY;
 
   // Function to draw hexagonal grid with images
   function drawHexagonalGrid(images) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    hexPositions_each_image.forEach((position, index) => {
+    hexPositions.forEach((position, index) => {
       const [q, r] = position;
-
-      // Convert axial coordinates to pixel coordinates
       const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 70;
       const y = gridOriginY + r * offsetY - 70;
 
-      // Load and draw the corresponding image
       const img = new Image();
-      img.src = images[index]; // Select the image dynamically
-      img.onload = function() {
+      img.src = images[index];
+      img.onload = () => {
         const scaledWidth = img.width / 2;
         const scaledHeight = img.height / 2;
-
-        // Draw the image in the hexagonal position
         ctx.drawImage(img, x - scaledWidth / 2, y - scaledHeight / 2, scaledWidth, scaledHeight);
-
-        // Optional: draw hexagon outlines for visualization
         drawHexagon(ctx, x, y, hexRadius);
       };
     });
   }
 
-  // Function to draw hexagon outline
   function drawHexagon(ctx, x, y, radius) {
-    const angleStep = Math.PI / 3; // 60 degrees
+    const angleStep = Math.PI / 3;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const angle = angleStep * i;
@@ -91,47 +93,43 @@
       else ctx.lineTo(xOffset, yOffset);
     }
     ctx.closePath();
-    ctx.strokeStyle = 'white'; // Hexagon outline color
+    ctx.strokeStyle = 'white';
     ctx.stroke();
   }
 
-  // Game results and rolling average tracking
-  const gameResults = []; // Store game results
-  const labels = []; // Store game indices
-  const rollingAverages = []; // Store the rolling averages
-  let gameCounter = 0;
+  // WebSocket connection
+  const ws = new WebSocket('ws://127.0.0.1:9000');
 
-  // Function to calculate rolling average
+  const scores = [];
+  const rollingAverages = [];
+  const labels = [];
+  const images = [];
+
   function calculateRollingAverage(data, windowSize) {
-    if (data.length < windowSize) {
-      // Not enough data for a full rolling average window
-      const partialAverage = data.reduce((sum, val) => sum + val, 0) / data.length;
-      return partialAverage;
-    }
-    const windowData = data.slice(data.length - windowSize);
-    return windowData.reduce((sum, val) => sum + val, 0) / windowSize;
+    if (data.length < windowSize) return null;
+    const window = data.slice(-windowSize);
+    return window.reduce((sum, value) => sum + value, 0) / window.length;
   }
 
-  // Initialize Chart.js graph
-  const resultsChartCtx = document.getElementById('resultsChart').getContext('2d');
-  const resultsChart = new Chart(resultsChartCtx, {
+  const scoreChartCtx = document.getElementById('scoreTrendChart').getContext('2d');
+  const scoreTrendChart = new Chart(scoreChartCtx, {
     type: 'line',
     data: {
       labels: labels,
       datasets: [
         {
           label: 'Game Scores',
-          data: gameResults,
-          borderColor: 'rgba(75, 192, 192, 1)',
+          data: scores,
+          borderColor: '#4caf50',
           borderWidth: 2,
           fill: false,
         },
         {
           label: 'Rolling Average (Last 10 Games)',
           data: rollingAverages,
-          borderColor: 'rgba(255, 99, 132, 1)',
+          borderColor: '#ff5722',
           borderWidth: 2,
-          borderDash: [5, 5], // Dashed line for distinction
+          borderDash: [5, 5],
           fill: false,
         },
       ],
@@ -140,62 +138,40 @@
       responsive: true,
       scales: {
         x: {
-          title: {
-            display: true,
-            text: 'Game Number',
-          },
+          title: { display: true, text: 'Game Number' },
         },
         y: {
-          title: {
-            display: true,
-            text: 'Score',
-          },
-          min: 0, // Set minimum score
-          max: 307, // Set maximum score
-          ticks: {
-            stepSize: 50, // Optional: step size for y-axis ticks
-          },
+          title: { display: true, text: 'Score' },
+          min: 100,
+          max: 200,
         },
       },
     },
   });
 
-  // Connect to the WebSocket server to receive the list of images and game results
-  const ws = new WebSocket('ws://127.0.0.1:9000');
-
-  ws.onopen = () => {
-    console.log('WebSocket connection established');
-  };
+  ws.onopen = () => console.log('WebSocket connection established');
 
   ws.onmessage = (event) => {
     const message = event.data;
 
-    // Check if it's a game result
     if (message.startsWith('GAME_RESULT:')) {
       const score = parseInt(message.split(':')[1], 10);
-      gameResults.push(score);
-      gameCounter++;
-      labels.push(gameCounter);
+      const gameNumber = scores.length + 1;
 
-      // Calculate rolling average and add to the dataset
-      const avg = calculateRollingAverage(gameResults, 10);
+      scores.push(score);
+      labels.push(gameNumber);
+
+      const avg = calculateRollingAverage(scores, 10);
       rollingAverages.push(avg);
 
-      // Update the chart
-      resultsChart.update();
+      scoreTrendChart.update();
     } else {
-      // Parse the received JSON data (list of image filenames)
-      const images = JSON.parse(message);
-      console.log('Received image filenames:', images);
-
-      // Draw the grid with the received images
-      drawHexagonalGrid(images);
+      const receivedImages = JSON.parse(message);
+      drawHexagonalGrid(receivedImages);
     }
   };
 
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-  };
+  ws.onerror = (error) => console.error('WebSocket error:', error);
 </script>
 </body>
 </html>
