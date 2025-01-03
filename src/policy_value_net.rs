@@ -1,11 +1,9 @@
 use std::fs;
-use futures_util::StreamExt;
 use tch::{nn, Tensor};
 use crate::policy_value_net::res_net_block::ResNetBlock;
 
 mod res_net_block;
-pub struct PolicyNet<'a> {
-    vs: &'a nn::VarStore,
+pub struct PolicyNet {
     conv1: nn::Conv2D,
     res_blocks: Vec<ResNetBlock>, // Residual blocks for shared features
     flatten: nn::Linear,          // Shared flattening layer
@@ -13,7 +11,7 @@ pub struct PolicyNet<'a> {
     dropout_rate: f64,            // Dropout rate for regularization
 }
 
-impl<'a> PolicyNet<'a> {
+impl<'a> PolicyNet {
     pub fn new(vs: &'a nn::VarStore, num_res_blocks: usize, input_dim: (i64, i64, i64)) -> Self {
         let p = vs.root();
         let (channels, height, width) = input_dim;
@@ -27,28 +25,25 @@ impl<'a> PolicyNet<'a> {
         let flatten_size = 64 * height * width;
         let flatten = nn::linear(&p / "flatten", flatten_size, 512, Default::default());
         let policy_head = nn::linear(&p / "policy_head", 512, 19, Default::default());
-        let dropout_rate = 0.2;
 
         Self {
-            vs,
             conv1,
             res_blocks,
             flatten,
             policy_head,
-            dropout_rate,
-        }
+            dropout_rate: 0.2,        }
     }
-    pub fn parameters(&self) -> Vec<Tensor> {
-        let mut params = Vec::new();
-        params.push(self.conv1.ws.shallow_clone());
-        params.push(self.flatten.ws.shallow_clone());
-        params.push(self.policy_head.ws.shallow_clone());
-        for block in &self.res_blocks {
-            params.push(block.conv1.ws.shallow_clone());
-            params.push(block.conv2.ws.shallow_clone());
-        }
-        params
-    }
+    // pub fn parameters(&self) -> Vec<Tensor> {
+    //     let mut params = Vec::new();
+    //     params.push(self.conv1.ws.shallow_clone());
+    //     params.push(self.flatten.ws.shallow_clone());
+    //     params.push(self.policy_head.ws.shallow_clone());
+    //     for block in &self.res_blocks {
+    //         params.push(block.conv1.ws.shallow_clone());
+    //         params.push(block.conv2.ws.shallow_clone());
+    //     }
+    //     params
+    // }
     pub fn load_weights(&mut self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         self.conv1.ws = Tensor::load(&format!("{}/policy_conv1.pt", path))?;
         for (i, block) in self.res_blocks.iter_mut().enumerate() {
@@ -90,6 +85,11 @@ impl<'a> PolicyNet<'a> {
         h = h.view([-1, 64 * 5 * 5]);
         h = h.apply(&self.flatten).relu();
 
+        // Apply dropout during training
+        if train {
+            h = h.dropout(self.dropout_rate, train);
+        }
+
         let policy_logits = h.apply(&self.policy_head);
         policy_logits.softmax(-1, tch::Kind::Float)
     }
@@ -101,6 +101,7 @@ pub struct ValueNet<'a> {
     res_blocks: Vec<ResNetBlock>,
     flatten: nn::Linear,
     value_head: nn::Linear,
+    dropout_rate: f64, // Dropout rate for regularization
 }
 
 impl<'a> ValueNet<'a> {
@@ -124,6 +125,8 @@ impl<'a> ValueNet<'a> {
             res_blocks,
             flatten,
             value_head,
+            dropout_rate: 0.2, // Dropout rate set to 0.2
+
         }
     }
     pub fn load_weights(&mut self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -150,17 +153,17 @@ impl<'a> ValueNet<'a> {
 
         Ok(())
     }
-    pub fn parameters(&self) -> Vec<Tensor> {
-        let mut params = Vec::new();
-        params.push(self.conv1.ws.shallow_clone());
-        params.push(self.flatten.ws.shallow_clone());
-        params.push(self.value_head.ws.shallow_clone());
-        for block in &self.res_blocks {
-            params.push(block.conv1.ws.shallow_clone());
-            params.push(block.conv2.ws.shallow_clone());
-        }
-        params
-    }
+    // pub fn parameters(&self) -> Vec<Tensor> {
+    //     let mut params = Vec::new();
+    //     params.push(self.conv1.ws.shallow_clone());
+    //     params.push(self.flatten.ws.shallow_clone());
+    //     params.push(self.value_head.ws.shallow_clone());
+    //     for block in &self.res_blocks {
+    //         params.push(block.conv1.ws.shallow_clone());
+    //         params.push(block.conv2.ws.shallow_clone());
+    //     }
+    //     params
+    // }
     pub fn forward(&self, x: &Tensor, train: bool) -> Tensor {
         let mut h = x.apply(&self.conv1).relu();
 
@@ -170,7 +173,10 @@ impl<'a> ValueNet<'a> {
 
         h = h.view([-1, 64 * 5 * 5]);
         h = h.apply(&self.flatten).relu();
-
+        // Apply dropout during training
+        if train {
+            h = h.dropout(self.dropout_rate, train);
+        }
         h.apply(&self.value_head).tanh()
     }
 }

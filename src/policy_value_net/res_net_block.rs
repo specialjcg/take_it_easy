@@ -1,5 +1,4 @@
 use tch::{nn, Tensor};
-use tch::nn::Path;
 
 /// Squeeze-and-Excitation Block
 /// A lightweight attention mechanism that learns channel-wise dependencies.

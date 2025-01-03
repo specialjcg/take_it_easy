@@ -1,8 +1,3 @@
-use rand::Rng;
-use crate::create_plateau_empty::create_plateau_empty;
-use crate::create_shuffle_deck::create_shuffle_deck;
-use crate::place_tile::placer_tile;
-use crate::remove_tile_from_deck::remove_tile_from_deck;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MCTSNode {
@@ -12,24 +7,8 @@ pub struct MCTSNode {
     pub children: Vec<MCTSNode>,      // Child nodes
     pub parent: Option<*mut MCTSNode>, // Pointer to the parent node (raw pointer to allow mutation)
 }
-pub fn create_mcts_node(state: GameState, parent: Option<*mut MCTSNode>) -> MCTSNode {
-    MCTSNode {
-        state,
-        visits: 0,
-        value: 0.0,
-        children: Vec::new(),
-        parent,
-    }
-}
-pub fn get_legal_moves_test(state: GameState) -> Vec<(usize)> {
-    let mut moves = Vec::new();
-    for i in 0..state.plateau.tiles.len() {
-        if state.plateau.tiles[i] == Tile(0, 0, 0) {
-            moves.push(i);
-        }
-    }
-    moves
-}
+
+
 #[derive(Debug, Clone, PartialEq, Copy,Hash,Eq)]
 pub(crate) struct Tile(pub i32, pub i32, pub i32);
 #[derive(Debug, Clone, PartialEq)]
@@ -47,102 +26,145 @@ pub struct GameState {
 pub struct Deck{
     pub(crate) tiles: Vec<Tile>,
 }
-pub fn create_game_state() -> GameState {
-    let plateau = create_plateau_empty();
-    let deck = create_shuffle_deck();
-    GameState { plateau, deck }
-}
-pub fn apply_move(mut game_state: GameState, tile: Tile, position: usize) -> Option<GameState> {
-    if !placer_tile(&mut game_state.plateau, tile, position){
-        return None; // Invalid move
-    }
-    else {
-        placer_tile(&mut game_state.plateau, tile, position);
-        let mut new_plateau = game_state.plateau.clone();
-        let mut new_deck = game_state.deck.clone();
-        new_deck = remove_tile_from_deck(&new_deck, &tile);
 
-
-        Some(GameState {
-            plateau: new_plateau,
-            deck: new_deck,
-        })
-
-    }
-}
-pub fn select_ucb1<'a>(node: &'a mut MCTSNode, exploration: f64) -> &'a mut MCTSNode {
-    let total_visits = node.visits as f64;
-
-    node.children
-        .iter_mut()
-        .map(|child| {
-            let ucb_score = if child.visits == 0 {
-                f64::INFINITY // Prioritize unvisited nodes
-            } else if total_visits > 0.0 {
-                let exploitation = child.value / child.visits as f64;
-                let exploration_term = exploration * ((total_visits.ln() / child.visits as f64).sqrt());
-                exploitation + exploration_term
-            } else {
-                0.0 // No valid exploration term if parent has zero visits
-            };
-            (ucb_score, child)
-        })
-        .inspect(|(ucb_score, child)| {
-            println!(
-                "Child: visits={}, value={}, UCB1 score={}",
-                child.visits, child.value, ucb_score
-            );
-        })
-        .max_by(|(score_a, _), (score_b, _)| score_a.partial_cmp(score_b).unwrap_or(std::cmp::Ordering::Equal))
-        .expect("No children to select")
-        .1
-}
-pub fn expand(mut root: MCTSNode, new_state: GameState)->MCTSNode {
-    let new_node = MCTSNode {
-        state: new_state.clone(),
-        visits: 0,
-        value: 0.0,
-        children: Vec::new(),
-        parent: None,
-    };
-    root.children.push(new_node);
-    root
-}
-pub fn backpropagate(node: &mut MCTSNode, score: f64) {
-    // Start from the current node
-    let mut current: *mut MCTSNode = node;
-
-    unsafe {
-        // Traverse up the tree
-        while let Some(parent) = (*current).parent {
-            // Update the current node
-            (*current).visits += 1;
-            (*current).value += score;
-
-            // Move to the parent node
-            current = parent;
-        }
-
-        // Update the root node
-        (*current).visits += 1;
-        (*current).value += score;
-    }
-}
 #[cfg(test)]
 pub(crate) mod tests {
+    pub fn create_mcts_node(state: GameState, parent: Option<*mut MCTSNode>) -> MCTSNode {
+        MCTSNode {
+            state,
+            visits: 0,
+            value: 0.0,
+            children: Vec::new(),
+            parent,
+        }
+    }
+    pub fn choisir_et_placer(deck: &mut Deck, plateau: &mut Plateau) {
+        let mut rng = rand::rng();
 
+        // Répéter jusqu'à ce que le plateau soit plein
+        while plateau.tiles.contains(&Tile(0, 0, 0)) {
+            // Choisir une tuile aléatoirement dans le deck
+            let deck_len = deck.tiles.len();
+            if deck_len == 0 {
+                break; // Plus de tuiles disponibles
+            }
+            let tile_index = rng.random_range(0..deck_len);
+            let tuile = deck.tiles.remove(tile_index); // Retirer la tuile du deck
+
+            // Choisir une position aléatoire dans le plateau
+            let mut position;
+            loop {
+                position = rng.random_range(0..plateau.tiles.len());
+                if plateau.tiles[position] == Tile(0, 0, 0) {
+                    break; // Trouver une case vide
+                }
+            }
+
+            // Placer la tuile dans le plateau
+            plateau.tiles[position] = tuile;
+        }
+    }
+
+    pub fn placer_tile(plateau: &mut Plateau, tuile: Tile, position: usize) -> bool {
+        if plateau.tiles[position] != Tile(0, 0, 0) {
+            return false; // Case déjà occupée
+        }
+        plateau.tiles[position] = tuile;
+        true
+    }
+
+    pub fn create_game_state() -> GameState {
+        let plateau = create_plateau_empty();
+        let deck = create_shuffle_deck();
+        GameState { plateau, deck }
+    }
+
+    pub fn apply_move(mut game_state: GameState, tile: Tile, position: usize) -> Option<GameState> {
+        if !placer_tile(&mut game_state.plateau, tile, position){
+            return None; // Invalid move
+        }
+        else {
+            placer_tile(&mut game_state.plateau, tile, position);
+            let new_plateau = game_state.plateau.clone();
+            let mut new_deck = game_state.deck.clone();
+            new_deck = remove_tile_from_deck(&new_deck, &tile);
+
+
+            Some(GameState {
+                plateau: new_plateau,
+                deck: new_deck,
+            })
+
+        }
+    }
+    pub fn select_ucb1<'a>(node: &'a mut MCTSNode, exploration: f64) -> &'a mut MCTSNode {
+        let total_visits = node.visits as f64;
+
+        node.children
+            .iter_mut()
+            .map(|child| {
+                let ucb_score = if child.visits == 0 {
+                    f64::INFINITY // Prioritize unvisited nodes
+                } else if total_visits > 0.0 {
+                    let exploitation = child.value / child.visits as f64;
+                    let exploration_term = exploration * ((total_visits.ln() / child.visits as f64).sqrt());
+                    exploitation + exploration_term
+                } else {
+                    0.0 // No valid exploration term if parent has zero visits
+                };
+                (ucb_score, child)
+            })
+            .inspect(|(ucb_score, child)| {
+                println!(
+                    "Child: visits={}, value={}, UCB1 score={}",
+                    child.visits, child.value, ucb_score
+                );
+            })
+            .max_by(|(score_a, _), (score_b, _)| score_a.partial_cmp(score_b).unwrap_or(std::cmp::Ordering::Equal))
+            .expect("No children to select")
+            .1
+    }
+    pub fn expand(mut root: MCTSNode, new_state: GameState)->MCTSNode {
+        let new_node = MCTSNode {
+            state: new_state.clone(),
+            visits: 0,
+            value: 0.0,
+            children: Vec::new(),
+            parent: None,
+        };
+        root.children.push(new_node);
+        root
+    }
+    pub fn backpropagate(node: &mut MCTSNode, score: f64) {
+        // Start from the current node
+        let mut current: *mut MCTSNode = node;
+
+        unsafe {
+            // Traverse up the tree
+            while let Some(parent) = (*current).parent {
+                // Update the current node
+                (*current).visits += 1;
+                (*current).value += score;
+
+                // Move to the parent node
+                current = parent;
+            }
+
+            // Update the root node
+            (*current).visits += 1;
+            (*current).value += score;
+        }
+    }
+    use crate::remove_tile_from_deck::remove_tile_from_deck;
+use super::*;
 
 
     use rand::Rng;
-    use tch::Tensor;
-    use crate::choisir_et_placer::choisir_et_placer;
     use crate::create_plateau_empty::create_plateau_empty;
     use crate::create_shuffle_deck::create_shuffle_deck;
-    use crate::{convert_plateau_to_tensor, get_legal_moves, is_plateau_full, mcts_find_best_position_for_tile_with_nn, simulate_games};
-    use crate::place_tile::placer_tile;
-    use crate::remove_tile_from_deck::remove_tile_from_deck;
+    use crate::{convert_plateau_to_tensor, get_legal_moves, is_plateau_full, simulate_games};
     use crate::result::result;
-    use crate::test::{apply_move, backpropagate, create_game_state, create_mcts_node, Deck, expand, GameState, get_legal_moves_test, MCTSNode, Plateau, select_ucb1, Tile};
+    use crate::test::{  Deck, GameState,  MCTSNode, Plateau, Tile};
     #[test]
     fn test_placement_tuile_valide_take_it_easy() {
         let mut plateau:Plateau=create_plateau_empty();
@@ -151,6 +173,12 @@ pub(crate) mod tests {
         assert!(placer_tile(&mut plateau, tuile.clone(), 1));
         assert_eq!(plateau.tiles[1], tuile);
     }
+
+
+
+
+
+
     #[test]
     fn test_is_plateau_full() {
         let mut plateau = create_plateau_empty();
@@ -178,7 +206,7 @@ pub(crate) mod tests {
         let deck = create_shuffle_deck();
         let num_simulations = 10;
 
-        let avg_score = simulate_games(plateau, deck, num_simulations);
+        let avg_score = simulate_games(plateau, deck);
         assert!(avg_score >= 0); // Score should be non-negative
     }
     #[test]
@@ -219,6 +247,12 @@ pub(crate) mod tests {
         assert!(deck_shuffle.tiles.contains(&tuile));
         println!("Tuile choisie aléatoirement : {:?}", tuile);
     }
+
+
+
+
+
+
     #[test]
     fn test_retirer_tuile_aleatoire_du_deck() {
         use rand::Rng; // Pour générer un indice aléatoire
@@ -468,7 +502,7 @@ pub(crate) mod tests {
         placer_tile(&mut state.plateau, state.deck.tiles[2].clone(),6);
         placer_tile(&mut state.plateau, state.deck.tiles[3].clone(), 11);
         // At the beginning, all positions are empty
-        let moves:Vec< usize>  = get_legal_moves_test(state.clone());
+        let moves:Vec< usize>  = get_legal_moves(state.plateau.clone());
         let expectedly: usize = state
             .plateau
             .tiles
@@ -513,7 +547,7 @@ pub(crate) mod tests {
         // Randomly choose and place tiles until the plateau is full
         // Randomly choose and place tiles until the plateau is full
         while simulated_state.plateau.tiles.contains(&Tile(0, 0, 0)) {
-            let legal_moves = get_legal_moves_test(simulated_state.clone());
+            let legal_moves = get_legal_moves(simulated_state.plateau.clone());
             if legal_moves.is_empty() {
                 break; // No more moves possible
             }
@@ -748,7 +782,7 @@ pub(crate) mod tests {
             }
 
             // Expansion
-            let legal_moves = get_legal_moves_test(selected_node.state.clone());
+            let legal_moves = get_legal_moves(selected_node.state.plateau.clone());
             if !legal_moves.is_empty() {
                 let mut rng = rand::thread_rng();
                 let position = legal_moves[rng.gen_range(0..legal_moves.len())];
