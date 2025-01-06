@@ -1,19 +1,27 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::ops::Add;
 use std::path::Path;
 use std::sync::Arc;
+
+use clap::Parser;
+use futures_util::{SinkExt, StreamExt};
+use rand::{Rng, rng};
+use serde_json;
+use tch::{Device, IndexOp, nn, Tensor};
+use tch::nn::{Optimizer, OptimizerConfig, VarStore};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
-use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::protocol::Message;
-use serde_json;
-use rand::{Rng, rng};
+
 use create_plateau_empty::create_plateau_empty;
 use create_shuffle_deck::create_shuffle_deck;
 use result::result;
-use crate::test::{Deck, Plateau, Tile};
 
+use crate::policy_value_net::{PolicyNet, ValueNet};
+use crate::remove_tile_from_deck::replace_tile_in_deck;
+use crate::test::{Deck, Plateau, Tile};
 
 mod test;
 mod result;
@@ -22,17 +30,12 @@ mod create_plateau_empty;
 mod create_shuffle_deck;
 
 mod policy_value_net;
+
 fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
     tiles.iter().map(|tile| {
         format!("../image/{}{}{}.png", tile.0, tile.1, tile.2)
     }).collect()
 }
-
-use clap::Parser;
-use tch::{Device, IndexOp, nn, Tensor};
-use tch::nn::{Optimizer, OptimizerConfig};
-use crate::policy_value_net::{PolicyNet, ValueNet};
-use crate::remove_tile_from_deck::replace_tile_in_deck;
 
 #[derive(Parser)]
 struct Config {
@@ -41,7 +44,7 @@ struct Config {
     num_games: usize,
 
     /// Number of simulations per game state in MCTS
-    #[arg(short = 's', long, default_value_t = 100)]
+    #[arg(short = 's', long, default_value_t = 1000)]
     num_simulations: usize,
 }
 
@@ -71,14 +74,17 @@ async fn main() {
             eprintln!("Error loading ValueNet: {:?}", e);
             println!("Initializing ValueNet with random weights.");
         }
-
     } else {
         println!("No pre-trained model found. Initializing new models.");
     }
 
+    let mut optimizer = nn::Adam {
+        wd: 1e-4, // Weight decay
+        ..Default::default() // Other defaults
+    }
+        .build(&vs, 1e-5) // Learning rate
+        .unwrap();
 
-    // Initialize the optimizer
-    let mut optimizer = nn::Adam::default().build(&vs, 1e-3).unwrap();
 
     // Launch simulations and train the model
     let listener = TcpListener::bind("127.0.0.1:9000")
@@ -86,6 +92,7 @@ async fn main() {
         .expect("Unable to start WebSocket server");
     println!("WebSocket server started at ws://127.0.0.1:9000");
     train_and_evaluate(
+        &vs,
         &mut policy_net,
         &mut value_net,
         &mut optimizer,
@@ -94,9 +101,6 @@ async fn main() {
         50, // Evaluate every 50 games
         listener.into(),
     ).await;
-
-
-
 }
 
 
@@ -111,10 +115,9 @@ fn mcts_find_best_position_for_tile_with_nn(
     let legal_moves = get_legal_moves(plateau.clone());
     if legal_moves.is_empty() {
         return MCTSResult {
-            best_position: None,
+            best_position: 0,
             board_tensor: convert_plateau_to_tensor(plateau, &chosen_tile, deck), // Still return tensor
             subscore: 0.0,
-            selected_position: None,
         };
     }
 
@@ -142,7 +145,7 @@ fn mcts_find_best_position_for_tile_with_nn(
         moves_with_prior.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         let top_k = usize::min(
             legal_moves.len(),
-            ((total_visits as f64).sqrt() as usize).max(3)
+            ((total_visits as f64).sqrt() as usize).max(3),
         );
 
         // Use a fixed top-k
@@ -184,91 +187,130 @@ fn mcts_find_best_position_for_tile_with_nn(
             total_scores.get(&a).unwrap_or(&f64::NEG_INFINITY)
                 .partial_cmp(total_scores.get(&b).unwrap_or(&f64::NEG_INFINITY))
                 .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        }).unwrap_or(0);
 
-    let best_position_score = best_position.and_then(|pos| total_scores.get(&pos).cloned()).unwrap_or(0.0);
+    let best_position_score = total_scores.get(&best_position).cloned().unwrap_or(0.0);
 
     MCTSResult {
         best_position,
         board_tensor,
         subscore: best_position_score,
-        selected_position: best_position,
     }
 }
 
+fn normalize_input(tensor: &Tensor) -> Tensor {
+    let mean = tensor.mean(tch::Kind::Float);
+    let std = tensor.std(true).clamp_min(1e-8);
+    (tensor - mean) / std
+}
+
 fn train_network_with_game_data(
-    game_data: &Vec<MCTSResult>, // Game data containing states, subscores, and positions
-    discount_factor: f64,       // Discount factor γ
+    vs: &nn::VarStore,
+    game_data: &Vec<MCTSResult>,
+    discount_factor: f64,
     policy_net: &PolicyNet,
     value_net: &ValueNet,
     optimizer: &mut Optimizer,
 ) {
     let mut total_policy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
     let mut total_value_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
+    let mut total_entropy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
+    let epsilon = 1e-8;
+    let entropy_weight = 0.01;
 
-    let mut future_value = 0.0; // Initialize for the final state
-    let mut current_iteration = 0;
+    // Normalize rewards
+    let mean_reward = game_data.iter().map(|r| r.subscore).sum::<f64>() / game_data.len() as f64;
+    let std_dev_reward = ((game_data.iter().map(|r| (r.subscore - mean_reward).powi(2)).sum::<f64>()
+        / game_data.len() as f64)
+        + epsilon)
+        .sqrt()
+        .max(epsilon);
 
-    // Process game data in reverse for Temporal Difference (TD) updates
+    let mut future_value: f64 = 0.0;
+
     for result in game_data.iter().rev() {
-        let state = &result.board_tensor;
+        let state = normalize_input(&result.board_tensor);
         let reward = result.subscore;
 
-        // Forward pass through the policy and value networks
-        let pred_policy = policy_net.forward(state, true); // Assumes policy_net outputs logits
-        let pred_value = value_net.forward(state, true);   // Assumes value_net outputs scalar value
-
-        current_iteration += 1;
-
-        // Normalize reward for stability
-        let mean_reward = game_data.iter().map(|r| r.subscore).sum::<f64>() / game_data.len() as f64;
-        let std_dev_reward = (game_data
-            .iter()
-            .map(|r| (r.subscore - mean_reward).powi(2))
-            .sum::<f64>()
-            / game_data.len() as f64)
-            .sqrt();
-        let normalized_reward = (reward - mean_reward) / std_dev_reward;
-
-        // Compute TD target
-        let td_target = normalized_reward
-            + discount_factor
-            * if future_value > pred_value.double_value(&[]) {
-            future_value
-        } else {
-            pred_value.double_value(&[])
-        };
-        let target_tensor = Tensor::from(td_target);
-
-        // Policy loss computation
-        // If using policies, convert the selected position to a one-hot target
-        if let Some(selected_position) = result.selected_position {
-            let mut target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
-            target_policy.i((0, selected_position as i64)).fill_(1.0);
-            let policy_loss = -(target_policy * pred_policy.log()).sum(tch::Kind::Float);
-            total_policy_loss += policy_loss;
+        if state.isnan().any().double_value(&[]) > 0.0 {
+            eprintln!("NaN detected in state input tensor");
+            continue;
         }
 
-        // Value loss computation (TD learning)
-        let pred_value = pred_value.view([]); // Ensure scalar
-        let value_loss = (target_tensor - pred_value).pow(&Tensor::from(2.0));
+        // Forward pass
+        let pred_policy = policy_net
+            .forward(&state, true)
+            .clamp_min(1e-7);
+
+        let pred_value = value_net
+            .forward(&state, true)
+            .clamp(-1e3, 1e3);
+
+        if pred_policy.isnan().any().double_value(&[]) > 0.0 {
+            eprintln!("NaN detected in pred_policy");
+            continue;
+        }
+
+        if pred_value.isnan().any().double_value(&[]) > 0.0 {
+            eprintln!("NaN detected in pred_value");
+            continue;
+        }
+
+        // Normalize reward
+        let normalized_reward = (reward - mean_reward) / std_dev_reward;
+
+
+
+
+
+        // Policy Loss
+        let best_position = result.best_position as i64;
+        let mut target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
+        target_policy.i((0, best_position)).fill_(1.0);
+
+        let log_policy = pred_policy.log();
+        let policy_loss = -(target_policy * log_policy.shallow_clone()).sum(tch::Kind::Float);
+        total_policy_loss += policy_loss;
+
+        let entropy_loss = -(pred_policy * log_policy).sum(tch::Kind::Float);
+        total_entropy_loss += entropy_loss;
+
+        let td_target = Tensor::from(
+            normalized_reward + discount_factor * future_value.clamp(-1e3, 1e3).max(pred_value.double_value(&[])),
+        );
+        if td_target.isnan().any().double_value(&[]) > 0.0 {
+            eprintln!("NaN detected in td_target");
+            continue;
+        }
+        let value_loss = (td_target.shallow_clone() - pred_value)
+            .pow(&Tensor::from(2.0))
+            .mean(tch::Kind::Float);
         total_value_loss += value_loss;
 
-        // Update future value
-        future_value = td_target;
+        future_value = td_target.double_value(&[]).clamp(-1e3, 1e3) as f64;
+
     }
 
-    // Weight losses dynamically
-    let policy_loss_weight = 1.0;
-    let value_loss_weight = if current_iteration < 100 { 0.5 } else { 1.0 };
+    let total_loss: Tensor = total_policy_loss + total_value_loss + entropy_weight * total_entropy_loss;
+    total_loss.backward();
 
-    // Total loss
-    let total_loss = policy_loss_weight * total_policy_loss + value_loss_weight * total_value_loss;
 
-    // Optimize
-    optimizer.backward_step(&total_loss);
+    for (name, param) in vs.variables() {
+        if param.grad().defined() {
+            let grad = param.grad();
+            if grad.isnan().any().double_value(&[]) > 0.0 {
+                eprintln!("NaN detected in gradient for parameter: {}", name);
+                eprintln!("Parameter values: {:?}", param);
+                eprintln!("Gradient values: {:?}", grad);
+                return;
+            }
+        }
+    }
+
+    optimizer.clip_grad_norm(0.5);
+    optimizer.step();
+    optimizer.zero_grad();
 }
-
 
 
 
@@ -325,7 +367,7 @@ fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Ten
                 let row = pos / 5;
                 let col = pos % 5;
                 let contribution = feature_fn(t) as f32 / 10.0 * 0.1; // Scale the pattern contribution
-                features[row * 5 + col] += contribution*1.2;
+                features[row * 5 + col] += contribution * 1.2;
             }
         }
     }
@@ -333,62 +375,80 @@ fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Ten
     // Create a tensor with the specified shape [1, 3, 5, 5]
     Tensor::of_slice(&features).view([1, 3, 5, 5])
 }
+
 fn load_game_data(file_path: &str) -> Vec<MCTSResult> {
     let file = File::open(file_path).expect("Unable to open file");
     let reader = BufReader::new(file);
 
-    let mut game_data = Vec::new();
-    for line in reader.lines() {
-        if let Ok(line) = line {
-            game_data.push(deserialize_game_data(&line));
-        }
-    }
-    game_data
+    reader
+        .lines()
+        .filter_map(|line| {
+            match line {
+                Ok(line_content) => deserialize_game_data(&line_content),
+                Err(e) => {
+                    eprintln!("Error reading line from file '{}': {}", file_path, e);
+                    None
+                }
+            }
+        })
+        .collect()
 }
 
-fn deserialize_game_data(line: &str) -> MCTSResult {
+
+fn deserialize_game_data(line: &str) -> Option<MCTSResult> {
     let parts: Vec<&str> = line.split(',').collect();
 
-    if parts.len() != 4 {
-        panic!("Invalid data format. Expected 4 parts (state, subscore, best_position, selected_position).");
+    // Ensure there are exactly three parts: state, subscore, and best_position
+    if parts.len() != 3 {
+        eprintln!("Invalid data format: '{}'. Expected 3 parts (state, subscore, best_position).", line);
+        return None; // Skip invalid lines
     }
 
     // Deserialize the state tensor
-    let state_values: Vec<f32> = parts[0]
+    let state_values: Vec<f32> = match parts[0]
         .split_whitespace()
-        .map(|v| v.parse::<f32>().expect("Invalid float in state tensor"))
-        .collect();
-    let state_tensor = Tensor::of_slice(&state_values).view([1, 3, 5, 5]); // Adjust the dimensions as needed
+        .map(|v| v.parse::<f32>())
+        .collect::<Result<Vec<f32>, _>>()
+    {
+        Ok(values) => values,
+        Err(e) => {
+            eprintln!("Failed to parse state tensor in line '{}': {}", line, e);
+            return None;
+        }
+    };
+
+    let state_tensor = Tensor::of_slice(&state_values).view([1, 3, 5, 5]); // Adjust dimensions as needed
 
     // Deserialize the subscore
-    let subscore: f64 = parts[1]
-        .parse::<f64>()
-        .expect("Invalid float in subscore");
+    let subscore: f64 = match parts[1].parse::<f64>() {
+        Ok(value) => value,
+        Err(e) => {
+            eprintln!("Failed to parse subscore in line '{}': {}", line, e);
+            return None;
+        }
+    };
 
     // Deserialize the best_position
-    let best_position: Option<usize> = if parts[2] == "None" {
-        None
-    } else {
-        Some(parts[2].parse::<usize>().expect("Invalid usize in best_position"))
+    let best_position: usize = match parts[2].parse::<usize>() {
+        Ok(value) => value,
+        Err(e) => {
+            eprintln!("Failed to parse best_position in line '{}': {}", line, e);
+            return None;
+        }
     };
 
-    // Deserialize the selected_position
-    let selected_position: Option<usize> = if parts[3] == "None" {
-        None
-    } else {
-        Some(parts[3].parse::<usize>().expect("Invalid usize in selected_position"))
-    };
-
-    MCTSResult {
-        best_position,
+    Some(MCTSResult {
         board_tensor: state_tensor,
         subscore,
-        selected_position,
-    }
+        best_position,
+    })
 }
+
+
+
 fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
     use std::fs::OpenOptions;
-    use std::io::{Write, BufWriter};
+    use std::io::{BufWriter, Write};
 
     let file = OpenOptions::new()
         .create(true)
@@ -399,19 +459,13 @@ fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
 
     for result in game_data {
         let state_str = serialize_tensor(result.board_tensor);
-        let best_position_str = match result.best_position {
-            Some(pos) => pos.to_string(),
-            None => "None".to_string(),
-        };
-        let selected_position_str = match result.selected_position {
-            Some(pos) => pos.to_string(),
-            None => "None".to_string(),
-        };
+        let best_position_str=result.best_position;
+
 
         writeln!(
             writer,
-            "{},{},{},{}",
-            state_str, result.subscore, best_position_str, selected_position_str
+            "{},{},{}",
+            state_str, result.subscore, best_position_str
         )
             .expect("Unable to write data");
     }
@@ -433,21 +487,21 @@ fn tensor_to_vec(tensor: &Tensor) -> Vec<f32> {
 
 
 fn serialize_tensor(tensor: Tensor) -> String {
-    let data: Vec<f32> =tensor_to_vec(&tensor) ;// Converts the slice to a Vec<f32>
-        data.iter()
+    let data: Vec<f32> = tensor_to_vec(&tensor); // Converts the slice to a Vec<f32>
+    data.iter()
         .map(|v| v.to_string())
         .collect::<Vec<_>>()
         .join(" ")
 }
 
 struct MCTSResult {
-    best_position: Option<usize>,
     board_tensor: Tensor,
+    best_position: usize,
     subscore: f64,
-    selected_position: Option<usize>,
 }
 
 async fn train_and_evaluate(
+    vs: &nn::VarStore,
     policy_net: &mut PolicyNet,
     value_net: &mut ValueNet<'_>,
     optimizer: &mut Optimizer,
@@ -489,19 +543,18 @@ async fn train_and_evaluate(
                         policy_net,
                         num_simulations,
                     );
-                    if let Some(best_position) = game_result.best_position {
-                        if first_move.is_none() {
-                            first_move = Some((best_position, chosen_tile));
-                        }
-                        plateau.tiles[best_position] = chosen_tile;
-                        deck = replace_tile_in_deck(&deck, &chosen_tile);
-
-
-                        game_data.push(game_result); // Use f64 for the third element
-                        let image_names = generate_tile_image_names(&plateau.tiles);
-                        let serialized = serde_json::to_string(&image_names).unwrap();
-                        write.send(Message::Text(serialized)).await.unwrap();
+                    let best_position = game_result.best_position;
+                    if first_move.is_none() {
+                        first_move = Some((best_position, chosen_tile));
                     }
+                    plateau.tiles[best_position] = chosen_tile;
+                    deck = replace_tile_in_deck(&deck, &chosen_tile);
+
+
+                    game_data.push(game_result); // Use f64 for the third element
+                    let image_names = generate_tile_image_names(&plateau.tiles);
+                    let serialized = serde_json::to_string(&image_names).unwrap();
+                    write.send(Message::Text(serialized)).await.unwrap();
                 }
                 let final_score = result(&plateau);
                 total_score += final_score;
@@ -521,7 +574,6 @@ async fn train_and_evaluate(
                         best_position: result.best_position,
                         board_tensor: result.board_tensor.shallow_clone(),
                         subscore: result.subscore,
-                        selected_position: result.selected_position,
                     });
                 }
 
@@ -531,13 +583,12 @@ async fn train_and_evaluate(
                         best_position: result.best_position,
                         board_tensor: result.board_tensor.shallow_clone(),
                         subscore: result.subscore,
-                        selected_position: result.selected_position,
                     });
                 }
 
                 let batch_size = 10;
                 if batch_game_data.len() >= batch_size {
-                    train_network_with_game_data(&batch_game_data, final_score.into(), policy_net, value_net, optimizer);
+                    train_network_with_game_data(&vs, &batch_game_data, final_score.into(), policy_net, value_net, optimizer);
                     batch_game_data.clear();
                 }
 
@@ -578,7 +629,7 @@ async fn train_and_evaluate(
             }
 
             // Evaluate model after each interval
-            evaluate_model(policy_net,  num_simulations).await;
+            evaluate_model(policy_net, num_simulations).await;
 
             println!(
                 "Games Played: {}, Total Score: {}, Avg Score: {:.2}",
@@ -596,14 +647,11 @@ async fn train_and_evaluate(
             if let Err(e) = value_net.save_weights("model_weights/value") {
                 eprintln!("Error saving ValueNet weights: {:?}", e);
             }
-
         }
 
         break; // Exit after handling one connection
     }
 }
-
-
 
 
 async fn evaluate_model(
@@ -627,10 +675,9 @@ async fn evaluate_model(
                 policy_net,
                 num_simulations,
             );
-            if let Some(best_position) = game_result.best_position {
-                plateau.tiles[best_position] = chosen_tile;
-                deck = replace_tile_in_deck(&deck, &chosen_tile);
-            }
+            let best_position = game_result.best_position;
+            plateau.tiles[best_position] = chosen_tile;
+            deck = replace_tile_in_deck(&deck, &chosen_tile);
         }
 
         let game_score = result(&plateau);
@@ -640,10 +687,6 @@ async fn evaluate_model(
     let avg_score: f64 = scores.iter().copied().sum::<i32>() as f64 / scores.len() as f64;
     println!("Model Evaluation Complete. Avg Score: {:.2}", avg_score);
 }
-
-
-
-
 
 
 /// Checks if the plateau is full
@@ -730,7 +773,6 @@ fn simulate_games(plateau: Plateau, deck: Deck) -> i32 {
 
     result(&simulated_plateau) // Compute and return the result
 }
-
 
 
 /// Get all legal moves (empty positions) on the plateau
