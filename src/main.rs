@@ -9,7 +9,7 @@ use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use rand::{Rng, rng};
 use serde_json;
-use tch::{Device, IndexOp, nn, Tensor};
+use tch::{CModule, Device, IndexOp, nn, Tensor};
 use tch::nn::{Optimizer, OptimizerConfig, VarStore};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
@@ -53,27 +53,25 @@ struct Config {
 async fn main() {
     let config = Config::parse();
     let model_path = "model_weights";
-
+    let device = Device::Cpu;
     // Initialize VarStore
-    let vs = nn::VarStore::new(Device::Cpu);
+    let mut vs = nn::VarStore::new(device);
     let input_dim = (3, 5, 5); // Input: 3 channels, 5x5 grid
 
     // Initialize PolicyNet and ValueNet
     let mut policy_net = PolicyNet::new(&vs, 3, input_dim);
-    let mut value_net = ValueNet::new(&vs, 3, input_dim);
+    let mut value_net = ValueNet::new(&mut vs, 3, input_dim);
     // Load weights if the file exists
     // Load weights for both networks
     if Path::new(model_path).exists() {
         println!("Loading model weights from {}", model_path);
-        if let Err(e) = policy_net.load_weights("model_weights/policy") {
-            eprintln!("Error loading PolicyNet: {:?}", e);
-            println!("Initializing PolicyNet with random weights.");
-        }
+        // Attempt to load the PolicyNet
+        let policy_net = CModule::load_on_device("model_weights/policy/policy.pt", device)
+            .map_err(|e| format!("Error loading PolicyNet: {}", e));
 
-        if let Err(e) = value_net.load_weights("model_weights/value") {
-            eprintln!("Error loading ValueNet: {:?}", e);
-            println!("Initializing ValueNet with random weights.");
-        }
+        // Attempt to load the ValueNet
+        let value_net = CModule::load_on_device("model_weights/value/value.pt", device)
+            .map_err(|e| format!("Error loading ValueNet: {}", e));
     } else {
         println!("No pre-trained model found. Initializing new models.");
     }
@@ -260,9 +258,6 @@ fn train_network_with_game_data(
         let normalized_reward = (reward - mean_reward) / std_dev_reward;
 
 
-
-
-
         // Policy Loss
         let best_position = result.best_position as i64;
         let mut target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
@@ -288,7 +283,6 @@ fn train_network_with_game_data(
         total_value_loss += value_loss;
 
         future_value = td_target.double_value(&[]).clamp(-1e3, 1e3) as f64;
-
     }
 
     let total_loss: Tensor = total_policy_loss + total_value_loss + entropy_weight * total_entropy_loss;
@@ -311,7 +305,6 @@ fn train_network_with_game_data(
     optimizer.step();
     optimizer.zero_grad();
 }
-
 
 
 fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Tensor {
@@ -445,7 +438,6 @@ fn deserialize_game_data(line: &str) -> Option<MCTSResult> {
 }
 
 
-
 fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
     use std::fs::OpenOptions;
     use std::io::{BufWriter, Write};
@@ -459,7 +451,7 @@ fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
 
     for result in game_data {
         let state_str = serialize_tensor(result.board_tensor);
-        let best_position_str=result.best_position;
+        let best_position_str = result.best_position;
 
 
         writeln!(
@@ -503,7 +495,7 @@ struct MCTSResult {
 async fn train_and_evaluate(
     vs: &nn::VarStore,
     policy_net: &mut PolicyNet,
-    value_net: &mut ValueNet<'_>,
+    value_net: &mut ValueNet,
     optimizer: &mut Optimizer,
     num_games: usize,
     num_simulations: usize,
@@ -541,7 +533,7 @@ async fn train_and_evaluate(
                         &mut deck,
                         chosen_tile,
                         policy_net,
-                        num_simulations,
+                        1000,
                     );
                     let best_position = game_result.best_position;
                     if first_move.is_none() {
@@ -641,10 +633,10 @@ async fn train_and_evaluate(
             // Save model weights
             println!("Saving models to {}", model_path);
             println!("Saving model weights...");
-            if let Err(e) = policy_net.save_weights("model_weights/policy") {
+            if let Err(e) = policy_net.save_model(vs, "model_weights/policy/policy.pt") {
                 eprintln!("Error saving PolicyNet weights: {:?}", e);
             }
-            if let Err(e) = value_net.save_weights("model_weights/value") {
+            if let Err(e) = value_net.save_model(vs, "model_weights/value/value.pt") {
                 eprintln!("Error saving ValueNet weights: {:?}", e);
             }
         }
