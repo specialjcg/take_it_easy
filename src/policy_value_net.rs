@@ -1,9 +1,10 @@
-use std::fs;
 use std::ops::{Mul, Sub};
+
 use futures_util::TryFutureExt;
-use tch::{Kind, nn, Tensor};
-use tch::nn::init::FanInOut;
-use tch::nn::init::FanInOut::FanIn;
+use tch::{nn, Tensor};
+use tch::nn::VarStore;
+use tch::Result;
+
 use crate::policy_value_net::res_net_block::ResNetBlock;
 
 mod res_net_block;
@@ -58,37 +59,18 @@ impl<'a> PolicyNet {
         }
     }
 
-    pub fn load_weights(&mut self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        self.conv1.ws = Tensor::load(&format!("{}/policy_conv1.pt", path))?;
-        for (i, block) in self.res_blocks.iter_mut().enumerate() {
-            let conv1_path = format!("{}/policy_res_block_{}_conv1.pt", path, i);
-            let conv2_path = format!("{}/policy_res_block_{}_conv2.pt", path, i);
-
-
-            block.conv1.ws = Tensor::load(&conv1_path)?;
-            block.conv2.ws = Tensor::load(&conv2_path)?;
-        }
-
-
-        self.flatten.ws = Tensor::load(&format!("{}/policy_flatten.pt", path))?;
-        self.policy_head.ws = Tensor::load(&format!("{}/policy_head.pt", path))?;
-
-        Ok(())
-    }
-    pub fn save_weights(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        fs::create_dir_all(path)?;
-
-        self.conv1.ws.save(&format!("{}/policy_conv1.pt", path))?;
-        for (i, block) in self.res_blocks.iter().enumerate() {
-            block.conv1.ws.save(&format!("{}/policy_res_block_{}_conv1.pt", path, i))?;
-            block.conv2.ws.save(&format!("{}/policy_res_block_{}_conv2.pt", path, i))?;
-        }
-        self.flatten.ws.save(&format!("{}/policy_flatten.pt", path))?;
-        self.policy_head.ws.save(&format!("{}/policy_head.pt", path))?;
-
+    pub fn save_model(&self, vs: &nn::VarStore, path: &str) -> Result<()> {
+        // Save the model's state dictionary to the specified path
+        vs.save(path)?;
         Ok(())
     }
 
+    pub fn load_model(&self,  vs: &mut nn::VarStore, path: &str, num_res_blocks: usize, input_dim: (i64, i64, i64)) -> Result<Self> {
+        // Load the model's state dictionary from the specified path
+        vs.load(path)?;
+        // Recreate the model with the loaded weights
+        Ok(Self::new(&vs, num_res_blocks, input_dim))
+    }
     pub fn forward(&self, x: &Tensor, train: bool) -> Tensor {
         let mut h = x.apply(&self.conv1).apply_t(&self.bn1, train).relu();
 
@@ -151,74 +133,7 @@ pub fn initialize_weights(vs: &nn::VarStore) {
 
 
 
-
-
-
-
-
-
-// fn initialize_weights(vs: &nn::VarStore) {
-//     for (name, mut tensor) in vs.variables() {
-//         *tensor = tensor.detach().clone(&Default::default());
-//         println!("Initializing tensor: {}", name);
-//
-//         if tensor.requires_grad() {
-//             let new_tensor = if name.contains("bn") {
-//                 if name.ends_with("weight") {
-//                     println!("Initializing BatchNorm weight: {}", name);
-//                     Tensor::ones_like(&tensor).detach() // Detach from computation graph
-//                 } else if name.ends_with("bias") {
-//                     println!("Initializing BatchNorm bias: {}", name);
-//                     Tensor::zeros_like(&tensor).detach()
-//                 } else {
-//                     continue;
-//                 }
-//             } else if tensor.size().len() >= 2 {
-//                 println!("Initializing weight with Kaiming Uniform: {}", name);
-//                 let fan_in = tensor.size()[1];
-//                 let gain = (6.0 / fan_in as f64).sqrt();
-//                 Tensor::rand_like(&tensor).mul(gain).sub(gain / 2.0).detach()
-//             } else {
-//                 println!("Initializing bias: {}", name);
-//                 Tensor::zeros_like(&tensor).detach()
-//             };
-//
-//             // Use f_copy_ to replace the tensor's data
-//             tensor.f_copy_(&new_tensor).unwrap_or_else(|err| {
-//                 panic!("Failed to initialize tensor {}: {:?}", name, err)
-//             });
-//         } else {
-//             println!("Skipping tensor without gradients: {}", name);
-//         }
-//     }
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-pub struct ValueNet<'a> {
-    vs: &'a nn::VarStore,
+pub struct ValueNet {
     conv1: nn::Conv2D,
     bn1: nn::BatchNorm,
     res_blocks: Vec<ResNetBlock>,
@@ -227,8 +142,8 @@ pub struct ValueNet<'a> {
     dropout_rate: f64,
 }
 
-impl<'a> ValueNet<'a> {
-    pub fn new(vs: &'a nn::VarStore, num_res_blocks: usize, input_dim: (i64, i64, i64)) -> Self {
+impl<'a> ValueNet {
+    pub fn new(vs: &'a mut nn::VarStore, num_res_blocks: usize, input_dim: (i64, i64, i64)) -> Self {
         let p = vs.root();
         let (channels, height, width) = input_dim;
 
@@ -283,7 +198,6 @@ impl<'a> ValueNet<'a> {
         // General initialization for other layers
 
         Self {
-            vs,
             conv1,
             bn1,
             res_blocks,
@@ -293,86 +207,22 @@ impl<'a> ValueNet<'a> {
         }
     }
 
-
-    pub fn load_weights(&mut self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // Load initial convolutional layer weights
-        self.conv1.ws = Tensor::load(&format!("{}/value_conv1.pt", path))?;
-        self.conv1.bs = Some(Tensor::load(&format!("{}/value_conv1_bias.pt", path))?);
-        self.bn1.running_mean = Tensor::load(&format!("{}/value_bn1_mean.pt", path))?;
-        self.bn1.running_var = Tensor::load(&format!("{}/value_bn1_var.pt", path))?;
-        self.bn1.ws = Some(Tensor::load(&format!("{}/value_bn1_weights.pt", path))?);
-        self.bn1.bs = Some(Tensor::load(&format!("{}/value_bn1_biases.pt", path))?);
-
-        // Load weights for ResNet blocks
-        for (i, block) in self.res_blocks.iter_mut().enumerate() {
-            block.conv1.ws = Tensor::load(&format!("{}/value_res_block_{}_conv1.pt", path, i))?;
-            block.conv2.ws = Tensor::load(&format!("{}/value_res_block_{}_conv2.pt", path, i))?;
-            block.bn1.running_mean = Tensor::load(&format!("{}/value_res_block_{}_bn1_mean.pt", path, i))?;
-            block.bn1.running_var = Tensor::load(&format!("{}/value_res_block_{}_bn1_var.pt", path, i))?;
-            block.bn1.ws = Some(Tensor::load(&format!("{}/value_res_block_{}_bn1_weights.pt", path, i))?);
-            block.bn1.bs = Some(Tensor::load(&format!("{}/value_res_block_{}_bn1_biases.pt", path, i))?);
-            block.bn2.running_mean = Tensor::load(&format!("{}/value_res_block_{}_bn2_mean.pt", path, i))?;
-            block.bn2.running_var = Tensor::load(&format!("{}/value_res_block_{}_bn2_var.pt", path, i))?;
-            block.bn2.ws = Some(Tensor::load(&format!("{}/value_res_block_{}_bn2_weights.pt", path, i))?);
-            block.bn2.bs = Some(Tensor::load(&format!("{}/value_res_block_{}_bn2_biases.pt", path, i))?);
-
-
-        }
-
-        // Load weights for fully connected layers
-        self.flatten.ws = Tensor::load(&format!("{}/value_flatten.pt", path))?;
-        self.value_head.ws = Tensor::load(&format!("{}/value_head.pt", path))?;
-
+    pub fn save_model(&self, vs: &nn::VarStore, path: &str) -> Result<()> {
+        // Save the model's state dictionary to the specified path
+        vs.save(path)?;
         Ok(())
     }
 
-    pub fn save_weights(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        fs::create_dir_all(path)?;
-
-        // Save initial convolutional layer weights
-        self.conv1.ws.save(&format!("{}/value_conv1.pt", path))?;
-        if let Some(bs) = &self.conv1.bs {
-            bs.save(&format!("{}/value_conv1_bias.pt", path))?;
-        }
-        self.bn1.running_mean.save(&format!("{}/value_bn1_mean.pt", path))?;
-        self.bn1.running_var.save(&format!("{}/value_bn1_var.pt", path))?;
-        if let Some(ws) = &self.bn1.ws {
-            ws.save(&format!("{}/value_bn1_weights.pt", path))?;
-        }
-        if let Some(bs) = &self.bn1.bs {
-            bs.save(&format!("{}/value_bn1_biases.pt", path))?;
-        }
-
-        // Save weights for ResNet blocks
-        for (i, block) in self.res_blocks.iter().enumerate() {
-            block.conv1.ws.save(&format!("{}/value_res_block_{}_conv1.pt", path, i))?;
-            block.conv2.ws.save(&format!("{}/value_res_block_{}_conv2.pt", path, i))?;
-            block.bn1.running_mean.save(&format!("{}/value_res_block_{}_bn1_mean.pt", path, i))?;
-            block.bn1.running_var.save(&format!("{}/value_res_block_{}_bn1_var.pt", path, i))?;
-            if let Some(ws) = &block.bn1.ws {
-                ws.save(&format!("{}/value_res_block_{}_bn1_weights.pt", path, i))?;
-            }
-            if let Some(bs) = &block.bn1.bs {
-                bs.save(&format!("{}/value_res_block_{}_bn1_biases.pt", path, i))?;
-            }
-            block.bn2.running_mean.save(&format!("{}/value_res_block_{}_bn2_mean.pt", path, i))?;
-            block.bn2.running_var.save(&format!("{}/value_res_block_{}_bn2_var.pt", path, i))?;
-            if let Some(ws) = &block.bn2.ws {
-                ws.save(&format!("{}/value_res_block_{}_bn2_weights.pt", path, i))?;
-            }
-            if let Some(bs) = &block.bn2.bs {
-                bs.save(&format!("{}/value_res_block_{}_bn2_biases.pt", path, i))?;
-            }
-
-
-        }
-
-        // Save weights for fully connected layers
-        self.flatten.ws.save(&format!("{}/value_flatten.pt", path))?;
-        self.value_head.ws.save(&format!("{}/value_head.pt", path))?;
-
-        Ok(())
+    pub fn load_model(&self,
+        vs: &mut nn::VarStore,
+        path: &str,
+        num_res_blocks: usize,
+        input_dim: (i64, i64, i64),
+    ) -> Result<Self> {
+        vs.load(path)?; // Load weights into the existing VarStore
+        Ok(Self::new(vs, num_res_blocks, input_dim))
     }
+
 
 
 
@@ -401,8 +251,9 @@ impl<'a> ValueNet<'a> {
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tch::{Device, nn};
+
+    use super::*;
 
     #[test]
     fn test_policy_net_creation() {
