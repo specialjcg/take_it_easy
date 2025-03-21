@@ -41,6 +41,12 @@
   <canvas id="scoreTrendChart" width="800" height="400"></canvas>
 </div>
 
+<!-- Canvas for results.csv chart -->
+<div class="container">
+  <h2>Historical Results</h2>
+  <canvas id="resultsCsvChart" width="800" height="400"></canvas>
+</div>
+
 <script>
   const canvas = document.getElementById('myCanvas');
   const ctx = canvas.getContext('2d');
@@ -96,9 +102,54 @@
     ctx.strokeStyle = 'white';
     ctx.stroke();
   }
+  let socket;
 
-  // WebSocket connection
-  const ws = new WebSocket('ws://127.0.0.1:9000');
+  function connectWebSocket() {
+    socket = new WebSocket("ws://127.0.0.1:9000");
+
+    socket.onopen = () => {
+      console.log("✅ Connected to WebSocket");
+
+      // Send periodic "ping" messages every 30 seconds to keep the connection alive
+      setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "ping" }));
+        }
+      }, 30000);
+    };
+
+    socket.onmessage = (event) => {
+      const message = event.data;
+
+      if (message.startsWith('GAME_RESULT:')) {
+        const score = parseInt(message.split(':')[1], 10);
+        const gameNumber = scores.length + 1;
+
+        scores.push(score);
+        labels.push(gameNumber);
+
+        const avg = calculateRollingAverage(scores, 10);
+        rollingAverages.push(avg);
+
+        scoreTrendChart.update();
+      } else {
+        const receivedImages = JSON.parse(message);
+        drawHexagonalGrid(receivedImages);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error("❌ WebSocket error:", error);
+      socket.close();
+    };
+
+    socket.onclose = () => {
+      console.warn("⚠️ WebSocket disconnected. Reconnecting in 5 seconds...");
+      setTimeout(connectWebSocket, 5000); // Auto-reconnect
+    };
+  }
+  loadResultsCsv();
+  connectWebSocket(); // Start WebSocket connection
 
   const scores = [];
   const rollingAverages = [];
@@ -149,8 +200,66 @@
     },
   });
 
-  ws.onopen = () => console.log('WebSocket connection established');
+  // Results CSV Chart
+  const resultsCsvCtx = document.getElementById('resultsCsvChart').getContext('2d');
+  const resultsCsvChart = new Chart(resultsCsvCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'Total Scores',
+          data: [],
+          borderColor: '#2196f3',
+          borderWidth: 2,
+          fill: false,
+        },
+        {
+          label: 'Average Scores',
+          data: [],
+          borderColor: '#f44336',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: {
+          title: { display: true, text: 'Games Played' },
+        },
+        y: {
+          title: { display: true, text: 'Score' },
+        },
+      },
+    },
+  });
 
+  // Load results.csv and update the chart
+  async function loadResultsCsv() {
+    try {
+      const response = await fetch('/results.csv'); // Ensure results.csv is served by the backend
+      if (!response.ok) throw new Error(`Failed to fetch results.csv: ${response.statusText}`);
+
+      const csvText = await response.text();
+      const lines = csvText.trim().split('\n');
+
+      lines.forEach((line) => {
+        const [gamesPlayed, totalScore, avgScore, timestamp] = line.split(',');
+        resultsCsvChart.data.labels.push(gamesPlayed);
+        resultsCsvChart.data.datasets[0].data.push(parseInt(totalScore, 10));
+        resultsCsvChart.data.datasets[1].data.push(parseFloat(avgScore));
+      });
+
+      resultsCsvChart.update();
+    } catch (error) {
+      console.error("Error loading results.csv:", error);
+    }
+  }
+
+  ws.onopen = () => console.log('WebSocket connection established');
   ws.onmessage = (event) => {
     const message = event.data;
 
@@ -172,6 +281,8 @@
   };
 
   ws.onerror = (error) => console.error('WebSocket error:', error);
+
+
 </script>
 </body>
 </html>
