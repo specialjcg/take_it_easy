@@ -1,6 +1,6 @@
 use tch::{nn, Tensor};
-use tch::nn::VarStore;
-use crate::policy_value_net::{ initialize_weights};
+
+use crate::policy_value_net::initialize_weights;
 
 /// Residual Block
 pub struct ResNetBlock {
@@ -12,9 +12,9 @@ pub struct ResNetBlock {
 }
 
 impl<'a> ResNetBlock {
-    pub fn new(vs: &'a nn::VarStore, channels_in: i64, channels_out: i64) -> Self {
+    pub fn new(vs: &nn::VarStore, channels_in: i64, channels_out: i64) -> Self {
         let p = vs.root();
-        let mut conv1 = nn::conv2d(
+        let conv1 = nn::conv2d(
             &p / "conv1",
             channels_in,
             channels_out,
@@ -33,7 +33,7 @@ impl<'a> ResNetBlock {
                 ..Default::default()
             },
         );
-        let mut conv2 = nn::conv2d(
+        let conv2 = nn::conv2d(
             &p / "conv2",
             channels_out,
             channels_out,
@@ -104,8 +104,9 @@ impl<'a> ResNetBlock {
 
 #[cfg(test)]
 mod tests {
+    use tch::{Device, nn};
+
     use super::*;
-    use tch::{nn, Device};
 
     #[test]
     fn test_resnet_block() {

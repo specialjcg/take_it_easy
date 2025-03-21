@@ -1,6 +1,4 @@
-use std::ops::{Mul, Sub};
 
-use futures_util::TryFutureExt;
 use tch::{nn, Tensor};
 use tch::nn::VarStore;
 use tch::Result;
@@ -8,52 +6,53 @@ use tch::Result;
 use crate::policy_value_net::res_net_block::ResNetBlock;
 
 mod res_net_block;
+
 pub struct PolicyNet {
     conv1: nn::Conv2D,
     bn1: nn::BatchNorm,
     res_blocks: Vec<ResNetBlock>,
     flatten: nn::Linear,
+    fc1: nn::Linear,
     policy_head: nn::Linear,
     dropout_rate: f64,
 }
+const NUM_RES_BLOCKS: usize = 8; // Or any number you want
+const INITIAL_CONV_CHANNELS: i64 = 128;
 
+const NUM_RES_BLOCKS_VALUE: usize = 8; // Or adjust as needed
+const INITIAL_CONV_CHANNELS_VALUE: i64 = 128;
 impl<'a> PolicyNet {
-    pub fn new(vs: &'a nn::VarStore, num_res_blocks: usize, input_dim: (i64, i64, i64)) -> Self {
-        let p = vs.root();
+    // policy_value_net.rs (PolicyNet and ValueNet)
+    pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64)) -> Self {
+        let p = vs.root(); // p is a Path
         let (channels, height, width) = input_dim;
 
-        let conv1 = nn::conv2d(&p / "policy_conv1", channels, 64, 3, nn::ConvConfig { padding: 1, ..Default::default() });
-        conv1.ws.set_requires_grad(true); // Ensure requires_grad is true
-        if let Some(bias) = &conv1.bs {
-            bias.set_requires_grad(true); // Ensure bias is trainable
-        }
-
-        let bn1 = nn::batch_norm2d(&p / "policy_bn1", 64, nn::BatchNormConfig::default());
-        bn1.ws.as_ref().map(|w| w.set_requires_grad(true));
-        bn1.bs.as_ref().map(|b| b.set_requires_grad(true));
+        let conv1 = nn::conv2d(&p / "policy_conv1", channels, INITIAL_CONV_CHANNELS, 3, nn::ConvConfig { padding: 1,..Default::default() });
+        let bn1 = nn::batch_norm2d(&p / "policy_bn1", INITIAL_CONV_CHANNELS, nn::BatchNormConfig::default());
 
         let mut res_blocks = Vec::new();
-        for _ in 0..num_res_blocks {
-            res_blocks.push(ResNetBlock::new(vs, 64, 64));
+        let mut in_channels = INITIAL_CONV_CHANNELS;
+
+        for _ in 0..NUM_RES_BLOCKS {
+            let out_channels = 32; // Or adjust as needed (e.g., increase in stages)
+            res_blocks.push(ResNetBlock::new(&vs, in_channels, out_channels)); // Use &vs here!
+            in_channels = out_channels;
         }
 
-        let flatten_size = 64 * height * width;
-        let flatten = nn::linear(&p / "policy_flatten", flatten_size, 512, Default::default());
-        flatten.ws.set_requires_grad(true);
-        flatten.bs.as_ref().map(|b| b.set_requires_grad(true));
 
-        let policy_head = nn::linear(&p / "policy_head", 512, 19, nn::LinearConfig::default());
-        policy_head.ws.set_requires_grad(true);
-        policy_head.bs.as_ref().map(|b| b.set_requires_grad(true));
+        let flatten_size = in_channels * height * width; // Adjust if you have downsampling in ResNetBlocks
+        let flatten = nn::linear(&p / "policy_flatten", flatten_size, 1024, Default::default());
+        let fc1 = nn::linear(&p / "policy_fc1", 1024, 256, Default::default());
+        let policy_head = nn::linear(&p / "policy_head", 256, 19, nn::LinearConfig::default());
 
-        // Initialize weights
-        initialize_weights(vs);
+        initialize_weights(&vs); // Use &vs here!
 
         Self {
             conv1,
             bn1,
             res_blocks,
             flatten,
+            fc1,
             policy_head,
             dropout_rate: 0.2,
         }
@@ -65,31 +64,38 @@ impl<'a> PolicyNet {
         Ok(())
     }
 
-    pub fn load_model(&self,  vs: &mut nn::VarStore, path: &str, num_res_blocks: usize, input_dim: (i64, i64, i64)) -> Result<Self> {
+    pub fn load_model(&self, vs: &mut nn::VarStore, path: &str) -> Result<()> {
         // Load the model's state dictionary from the specified path
         vs.load(path)?;
         // Recreate the model with the loaded weights
-        Ok(Self::new(&vs, num_res_blocks, input_dim))
+        Ok(())
     }
     pub fn forward(&self, x: &Tensor, train: bool) -> Tensor {
-        let mut h = x.apply(&self.conv1).apply_t(&self.bn1, train).relu();
+        let mut h = x.apply(&self.conv1).apply_t(&self.bn1, train).leaky_relu();
 
-        for res_block in &self.res_blocks {
-            h = res_block.forward(&h, train);
+        for block in &self.res_blocks {
+            h = block.forward(&h, train);
         }
+        // In PolicyNet::forward and ValueNet::forward:
+        let expected_flatten_size = {
+            let size = h.size();
+            (size[1], size[2], size[3]) // Extract dimensions as a tuple
+        };
+        let flattened_size = expected_flatten_size.0 * expected_flatten_size.1 * expected_flatten_size.2;
 
-        h = h.view([-1, 64 * 5 * 5]);
+        h = h.view([-1, flattened_size]);
+
         h = h.apply(&self.flatten).relu();
+        if train { h = h.dropout(self.dropout_rate, train); }
 
-        if train {
-            h = h.dropout(self.dropout_rate, train);
-        }
+        h = h.apply(&self.fc1).relu();
+        if train { h = h.dropout(self.dropout_rate, train); }
 
-        let policy_logits = h.apply(&self.policy_head);
-        policy_logits.softmax(-1, tch::Kind::Float)
+        h.apply(&self.policy_head).softmax(-1, tch::Kind::Float)
     }
 
 }
+
 // Initialize weights
 pub fn initialize_weights(vs: &nn::VarStore) {
     for (name, mut param) in vs.variables() {
@@ -99,7 +105,7 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             // Xavier initialization for policy network's conv1
             let fan_in = size[1] as f64;
             let fan_out = size[0] as f64;
-            let bound = (6.0 / (fan_in + fan_out)).sqrt();
+            let bound = (2.0 / fan_in).sqrt(); // He initialization
             let new_data = Tensor::randn_like(&param) * bound;
             param.set_data(&new_data);
             println!("Initialized policy_conv1 with Xavier initialization: {}", name);
@@ -107,7 +113,7 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             // Xavier initialization for value network's conv1
             let fan_in = size[1] as f64;
             let fan_out = size[0] as f64;
-            let bound = (6.0 / (fan_in + fan_out)).sqrt();
+            let bound = (2.0 / fan_in).sqrt(); // He initialization
             let new_data = Tensor::randn_like(&param) * bound;
             param.set_data(&new_data);
             println!("Initialized value_conv1 with Xavier initialization: {}", name);
@@ -115,7 +121,7 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             // Default Xavier initialization for other weight tensors
             let fan_in = size[1] as f64;
             let fan_out = size[0] as f64;
-            let bound = (6.0 / (fan_in + fan_out)).sqrt();
+            let bound = (2.0 / fan_in).sqrt(); // He initialization
             let new_data = Tensor::randn_like(&param) * bound;
             param.set_data(&new_data);
             println!("Initialized weight tensor: {}", name);
@@ -131,6 +137,7 @@ pub fn initialize_weights(vs: &nn::VarStore) {
     }
 }
 
+//... other imports
 
 
 pub struct ValueNet {
@@ -138,117 +145,84 @@ pub struct ValueNet {
     bn1: nn::BatchNorm,
     res_blocks: Vec<ResNetBlock>,
     flatten: nn::Linear,
+    fc1: nn::Linear, // Added FC layer
     value_head: nn::Linear,
     dropout_rate: f64,
 }
 
-impl<'a> ValueNet {
-    pub fn new(vs: &'a mut nn::VarStore, num_res_blocks: usize, input_dim: (i64, i64, i64)) -> Self {
+impl ValueNet {
+    pub fn new(vs: &VarStore, input_dim: (i64, i64, i64)) -> Self {
         let p = vs.root();
         let (channels, height, width) = input_dim;
 
-        // Define conv1 layer
-        let mut conv1 = nn::conv2d(&p / "value_conv1", channels, 64, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv1 = nn::conv2d(&p / "value_conv1", channels, INITIAL_CONV_CHANNELS_VALUE, 3, nn::ConvConfig { padding: 1,..Default::default() });
+        let bn1 = nn::batch_norm2d(&p / "value_bn1", INITIAL_CONV_CHANNELS_VALUE, nn::BatchNormConfig::default());
 
-        let weight = &mut conv1.ws;
-        let fan_in = weight.size()[0] as f64; // Input channels
-        let bound = (2.0 / fan_in).sqrt(); // He initialization
-        weight.set_data(&(Tensor::randn_like(weight) * bound));
-
-        if let Some(ref mut bias) = conv1.bs {
-            bias.set_data(&Tensor::zeros_like(bias)); // Zero-initialize bias
-        }
-        // Define batch norm layer
-        let mut bn1 = nn::batch_norm2d(&p / "value_bn1", 64, nn::BatchNormConfig::default());
-        // Define residual blocks
         let mut res_blocks = Vec::new();
-        for _ in 0..num_res_blocks {
-            res_blocks.push(ResNetBlock::new(vs, 64, 64));
+        let mut in_channels = INITIAL_CONV_CHANNELS_VALUE;
+
+        for _ in 0..NUM_RES_BLOCKS_VALUE {
+            let out_channels = 128; // Or adjust as needed
+            res_blocks.push(ResNetBlock::new(&vs, in_channels, out_channels)); // Use &vs here!
+            in_channels = out_channels;
         }
 
-        // Define fully connected layers
-        let flatten_size = 64 * height * width;
-        let flatten = nn::linear(&p / "value_flatten", flatten_size, 512, Default::default());
+        let flatten_size = in_channels * height * width; // Adjust if you have downsampling
+        let flatten = nn::linear(&p / "value_flatten", flatten_size, 1024, Default::default()); // Increased size
+        let fc1 = nn::linear(&p / "value_fc1", 1024, 256, Default::default()); // Added FC layer
+        let value_head = nn::linear(&p / "value_head", 256, 1, nn::LinearConfig::default());
 
-
-        if let Some(weight) = &mut bn1.ws {
-            let fan_in = weight.size()[0] as f64;
-            let bound = (2.0 / fan_in).sqrt(); // He initialization
-            weight.set_data(&(Tensor::randn_like(weight) * bound));
-        }
-
-        if let Some(bias) = &mut bn1.bs {
-            bias.set_data(&Tensor::zeros_like(bias)); // Zero-initialize bias
-        }
-
-
-        let mut value_head = nn::linear(&p / "value_head", 512, 1, nn::LinearConfig::default());
-
-        let weight = &mut value_head.ws; // Access the weight tensor mutably
-        let fan_in = weight.size()[0] as f64;
-        let bound = (2.0 / fan_in).sqrt(); // He initialization
-        weight.set_data(&(Tensor::randn_like(weight) * bound));
-
-        if let Some(bias) = &mut value_head.bs {
-            bias.set_data(&Tensor::zeros_like(bias)); // Zero-initialize bias
-        }
-
-
-
-        // General initialization for other layers
+        initialize_weights(&vs); // Use &vs here!
 
         Self {
             conv1,
             bn1,
             res_blocks,
             flatten,
+            fc1,
             value_head,
             dropout_rate: 0.2,
         }
     }
-
     pub fn save_model(&self, vs: &nn::VarStore, path: &str) -> Result<()> {
         // Save the model's state dictionary to the specified path
         vs.save(path)?;
         Ok(())
     }
 
-    pub fn load_model(&self,
-        vs: &mut nn::VarStore,
-        path: &str,
-        num_res_blocks: usize,
-        input_dim: (i64, i64, i64),
-    ) -> Result<Self> {
-        vs.load(path)?; // Load weights into the existing VarStore
-        Ok(Self::new(vs, num_res_blocks, input_dim))
+    pub fn load_model(&self, vs: &mut nn::VarStore, path: &str) -> Result<()> {
+        // Load the model's state dictionary from the specified path
+        vs.load(path)?;
+        // Recreate the model with the loaded weights
+        Ok(())
     }
-
-
-
-
-
     pub fn forward(&self, x: &Tensor, train: bool) -> Tensor {
+        let mut h = x.apply(&self.conv1).apply_t(&self.bn1, train).leaky_relu();
 
-        let mut h = x.apply(&self.conv1).apply_t(&self.bn1, train);
-
-        h = h.clamp(-10.0, 10.0).relu();
-
-        for res_block in &self.res_blocks {
-            h = res_block.forward(&h, train);
+        for block in &self.res_blocks {
+            h = block.forward(&h, train);
         }
 
-        h = h.view([-1, 64 * 5 * 5]);
+        // In PolicyNet::forward and ValueNet::forward:
+        let expected_flatten_size = {
+            let size = h.size();
+            (size[1], size[2], size[3]) // Extract dimensions as a tuple
+        };
+        let flattened_size = expected_flatten_size.0 * expected_flatten_size.1 * expected_flatten_size.2;
+
+        h = h.view([-1, flattened_size]);
+
         h = h.apply(&self.flatten).relu();
+        if train { h = h.dropout(self.dropout_rate, train); }
 
-        if train {
-            h = h.dropout(self.dropout_rate, train);
-        }
+        h = h.apply(&self.fc1).relu(); // FC layer
+        if train { h = h.dropout(self.dropout_rate, train); }
 
-        let value = h.apply(&self.value_head).tanh();
-        value
+        h.apply(&self.value_head).sigmoid()
     }
-
 }
+
+
 #[cfg(test)]
 mod tests {
     use tch::{Device, nn};

@@ -516,7 +516,7 @@ use super::*;
 
     #[test]
     fn test_apply_move() {
-        let mut state = create_game_state();
+        let state = create_game_state();
 
         let tile = state.deck.tiles[0].clone();
         let position = 2;
@@ -664,7 +664,7 @@ use super::*;
         let mut child = create_mcts_node(create_game_state(), Some(&mut root as *mut _));
         root.children.push(child);
 
-        let mut leaf = create_mcts_node(create_game_state(), Some(&mut root.children[0] as *mut _));
+        let  leaf = create_mcts_node(create_game_state(), Some(&mut root.children[0] as *mut _));
         root.children[0].children.push(leaf);
 
         println!("Before backpropagation: root = {:?}, child = {:?}, leaf = {:?}", root, root.children[0], root.children[0].children[0]);
