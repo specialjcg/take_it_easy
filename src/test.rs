@@ -215,7 +215,7 @@ use super::*;
         let tile = Tile(1, 2, 3);
         let deck = create_shuffle_deck();
 
-        let tensor = convert_plateau_to_tensor(&plateau, &tile, &deck);
+        let tensor = convert_plateau_to_tensor(&plateau, &tile, &deck, /* usize */0, 19/* usize */);
         assert_eq!(tensor.size(), vec![1, 3, 5, 5]); // Ensure the tensor has the correct shape
     }
 

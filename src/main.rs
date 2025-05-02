@@ -23,7 +23,8 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use create_plateau_empty::create_plateau_empty;
 use create_shuffle_deck::create_shuffle_deck;
 use result::result;
-
+use crate::logging::setup_logging;
+use crate::mcts_vs_human::play_mcts_vs_human;
 use crate::policy_value_net::{PolicyNet, ValueNet};
 use crate::remove_tile_from_deck::{remove_tile_from_deck, replace_tile_in_deck};
 use crate::test::{Deck, Plateau, Tile};
@@ -35,6 +36,8 @@ mod create_plateau_empty;
 mod create_shuffle_deck;
 
 mod policy_value_net;
+mod mcts_vs_human;
+mod logging;
 
 fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
     tiles.iter().map(|tile| {
@@ -42,15 +45,20 @@ fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
     }).collect()
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
+#[command(name = "take_it_easy")]
 struct Config {
     /// Number of games to simulate
-    #[arg(short = 'g', long, default_value_t = 500)]
+    #[arg(short = 'g', long, default_value_t = 1000)]
     num_games: usize,
 
-    /// Number of simulations per game state in MCTS
-    #[arg(short = 's', long, default_value_t = 3000)]
+    /// Number of simulations per game state
+    #[arg(short = 's', long, default_value_t = 100)]
     num_simulations: usize,
+
+    /// Run MCTS vs Human instead of training
+    #[arg(long)]
+    mcts_vs_human: bool,
 }
 
 
@@ -58,54 +66,84 @@ struct Config {
 async fn main() {
     let config = Config::parse();
     let model_path = "model_weights";
+    setup_logging();
 
     // Initialize VarStore
-    let mut vs = nn::VarStore::new(Device::Cpu);
-    let input_dim = (5, 47,1); // (Channels, Height, Width)
+    let mut vs_policy = nn::VarStore::new(Device::Cpu);
+    let mut vs_value = nn::VarStore::new(Device::Cpu);
+    let input_dim = (5, 47, 1);
+    let mut policy_net = PolicyNet::new(&vs_policy, input_dim);
+    let mut value_net = ValueNet::new(&mut vs_value, input_dim);
 
-    // Initialize PolicyNet and ValueNet
-    let mut policy_net = PolicyNet::new(&vs,  input_dim);
-    let mut value_net = ValueNet::new(&mut vs,  input_dim);
-    // Load weights if the file exists
-    // Load weights for both networks
+
+
+
+
+    // Load weights if the model directory exists
     if Path::new(model_path).exists() {
-        println!("Loading model weights from {}", model_path);
-        if let Err(e) = policy_net.load_model(&mut vs, "model_weights/policy/policy.params" ) {
-            eprintln!("Error loading PolicyNet: {:?}", e);
-            println!("Initializing PolicyNet with random weights.");
+        log::info!("🔄 Loading model weights from {}", model_path);
+
+        if let Err(e) = policy_net.load_model(&mut vs_policy, "model_weights/policy/policy.params") {
+            log::error!("⚠️ Error loading PolicyNet: {:?}", e);
+            log::info!("➡️  Initializing PolicyNet with random weights.");
         }
 
-        if let Err(e) = value_net.load_model(&mut vs, "model_weights/value/value.params") {
-            eprintln!("Error loading ValueNet: {:?}", e);
-            println!("Initializing ValueNet with random weights.");
+        if let Err(e) = value_net.load_model(&mut vs_value, "model_weights/value/value.params") {
+            log::error!("⚠️ Error loading ValueNet: {:?}", e);
+            log::info!("➡️  Initializing ValueNet with random weights.");
         }
     } else {
-        println!("No pre-trained model found. Initializing new models.");
+        log::info!("📭 No pre-trained model found. Initializing new models.");
+    }
+    let mut optimizer_policy = nn::Adam ::default().build(&vs_policy, 1e-3).unwrap();
+    let mut optimizer_value = nn::Adam { wd: 5e-4, ..Default::default() }
+        .build(&vs_value, 1e-4).unwrap();
+    // <- ValueNet plus lent
+
+
+
+    // ➕ Duel Mode: MCTS vs Human
+    if config.mcts_vs_human {
+        let listener = TcpListener::bind("127.0.0.1:9001")
+            .await
+            .expect("Unable to bind WebSocket on port 9001 for MCTS vs Human");
+
+        log::info!("🧍‍♂️🤖 Waiting for MCTS vs Human connection...");
+        let (stream, _) = listener.accept().await.unwrap();
+        let ws_stream = accept_async(stream).await.unwrap();
+        let (mut write, mut read) = ws_stream.split();
+
+        play_mcts_vs_human(
+            &policy_net,
+            &value_net,
+            config.num_simulations,
+            &mut write,
+            &mut read,
+        )
+            .await;
+
+        return; // Exit after duel game
     }
 
-    let mut optimizer = nn::Adam {
-        wd: 5e-4, // Weight decay
-        ..Default::default() // Other defaults
-    }
-        .build(&vs, 1e-4) // Learning rate
-        .unwrap();
-
-
-    // Launch simulations and train the model
+    // 🧠 Training Mode
     let listener = TcpListener::bind("127.0.0.1:9000")
         .await
-        .expect("Unable to start WebSocket server");
-    println!("WebSocket server started at ws://127.0.0.1:9000");
+        .expect("Unable to bind WebSocket on port 9000 for training");
+    log::info!("🧠 Training WebSocket server started at ws://127.0.0.1:9000");
+
     train_and_evaluate(
-        &vs,
+        &vs_policy,
+        &vs_value,
         &mut policy_net,
         &mut value_net,
-        &mut optimizer,
+        &mut optimizer_policy,
+        &mut optimizer_value,
         config.num_games,
         config.num_simulations,
         50, // Evaluate every 50 games
         listener.into(),
-    ).await;
+    )
+        .await;
 }
 
 
@@ -132,11 +170,14 @@ fn mcts_find_best_position_for_tile_with_nn(
     let board_tensor = convert_plateau_to_tensor(plateau, &chosen_tile, deck,current_turn, total_turns);
     let policy_logits = policy_net.forward(&board_tensor, false);
     let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp(); // Log-softmax improves numerical stability
-
+    let dummy_input = Tensor::randn(&[1, 5, 47, 1], (tch::Kind::Float, tch::Device::Cpu));
+    let output = value_net.forward(&dummy_input, false);
+    log::info!("Dummy output ValueNet: {:.4}", output.double_value(&[]));
     let mut visit_counts: HashMap<usize, usize> = HashMap::new();
     let mut total_scores: HashMap<usize, f64> = HashMap::new();
     let mut ucb_scores: HashMap<usize, f64> = HashMap::new();
     let mut total_visits: i32 = 0;
+
 
     for &position in &legal_moves {
         visit_counts.insert(position, 0);
@@ -160,7 +201,7 @@ fn mcts_find_best_position_for_tile_with_nn(
         let board_tensor_temp = convert_plateau_to_tensor(&temp_plateau, &chosen_tile, &temp_deck,current_turn, total_turns);
 
         let pred_value = value_net.forward(&board_tensor_temp, false).double_value(&[]);
-        let pred_value = pred_value.clamp(-2.0, 2.0);
+        let pred_value = pred_value.clamp(-1.0, 1.0);
 
         // Track min and max for dynamic pruning
         min_value = min_value.min(pred_value);
@@ -183,7 +224,7 @@ fn mcts_find_best_position_for_tile_with_nn(
 
         let top_k = usize::min(
             moves_with_prior.len(),
-            ((total_visits as f64).sqrt() as usize).max(3),
+            ((total_visits as f64).sqrt() as usize).max(5),
         );
 
         let subset_moves: Vec<usize> = moves_with_prior.iter().take(top_k).map(|&(pos, _)| pos).collect();
@@ -220,11 +261,31 @@ fn mcts_find_best_position_for_tile_with_nn(
             let exploration_param = c_puct * (total_visits as f64).ln() / (1.0 + *visits as f64);
             let prior_prob = policy.i((0, position as i64)).double_value(&[]);
             let average_score = *total_score / (*visits as f64);
-            let ucb_score = average_score
-                + exploration_param * (prior_prob.sqrt()) // Use sqrt instead of multiplication
-                + 1.2 * value_estimate; // Increase weight of value network estimates
+            // 🧪 Reduce weight of rollout average
+            let mut ucb_score = (average_score * 0.5) // reduce rollout influence
+                + exploration_param * (prior_prob.sqrt())
+                + 0.25 * value_estimate.clamp(0.0, 2.0);
 
-            // **Improved Neural-Guided UCB Calculation**
+
+            // 🔥 Explicit Priority Logic HERE 🔥
+            // 1️⃣ Ajoute cette fonction en dehors de ta mcts_find_best_position_for_tile_with_nn
+
+
+            // 2️⃣ Intègre ceci dans ta boucle ucb_scores, juste après le boost fixe
+
+            if chosen_tile.0 == 9 && [7, 8, 9, 10, 11].contains(&position) {
+                ucb_score += 10000.0;  // double boost
+            } else if chosen_tile.0 == 5 && [3, 4, 5, 6, 12, 13, 14, 15].contains(&position) {
+                ucb_score += 8000.0;
+            } else if chosen_tile.0 == 1 && [0, 1, 2, 16, 17, 18].contains(&position) {
+                ucb_score += 6000.0;
+            }
+
+            // 🔥 Alignment Priority Logic 🔥
+
+
+
+
 
             ucb_scores.insert(position, ucb_score);
         }
@@ -238,7 +299,6 @@ fn mcts_find_best_position_for_tile_with_nn(
                 .unwrap_or(std::cmp::Ordering::Equal)
         }).unwrap_or(0);
 
-    let best_position_score = total_scores.get(&best_position).cloned().unwrap_or(0.0);
 
     // **NEW: Simulate the Rest of the Game to Get Final Score**
     let mut final_plateau = plateau.clone();
@@ -261,14 +321,44 @@ fn mcts_find_best_position_for_tile_with_nn(
     }
 
     let final_score = result(&final_plateau); // Get actual game score
+    let prior_prob = policy.i((0, best_position as i64)).double_value(&[]);
+    let value_estimate = value_net.forward(&board_tensor, false).double_value(&[]);
 
+    log::info!(
+        "🤖 MCTS chose position {} | Policy Prior: {:.4} | ValueNet Estimate: {:.2} | Final Simulated Score: {:.2}",
+        best_position, prior_prob, value_estimate, final_score
+    );
     MCTSResult {
         best_position,
         board_tensor,
         subscore: final_score as f64, // Store real final score, not UCB score
     }
 }
+fn local_lookahead(mut plateau: Plateau, mut deck: Deck, depth: usize) -> i32 {
+    for _ in 0..depth {
+        if is_plateau_full(&plateau) || deck.tiles.is_empty() {
+            break;
+        }
 
+        let tile_index = rand::thread_rng().gen_range(0..deck.tiles.len());
+        let chosen_tile = deck.tiles[tile_index];
+
+        let legal_moves = get_legal_moves(plateau.clone());
+        if legal_moves.is_empty() {
+            break;
+        }
+
+        let best_pos = legal_moves
+            .into_iter()
+            .max_by_key(|&pos| compute_alignment_score(&plateau, pos, &chosen_tile) as i32)
+            .unwrap();
+
+        plateau.tiles[best_pos] = chosen_tile;
+        deck = replace_tile_in_deck(&deck, &chosen_tile);
+    }
+
+    result(&plateau)
+}
 fn compute_global_stats(game_data: &[MCTSResult]) -> (Tensor, Tensor) {
     let stacked = Tensor::cat(
         &game_data.iter().map(|gd| gd.board_tensor.shallow_clone()).collect::<Vec<_>>(),
@@ -282,6 +372,46 @@ fn compute_global_stats(game_data: &[MCTSResult]) -> (Tensor, Tensor) {
     (mean, std)
 }
 
+fn compute_alignment_score(plateau: &Plateau, position: usize, tile: &Tile) -> f64 {
+    let patterns: Vec<(&[usize], Box<dyn Fn(&Tile) -> i32>)> = vec![
+        (&[0, 1, 2], Box::new(|t: &Tile| t.0)),
+        (&[3, 4, 5, 6], Box::new(|t: &Tile| t.0)),
+        (&[7, 8, 9, 10, 11], Box::new(|t: &Tile| t.0)),
+        (&[12, 13, 14, 15], Box::new(|t: &Tile| t.0)),
+        (&[16, 17, 18], Box::new(|t: &Tile| t.0)),
+        (&[0, 3, 7], Box::new(|t: &Tile| t.1)),
+        (&[1, 4, 8, 12], Box::new(|t: &Tile| t.1)),
+        (&[2, 5, 9, 13, 16], Box::new(|t: &Tile| t.1)),
+        (&[6, 10, 14, 17], Box::new(|t: &Tile| t.1)),
+        (&[11, 15, 18], Box::new(|t: &Tile| t.1)),
+        (&[7, 12, 16], Box::new(|t: &Tile| t.2)),
+        (&[3, 8, 13, 17], Box::new(|t: &Tile| t.2)),
+        (&[0, 4, 9, 14, 18], Box::new(|t: &Tile| t.2)),
+        (&[1, 5, 10, 15], Box::new(|t: &Tile| t.2)),
+        (&[2, 6, 11], Box::new(|t: &Tile| t.2)),
+    ];
+
+    let mut score = 0.0;
+
+    for (indices, selector) in patterns {
+        if indices.contains(&position) {
+            // Récupère les valeurs dans le pattern
+            let values: Vec<i32> = indices
+                .iter()
+                .map(|&i| selector(&plateau.tiles[i]))
+                .filter(|&v| v != 0) // Ignore les cases vides
+                .collect();
+
+            if !values.is_empty() {
+                // Moyenne ou somme des alignements existants
+                let sum = values.iter().sum::<i32>() as f64;
+                score += sum / values.len() as f64;
+            }
+        }
+    }
+
+    score
+}
 
 
 fn normalize_input(tensor: &Tensor, global_mean: &Tensor, global_std: &Tensor) -> Tensor {
@@ -290,44 +420,64 @@ fn normalize_input(tensor: &Tensor, global_mean: &Tensor, global_std: &Tensor) -
 
 
 fn train_network_with_game_data(
-    vs: &nn::VarStore,
+    vs_policy: &nn::VarStore,
+    vs_value: &nn::VarStore,
     game_data: &[MCTSResult],
     discount_factor: f64,
     policy_net: &PolicyNet,
     value_net: &ValueNet,
-    optimizer: &mut Optimizer,
+    optimizer_policy: &mut Optimizer,
+    optimizer_value: &mut Optimizer,
 ) {
     let entropy_weight = 0.05;
     let gamma = 0.99;
     let epsilon = 1e-8;
 
-    let min_reward = game_data.iter().map(|r| r.subscore).fold(f64::INFINITY, f64::min);
-    let max_reward = game_data.iter().map(|r| r.subscore).fold(f64::NEG_INFINITY, f64::max);
-    let range = (max_reward - min_reward).max(epsilon);
-
-    let normalize_reward = |reward: f64| -> f64 {
-        ((reward - min_reward) / range) * 2.0 - 1.0
-    };
+    // let min_reward = game_data.iter().map(|r| r.subscore).fold(f64::INFINITY, f64::min);
+    // let max_reward = game_data.iter().map(|r| r.subscore).fold(f64::NEG_INFINITY, f64::max);
+    // let range = (max_reward - min_reward).max(epsilon);
+    //
+    // let normalize_reward = |reward: f64| -> f64 {
+    //     ((reward - min_reward) / range) * 2.0 - 1.0
+    // };
 
     let (global_mean, global_std) = compute_global_stats(game_data);
+
+    let mut predictions = Vec::new();
+    let mut targets = Vec::new();
 
     let mut future_value = Tensor::zeros(&[], (tch::Kind::Float, tch::Device::Cpu));
     let mut total_policy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
     let mut total_value_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
     let mut total_entropy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
+    let mut step = 0;
 
     for result in game_data.iter().rev() {
         let state = normalize_input(&result.board_tensor, &global_mean, &global_std);
-
-        // Forward pass
         let pred_policy = policy_net.forward(&state, true).clamp_min(1e-7);
-        let pred_value = value_net.forward(&state, true).clamp(-10.0, 10.0);
+        let pred_value = value_net.forward(&state, true);
 
-        let normalized_reward_tensor = Tensor::from(normalize_reward(result.subscore));
-        let discounted_reward = normalized_reward_tensor + gamma * future_value.shallow_clone().detach();
+        let normalized_reward_tensor = Tensor::from(result.subscore);
+        let discounted_reward: Tensor = normalized_reward_tensor + gamma * future_value.shallow_clone().detach();
         future_value = discounted_reward.shallow_clone();
+        step += 1;
+        let error = (pred_value.shallow_clone() - discounted_reward.shallow_clone()).abs().double_value(&[]);
 
-        // Policy Loss
+        if step % 50 == 0 {
+            log::info!(
+        "🔍 Step {} | Value Prediction: {:.4} | Target Reward: {:.4} | Error: {:.4}",
+        step,
+        pred_value.double_value(&[]),
+        discounted_reward.double_value(&[]),
+        error
+    );
+        }
+
+
+        predictions.push(pred_value.double_value(&[]));
+        targets.push(discounted_reward.double_value(&[]));
+
+        // Policy loss
         let best_position = result.best_position as i64;
         let target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
         target_policy.i((0, best_position)).fill_(1.0);
@@ -335,25 +485,100 @@ fn train_network_with_game_data(
         let policy_loss = -(target_policy * log_policy.shallow_clone()).sum(tch::Kind::Float);
         total_policy_loss += policy_loss;
 
-        // Entropy Loss
+        // Entropy loss
         let entropy_loss = -(pred_policy * log_policy).sum(tch::Kind::Float);
         total_entropy_loss += entropy_loss;
-
-        // Value Loss
-        let td_target = (discounted_reward.shallow_clone() + discount_factor * future_value.shallow_clone())
-            .clamp(-10.0, 10.0);
-        let value_loss = (td_target - pred_value).pow(&Tensor::from(2.0)).mean(tch::Kind::Float);
+        let pred_value_clone = pred_value.shallow_clone();
+        // Value loss
+        let td_target = discounted_reward.clamp(0.0, 300.0);
+        let td_target_clone = td_target.shallow_clone();
+        let delta = 1.0;
+        let diff = td_target - pred_value;
+        let value_loss = diff.abs().clamp_max(delta).pow_tensor_scalar(2.0) * 0.5
+            + (diff.abs() - delta).clamp_min(0.0) * delta;
+        let value_loss = value_loss.mean(tch::Kind::Float);
         total_value_loss += value_loss;
+        log::info!(
+    "🎯 ValueNet Prediction: {:.2} | Target: {:.2}",
+    pred_value_clone.double_value(&[]),
+    td_target_clone.double_value(&[])
+);
+
     }
 
-    // Total Loss
-    let total_loss: Tensor = total_policy_loss + total_value_loss + entropy_weight * total_entropy_loss;
+    // Total loss
+    let total_loss: Tensor = total_policy_loss.shallow_clone()
+        + total_value_loss.shallow_clone()
+        + (entropy_weight * total_entropy_loss.shallow_clone());
+
     total_loss.backward();
 
-    optimizer.clip_grad_norm(1.0);
-    optimizer.step();
-    optimizer.zero_grad();
+    let avg_policy_loss = total_policy_loss.double_value(&[]) / (game_data.len() as f64);
+    let avg_value_loss = total_value_loss.double_value(&[]) / (game_data.len() as f64);
+    let avg_entropy_loss = total_entropy_loss.double_value(&[]) / (game_data.len() as f64);
+
+    // Total grad norm
+    let total_grad_norm = vs_value.variables()
+        .iter()
+        .filter_map(|(_, t)| {
+            let grad = t.grad();
+            if grad.defined() { Some(grad.norm().double_value(&[])) } else { None }
+        })
+        .sum::<f64>();
+    log::info!(
+    "🎯 ValueNet Update | Avg Policy Loss: {:.4} | Avg Value Loss: {:.4} | Avg Entropy Loss: {:.4} | Total Grad Norm: {:.4}",
+    avg_policy_loss,
+    avg_value_loss,
+    avg_entropy_loss,
+    total_grad_norm
+);
+
+    // Log summarized ValueNet predictions
+    if !predictions.is_empty() {
+        let avg_pred: f64 = predictions.iter().copied().sum::<f64>() / predictions.len() as f64;
+        let avg_target: f64 = targets.iter().copied().sum::<f64>() / targets.len() as f64;
+
+        log::info!(
+        "📈 ValueNet Summary -> Avg Prediction: {:.4}, Avg Target: {:.4}",
+        avg_pred,
+        avg_target
+    );
+    }
+    let total_norm = vs_value.variables()
+        .iter()
+        .filter_map(|(_, t)| {
+            let grad = t.grad();
+            if grad.defined() { Some(grad.norm()) } else { None }
+        })
+        .fold(0.0, |acc, norm| acc + norm.double_value(&[]));
+
+    if total_norm < 0.01 {
+        log::warn!("⚠️ Gradients might be vanishing. Total Grad Norm: {:.6}", total_norm);
+    }
+    let mut grad_norms: Vec<(String, f64)> = vec![];
+
+    for (name, tensor) in vs_value.variables() {
+        let grad = tensor.grad();
+        if grad.defined() {
+            let norm = grad.norm_scalaropt_dim(2, &[], false).double_value(&[]);
+            grad_norms.push((name.to_string(), norm));
+        }
+    }
+
+    let max_grad = grad_norms.iter().map(|(_, norm)| *norm).fold(0.0, f64::max);
+    let mean_grad = grad_norms.iter().map(|(_, norm)| *norm).sum::<f64>() / grad_norms.len() as f64;
+
+    log::info!("🔍 Max Grad Norm: {:.4}, Mean Grad Norm: {:.4}", max_grad, mean_grad);
+    // --- Loss Breakdown ---
+
+
+    optimizer_policy.step();
+    optimizer_policy.zero_grad();
+
+    optimizer_value.step();
+    optimizer_value.zero_grad();
 }
+
 
 
 
@@ -435,40 +660,7 @@ fn compute_potential_scores(plateau: &Plateau) -> Vec<f32> {
 
 
 
-// fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck) -> Tensor {
-//     let mut features = vec![0.0; 3 * 47]; // 3 channels, 47 positions (19 plateau + 1 chosen tile + 27 deck)
-//
-//     // Encode plateau tiles
-//     for (i, t) in plateau.tiles.iter().enumerate() {
-//         if i < 19 {
-//             features[i] = (t.0 as f32 / 10.0).clamp(0.0, 1.0);
-//             features[47 + i] = (t.1 as f32 / 10.0).clamp(0.0, 1.0);
-//             features[2 * 47 + i] = (t.2 as f32 / 10.0).clamp(0.0, 1.0);
-//         }
-//     }
-//
-//     // Encode chosen tile at index 19
-//     let tile_index = 19;
-//     features[tile_index] = (tile.0 as f32 / 10.0).clamp(0.0, 1.0);
-//     features[47 + tile_index] = (tile.1 as f32 / 10.0).clamp(0.0, 1.0);
-//     features[2 * 47 + tile_index] = (tile.2 as f32 / 10.0).clamp(0.0, 1.0);
-//
-//     // Encode deck tiles (remaining 27)
-//     for (i, t) in deck.tiles.iter().enumerate() {
-//         let deck_index = 20 + i; // Deck starts at index 20
-//         if deck_index < 47 {
-//             features[deck_index] = (t.0 as f32 / 10.0).clamp(0.0, 1.0);
-//             features[47 + deck_index] = (t.1 as f32 / 10.0).clamp(0.0, 1.0);
-//             features[2 * 47 + deck_index] = (t.2 as f32 / 10.0).clamp(0.0, 1.0);
-//         }
-//     }
-//
-//     // Convert to tensor with correct shape [1, 3, 47, 1]
-//     let tensor = Tensor::of_slice(&features).view([1, 3, 47, 1]);
-//
-//
-//     tensor
-// }
+
 
 
 
@@ -482,7 +674,7 @@ fn load_game_data<'a>(file_path: &'a str) -> impl Iterator<Item = MCTSResult> + 
         match line {
             Ok(line_content) => deserialize_game_data(&line_content),
             Err(e) => {
-                eprintln!("Error reading line from file '{}': {}", file_path, e);
+                log::error!("Error reading line from file '{}': {}", file_path, e);
                 None
             }
         }
@@ -496,7 +688,7 @@ fn deserialize_game_data(line: &str) -> Option<MCTSResult> {
     let parts: Vec<&str> = line.split(',').collect();
 
     if parts.len() != 3 {
-        eprintln!("Invalid data format: '{}'", line);
+        log::error!("Invalid data format: '{}'", line);
         return None;
     }
 
@@ -506,12 +698,12 @@ fn deserialize_game_data(line: &str) -> Option<MCTSResult> {
         .map(|v| v.parse::<f32>())
         .collect::<Result<Vec<f32>, _>>()
         .unwrap_or_else(|_| {
-            eprintln!("Failed to parse state tensor in line '{}'", line);
+            log::error!("Failed to parse state tensor in line '{}'", line);
             vec![]
         });
 
     if state_values.len() != 5 * 47 {
-        eprintln!("ERROR: Parsed tensor has incorrect size {} (expected 235). Data: '{}'", state_values.len(), parts[0]);
+        log::error!("ERROR: Parsed tensor has incorrect size {} (expected 235). Data: '{}'", state_values.len(), parts[0]);
         return None;
     }
 
@@ -519,13 +711,13 @@ fn deserialize_game_data(line: &str) -> Option<MCTSResult> {
 
     // Parse subscore
     let subscore = parts[1].parse::<f64>().unwrap_or_else(|_| {
-        eprintln!("Failed to parse subscore in line '{}'", line);
+        log::error!("Failed to parse subscore in line '{}'", line);
         0.0
     });
 
     // Parse best position
     let best_position = parts[2].parse::<usize>().unwrap_or_else(|_| {
-        eprintln!("Failed to parse best_position in line '{}'", line);
+        log::error!("Failed to parse best_position in line '{}'", line);
         0
     });
 
@@ -612,22 +804,24 @@ async fn reconnect_websocket(
 ) -> Option<SplitSink<WebSocketStream<tokio::net::TcpStream>, Message>> {
     match listener.accept().await {
         Ok((stream, _)) => {
-            println!("Re-establishing WebSocket connection...");
+            log::info!("Re-establishing WebSocket connection...");
             let ws_stream = accept_async(stream).await.expect("Failed to accept WebSocket");
             let (write, _) = ws_stream.split();
             Some(write)
         }
         Err(e) => {
-            eprintln!("Error while reconnecting WebSocket: {:?}", e);
+            log::error!("Error while reconnecting WebSocket: {:?}", e);
             None
         }
     }
 }
 async fn train_and_evaluate(
-    vs: &nn::VarStore,
+    vs_policy: &nn::VarStore,
+    vs_value: &nn::VarStore,
     policy_net: &mut PolicyNet,
     value_net: &mut ValueNet,
-    optimizer: &mut Optimizer,
+    optimizer_policy: &mut Optimizer,
+    optimizer_value: &mut Optimizer,
     num_games: usize,
     num_simulations: usize,
     evaluation_interval: usize,
@@ -646,11 +840,12 @@ async fn train_and_evaluate(
 
         while games_played < num_games {
 
-            println!(
+            log::info!(
                 "Starting training iteration {}/{}...",
                 games_played + 1,
                 num_games
             );
+            log::info!("\n🚀 Starting Batch {}", games_played / evaluation_interval + 1);
 
             let mut batch_games_played = 0; // Tracks games processed in this evaluation interval
 
@@ -660,12 +855,21 @@ async fn train_and_evaluate(
                 let mut deck = create_shuffle_deck();
                 let mut plateau = create_plateau_empty();
                 let mut game_data = Vec::new();
-                let total_turns = 19;
+                let mut first_move: Option<(usize, Tile)> = None;
+                let total_turns = 19; // The number of moves in the game
                 let mut current_turn = 0;
-
                 while !is_plateau_full(&plateau) {
-                    let tile_index = rand::thread_rng().gen_range(0..deck.tiles.len());
+                    let tile_index = rng().random_range(0..deck.tiles.len());
                     let chosen_tile = deck.tiles[tile_index];
+                    // ✅ **Send preview before placement**
+                    // ✅ **INSERT YOUR NEW CODE HERE**
+                    let chosen_tile_image = format!("../image/{}{}{}.png", chosen_tile.0, chosen_tile.1, chosen_tile.2);
+                    let payload = serde_json::json!({
+        "next_tile": chosen_tile_image,
+        "plateau_tiles": generate_tile_image_names(&plateau.tiles)
+    });
+                    let serialized = serde_json::to_string(&payload).unwrap();
+                    write.send(Message::Text(serialized)).await.unwrap();
 
                     let game_result = mcts_find_best_position_for_tile_with_nn(
                         &mut plateau,
@@ -679,72 +883,118 @@ async fn train_and_evaluate(
                     );
 
                     let best_position = game_result.best_position;
+                    if first_move.is_none() {
+                        first_move = Some((best_position, chosen_tile));
+                    }
                     plateau.tiles[best_position] = chosen_tile;
                     deck = replace_tile_in_deck(&deck, &chosen_tile);
-                    game_data.push(game_result);
+                    // ✅ INSERT THIS TO SEND SCORE TO CLIENT
+                    let current_score = result(&plateau);
+                    let score_payload = serde_json::json!({
+    "type": "score_update",
+    "current_score": current_score,
+});
+                    let serialized_score = serde_json::to_string(&score_payload).unwrap();
+                    if let Err(e) = write.send(Message::Text(serialized_score)).await {
+                        log::error!("WebSocket error when sending score: {:?}", e);
+                        if let Some(new_write) = reconnect_websocket(&listener).await {
+                            write = new_write;
+                        } else {
+                            log::error!("Failed to reconnect WebSocket. Exiting...");
+                            break;
+                        }
+                    }
 
-                    current_turn += 1;
+                    game_data.push(game_result); // Store training data
+
+                    // ✅ **INSERT YOUR NEW CODE HERE**
+                    let payload_after_placement = serde_json::json!({
+        "next_tile": null, // Clear preview
+        "plateau_tiles": generate_tile_image_names(&plateau.tiles) // new updated state
+    });
+                    let serialized = serde_json::to_string(&payload_after_placement).unwrap();
+
+                    // ✅ Handle WebSocket disconnections
+                    if let Err(e) = write.send(Message::Text(serialized.clone())).await {
+                        log::error!("WebSocket error: {:?}. Attempting to reconnect...", e);
+
+                        // **Reconnect WebSocket**
+                        if let Some(new_write) = reconnect_websocket(&listener).await {
+                            write = new_write;
+                        } else {
+                            log::error!("Failed to reconnect WebSocket. Exiting...");
+                            break;
+                        }
+                    }
+                    current_turn += 1; // Increment turn counter each time a tile is placed
+
                 }
 
                 let final_score = result(&plateau);
 
-                // Discount rewards in reverse to emphasize good actions
-                let gamma = 0.98;
-                let mut discounted_reward = final_score as f64;
-                let mut improved_game_data = Vec::new();
-
-                for result in game_data.iter().rev() {
-                    improved_game_data.push(MCTSResult {
-                        best_position: result.best_position,
-                        board_tensor: result.board_tensor.shallow_clone(),
-                        subscore: discounted_reward,
-                    });
-
-                    discounted_reward *= gamma;
+                if let Some((position, _)) = first_move {
+                    scores_by_position
+                        .entry(position)
+                        .or_insert_with(Vec::new)
+                        .push(final_score);
                 }
 
-                improved_game_data.reverse();
-                save_game_data("game_data.csv", improved_game_data);
+                let mut batch_game_data = Vec::new();
 
-                println!("Game {} finished with score: {}", game + 1, final_score);
-
-                // ✅ Dynamic selection of top historical game data
-                let historical_game_data: Vec<MCTSResult> = load_game_data("game_data.csv").collect();
-
-                let top_percentile_threshold = compute_top_percentile_threshold(&historical_game_data, 0.90);
-
-                println!("Computed threshold for top 10%: {}", top_percentile_threshold);
-
-                let prioritized_data: Vec<MCTSResult> = historical_game_data
-                    .into_iter()
-                    .filter(|r| r.subscore >= top_percentile_threshold)
-                    .take(100)
+                // Prioritized historical data
+                let prioritized_data: Vec<MCTSResult> = load_game_data("game_data.csv")
+                    .filter(|r| r.subscore > 100.0) // Only select high-score games
+                    .take(50) // Limit to 50 samples to prevent overfitting
                     .collect();
 
-                // Merge with current improved game data
-                let mut batch_game_data = Vec::new();
+                // Add historical data to batch
                 batch_game_data.extend(prioritized_data);
-                batch_game_data.extend(improved_game_data);
 
-                // Train on batch_game_data
+                // Add current game's data to batch
+                batch_game_data.extend(game_data.iter().map(|result| MCTSResult {
+                    best_position: result.best_position,
+                    board_tensor: result.board_tensor.shallow_clone(),
+                    subscore: result.subscore,
+                }));
+
+                // Keep only last `max_memory_size` experiences
+                if batch_game_data.len() > max_memory_size {
+                    let to_remove = batch_game_data.len() - max_memory_size;
+                    batch_game_data.drain(0..to_remove); // Remove oldest data
+                }
+
+                // Train in batches
                 let batch_size = 10;
                 for batch in batch_game_data.chunks(batch_size) {
                     train_network_with_game_data(
-                        &vs,
-                        batch,
-                        gamma,
+                        &vs_policy,
+                        &vs_value,
+                        batch, // Use each batch directly
+                        final_score.into(),
                         policy_net,
                         value_net,
-                        optimizer,
+                        optimizer_policy,
+                        optimizer_value,
                     );
                 }
 
-                scores_by_position
-                    .entry(best_position)
-                    .or_insert_with(Vec::new)
-                    .push(final_score);
-            }
+                log::info!("Game {} finished with score: {}", game + 1, final_score);
+                scores.push(final_score);
 
+                // Update batch-specific counters
+                batch_games_played += 1;
+                total_score += final_score;
+
+                if game % evaluation_interval_average == 0 && game != 0 {
+                    let moyenne: f64 = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+                    log::info!("📊 [Batch {}] Avg Score: {:.2} | Games Played: {}", games_played / evaluation_interval, moyenne, games_played);
+                    log::info!("batch {} - Score moyen: {:.2}", game, moyenne);
+                    write.send(Message::Text(format!("GAME_RESULT:{}", moyenne))).await.unwrap();
+                }
+
+                // Save current game data for future training
+                save_game_data("game_data.csv", game_data);
+            }
 
 
             // Update main game counters
@@ -769,15 +1019,15 @@ async fn train_and_evaluate(
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
-            println!("\n--- Average Scores by First Position (Sorted) ---");
+            log::info!("\n--- Average Scores by First Position (Sorted) ---");
             for (position, average_score) in averages {
-                println!("Position: {}, Average Score: {:.2}", position, average_score);
+                log::info!("Position: {}, Average Score: {:.2}", position, average_score);
             }
 
             // Evaluate model after each interval
             evaluate_model(policy_net, value_net,num_simulations).await;
 
-            println!(
+            log::info!(
                 "Games Played: {}, Total Score: {}, Avg Score: {:.2}",
                 games_played,
                 total_score,
@@ -785,13 +1035,13 @@ async fn train_and_evaluate(
             );
             let model_path = "model_weights";
             // Save model weights
-            println!("Saving models to {}", model_path);
-            println!("Saving model weights...");
-            if let Err(e) = policy_net.save_model(vs,"model_weights/policy/policy.params") {
-                eprintln!("Error saving PolicyNet weights: {:?}", e);
+            log::info!("Saving models to {}", model_path);
+            log::info!("Saving model weights...");
+            if let Err(e) = policy_net.save_model(vs_policy,"model_weights/policy/policy.params") {
+                log::error!("Error saving PolicyNet weights: {:?}", e);
             }
-            if let Err(e) = value_net.save_model(vs,"model_weights/value/value.params") {
-                eprintln!("Error saving ValueNet weights: {:?}", e);
+            if let Err(e) = value_net.save_model(vs_value,"model_weights/value/value.params") {
+                log::error!("Error saving ValueNet weights: {:?}", e);
             }
         }
         break; // Exit after handling one connection
@@ -803,7 +1053,7 @@ async fn evaluate_model(
     value_net: &ValueNet,
     num_simulations: usize,
 ) {
-    println!("Evaluating model...");
+    log::info!("Evaluating model...");
     let mut scores = Vec::new();
 
     for _ in 0..10 {
@@ -836,7 +1086,7 @@ async fn evaluate_model(
     }
 
     let avg_score: f64 = scores.iter().copied().sum::<i32>() as f64 / scores.len() as f64;
-    println!("Model Evaluation Complete. Avg Score: {:.2}", avg_score);
+    log::info!("Model Evaluation Complete. Avg Score: {:.2}", avg_score);
     // **Stop ping task**
 }
 
@@ -896,4 +1146,3 @@ fn get_legal_moves(plateau: Plateau) -> Vec<usize> {
         .filter_map(|(i, tile)| if *tile == Tile(0, 0, 0) { Some(i) } else { None })
         .collect()
 }
-
