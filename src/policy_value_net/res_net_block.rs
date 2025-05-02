@@ -67,7 +67,7 @@ impl<'a> ResNetBlock {
         };
 
 
-        initialize_weights(vs);
+
 
 
 
