@@ -49,7 +49,7 @@ fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
 #[command(name = "take_it_easy")]
 struct Config {
     /// Number of games to simulate
-    #[arg(short = 'g', long, default_value_t = 1000)]
+    #[arg(short = 'g', long, default_value_t = 100)]
     num_games: usize,
 
     /// Number of simulations per game state
@@ -96,9 +96,12 @@ async fn main() {
         log::info!("📭 No pre-trained model found. Initializing new models.");
     }
     let mut optimizer_policy = nn::Adam ::default().build(&vs_policy, 1e-3).unwrap();
-    let mut optimizer_value = nn::Adam { wd: 5e-4, ..Default::default() }
-        .build(&vs_value, 1e-4).unwrap();
-    // <- ValueNet plus lent
+    let mut optimizer_value = nn::Adam {
+        wd: 1e-5, // 🔥 Lower weight decay to prevent excessive penalization
+        ..Default::default()
+    }.build(&vs_value, 1e-3).unwrap(); // 🔥 Higher learning rate to accelerate learning
+
+
 
 
 
@@ -246,9 +249,38 @@ fn mcts_find_best_position_for_tile_with_nn(
                 _ => 8,           // Uncertain move -> more rollouts
             };
 
-            let total_simulated_score: f64 = (0..rollout_count)
-                .map(|_| simulate_games(temp_plateau.clone(), temp_deck.clone()) as f64)
-                .sum();
+            let mut total_simulated_score = 0.0;
+
+            for _ in 0..rollout_count {
+                let mut lookahead_plateau = temp_plateau.clone();
+                let mut lookahead_deck = temp_deck.clone();
+
+                // 🔮 Étape 1.1 — Tirer une tuile hypothétique (T2)
+                if lookahead_deck.tiles.is_empty() {
+                    continue;
+                }
+                let tile2_index = rand::thread_rng().gen_range(0..lookahead_deck.tiles.len());
+                let tile2 = lookahead_deck.tiles[tile2_index];
+
+                // 🔍 Étape 1.2 — Simuler tous les placements possibles de cette tuile
+                let second_moves = get_legal_moves(lookahead_plateau.clone());
+
+                let mut best_score_for_tile2: f64 = 0.0;
+
+                for &pos2 in &second_moves {
+                    let mut plateau2 = lookahead_plateau.clone();
+                    let mut deck2 = lookahead_deck.clone();
+
+                    plateau2.tiles[pos2] = tile2;
+                    deck2 = replace_tile_in_deck(&deck2, &tile2);
+
+                    let score = simulate_games(plateau2.clone(), deck2.clone()) as f64;
+                    best_score_for_tile2 = best_score_for_tile2.max(score);
+                }
+
+                total_simulated_score += best_score_for_tile2;
+            }
+
             let simulated_score = total_simulated_score / rollout_count as f64;
 
             let visits = visit_counts.entry(position).or_insert(0);
@@ -419,7 +451,11 @@ fn normalize_input(tensor: &Tensor, global_mean: &Tensor, global_std: &Tensor) -
 }
 
 
-fn train_network_with_game_data(
+use tch::{ Kind};
+use std::time::Instant;
+use rand::prelude::SliceRandom;
+
+pub fn train_network_with_game_data(
     vs_policy: &nn::VarStore,
     vs_value: &nn::VarStore,
     game_data: &[MCTSResult],
@@ -429,155 +465,130 @@ fn train_network_with_game_data(
     optimizer_policy: &mut Optimizer,
     optimizer_value: &mut Optimizer,
 ) {
+    // Hyperparameters
     let entropy_weight = 0.05;
     let gamma = 0.99;
     let epsilon = 1e-8;
+    let epochs = 10;
+    let batch_size = 32;
 
-    // let min_reward = game_data.iter().map(|r| r.subscore).fold(f64::INFINITY, f64::min);
-    // let max_reward = game_data.iter().map(|r| r.subscore).fold(f64::NEG_INFINITY, f64::max);
-    // let range = (max_reward - min_reward).max(epsilon);
-    //
-    // let normalize_reward = |reward: f64| -> f64 {
-    //     ((reward - min_reward) / range) * 2.0 - 1.0
-    // };
+    println!("🚀 Starting training for {} epochs", epochs);
 
-    let (global_mean, global_std) = compute_global_stats(game_data);
+    for epoch in 0..epochs {
+        println!("=== Epoch {} ===", epoch + 1);
+        let start_time = Instant::now();
 
-    let mut predictions = Vec::new();
-    let mut targets = Vec::new();
+        // === Shuffle the data for better generalization ===
+        let mut shuffled_data = game_data.to_vec();
+        shuffled_data.shuffle(&mut rand::thread_rng());
 
-    let mut future_value = Tensor::zeros(&[], (tch::Kind::Float, tch::Device::Cpu));
-    let mut total_policy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
-    let mut total_value_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
-    let mut total_entropy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
-    let mut step = 0;
+        let mut total_policy_loss = 0.0;
+        let mut total_value_loss = 0.0;
+        let mut total_entropy_loss = 0.0;
 
-    for result in game_data.iter().rev() {
-        let state = normalize_input(&result.board_tensor, &global_mean, &global_std);
-        let pred_policy = policy_net.forward(&state, true).clamp_min(1e-7);
-        let pred_value = value_net.forward(&state, true);
+        // === Mini-batch processing ===
+        for chunk in shuffled_data.chunks(batch_size) {
+            // Initialize accumulators
+            let mut batch_policy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
+            let mut batch_value_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
+            let mut batch_entropy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
 
-        let normalized_reward_tensor = Tensor::from(result.subscore);
-        let discounted_reward: Tensor = normalized_reward_tensor + gamma * future_value.shallow_clone().detach();
-        future_value = discounted_reward.shallow_clone();
-        step += 1;
-        let error = (pred_value.shallow_clone() - discounted_reward.shallow_clone()).abs().double_value(&[]);
+            // === Process each sample in the mini-batch ===
+            for (step, result) in chunk.iter().enumerate() {
+                let state = result.board_tensor.shallow_clone();
 
-        if step % 50 == 0 {
-            log::info!(
-        "🔍 Step {} | Value Prediction: {:.4} | Target Reward: {:.4} | Error: {:.4}",
-        step,
-        pred_value.double_value(&[]),
-        discounted_reward.double_value(&[]),
-        error
-    );
+                // Forward pass through networks
+                let pred_policy = policy_net.forward(&state, true).clamp_min(1e-7);
+                let pred_value = value_net.forward(&state, true);
+
+                // Compute reward and update the discounted sum
+                let reward = Tensor::from(result.subscore).to_kind(tch::Kind::Float);
+                let gamma_tensor = Tensor::of_slice(&[gamma]).to_kind(tch::Kind::Float);
+
+                if reward.isnan().any().double_value(&[]) > 0.0 || reward.isinf().any().double_value(&[]) > 0.0 {
+                    log::error!("⚠️ NaN or Inf detected in reward at step {}", step);
+                    continue;
+                }
+
+                let discounted_sum = reward.shallow_clone() + gamma_tensor * reward.shallow_clone();
+
+                if discounted_sum.isnan().any().double_value(&[]) > 0.0 || discounted_sum.isinf().any().double_value(&[]) > 0.0 {
+                    log::error!("⚠️ NaN or Inf detected in discounted sum at step {}", step);
+                    continue;
+                }
+
+                // === Compute Losses ===
+                // Policy loss (Cross Entropy)
+                let best_position = result.best_position as i64;
+                let mut target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
+                target_policy.i((0, best_position)).fill_(1.0);
+                let log_policy = pred_policy.log();
+                let policy_loss = -(target_policy * log_policy.shallow_clone()).sum(tch::Kind::Float);
+                batch_policy_loss += policy_loss;
+
+                // Entropy loss to encourage exploration
+                let entropy_loss = -(pred_policy * (log_policy + epsilon)).sum(tch::Kind::Float);
+                batch_entropy_loss += entropy_loss;
+
+                // Value loss (Smooth L1 loss)
+                let delta = 1.0;
+                let diff = discounted_sum.shallow_clone() - pred_value.shallow_clone();
+                let value_loss = diff.abs().clamp_max(delta).pow_tensor_scalar(2.0) * 0.5
+                    + (diff.abs() - delta).clamp_min(0.0) * delta;
+                batch_value_loss += value_loss.mean(tch::Kind::Float);
+            }
+
+            // === Backpropagation for the mini-batch ===
+            let batch_total_loss: Tensor = batch_policy_loss.shallow_clone()
+                + batch_value_loss.shallow_clone()
+                + (entropy_weight * batch_entropy_loss.shallow_clone());
+
+            // Safety check for NaNs and Inf before backward
+            if batch_total_loss.isnan().any().double_value(&[]) > 0.0 {
+                log::error!("⚠️ NaN detected in total loss! Skipping backpropagation.");
+                continue;
+            }
+            if batch_total_loss.isinf().any().double_value(&[]) > 0.0 {
+                log::error!("⚠️ Inf detected in total loss! Skipping backpropagation.");
+                continue;
+            }
+
+            batch_total_loss.backward();
+
+            tch::no_grad(|| {
+                for (_, tensor) in vs_value.variables() {
+                    if tensor.grad().defined() {
+                        tensor.grad().clamp_(-5.0, 5.0); // Gradient Clipping
+                    }
+                }
+            });
+
+            // Optimizer step
+            optimizer_policy.step();
+            optimizer_policy.zero_grad();
+            optimizer_value.step();
+            optimizer_value.zero_grad();
+
+            total_policy_loss += batch_policy_loss.double_value(&[]);
+            total_value_loss += batch_value_loss.double_value(&[]);
+            total_entropy_loss += batch_entropy_loss.double_value(&[]);
         }
 
-
-        predictions.push(pred_value.double_value(&[]));
-        targets.push(discounted_reward.double_value(&[]));
-
-        // Policy loss
-        let best_position = result.best_position as i64;
-        let target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
-        target_policy.i((0, best_position)).fill_(1.0);
-        let log_policy = pred_policy.log();
-        let policy_loss = -(target_policy * log_policy.shallow_clone()).sum(tch::Kind::Float);
-        total_policy_loss += policy_loss;
-
-        // Entropy loss
-        let entropy_loss = -(pred_policy * log_policy).sum(tch::Kind::Float);
-        total_entropy_loss += entropy_loss;
-        let pred_value_clone = pred_value.shallow_clone();
-        // Value loss
-        let td_target = discounted_reward.clamp(0.0, 300.0);
-        let td_target_clone = td_target.shallow_clone();
-        let delta = 1.0;
-        let diff = td_target - pred_value;
-        let value_loss = diff.abs().clamp_max(delta).pow_tensor_scalar(2.0) * 0.5
-            + (diff.abs() - delta).clamp_min(0.0) * delta;
-        let value_loss = value_loss.mean(tch::Kind::Float);
-        total_value_loss += value_loss;
+        // === Logging for the epoch ===
         log::info!(
-    "🎯 ValueNet Prediction: {:.2} | Target: {:.2}",
-    pred_value_clone.double_value(&[]),
-    td_target_clone.double_value(&[])
-);
-
+            "🧮 Epoch {} Completed - Time: {:?} | Policy Loss: {:.4} | Value Loss: {:.4} | Entropy Loss: {:.4}",
+            epoch + 1,
+            start_time.elapsed(),
+            total_policy_loss / game_data.len() as f64,
+            total_value_loss / game_data.len() as f64,
+            total_entropy_loss / game_data.len() as f64
+        );
     }
 
-    // Total loss
-    let total_loss: Tensor = total_policy_loss.shallow_clone()
-        + total_value_loss.shallow_clone()
-        + (entropy_weight * total_entropy_loss.shallow_clone());
-
-    total_loss.backward();
-
-    let avg_policy_loss = total_policy_loss.double_value(&[]) / (game_data.len() as f64);
-    let avg_value_loss = total_value_loss.double_value(&[]) / (game_data.len() as f64);
-    let avg_entropy_loss = total_entropy_loss.double_value(&[]) / (game_data.len() as f64);
-
-    // Total grad norm
-    let total_grad_norm = vs_value.variables()
-        .iter()
-        .filter_map(|(_, t)| {
-            let grad = t.grad();
-            if grad.defined() { Some(grad.norm().double_value(&[])) } else { None }
-        })
-        .sum::<f64>();
-    log::info!(
-    "🎯 ValueNet Update | Avg Policy Loss: {:.4} | Avg Value Loss: {:.4} | Avg Entropy Loss: {:.4} | Total Grad Norm: {:.4}",
-    avg_policy_loss,
-    avg_value_loss,
-    avg_entropy_loss,
-    total_grad_norm
-);
-
-    // Log summarized ValueNet predictions
-    if !predictions.is_empty() {
-        let avg_pred: f64 = predictions.iter().copied().sum::<f64>() / predictions.len() as f64;
-        let avg_target: f64 = targets.iter().copied().sum::<f64>() / targets.len() as f64;
-
-        log::info!(
-        "📈 ValueNet Summary -> Avg Prediction: {:.4}, Avg Target: {:.4}",
-        avg_pred,
-        avg_target
-    );
-    }
-    let total_norm = vs_value.variables()
-        .iter()
-        .filter_map(|(_, t)| {
-            let grad = t.grad();
-            if grad.defined() { Some(grad.norm()) } else { None }
-        })
-        .fold(0.0, |acc, norm| acc + norm.double_value(&[]));
-
-    if total_norm < 0.01 {
-        log::warn!("⚠️ Gradients might be vanishing. Total Grad Norm: {:.6}", total_norm);
-    }
-    let mut grad_norms: Vec<(String, f64)> = vec![];
-
-    for (name, tensor) in vs_value.variables() {
-        let grad = tensor.grad();
-        if grad.defined() {
-            let norm = grad.norm_scalaropt_dim(2, &[], false).double_value(&[]);
-            grad_norms.push((name.to_string(), norm));
-        }
-    }
-
-    let max_grad = grad_norms.iter().map(|(_, norm)| *norm).fold(0.0, f64::max);
-    let mean_grad = grad_norms.iter().map(|(_, norm)| *norm).sum::<f64>() / grad_norms.len() as f64;
-
-    log::info!("🔍 Max Grad Norm: {:.4}, Mean Grad Norm: {:.4}", max_grad, mean_grad);
-    // --- Loss Breakdown ---
-
-
-    optimizer_policy.step();
-    optimizer_policy.zero_grad();
-
-    optimizer_value.step();
-    optimizer_value.zero_grad();
+    log::info!("✅ Training Complete.");
 }
+
+
 
 
 
@@ -666,19 +677,44 @@ fn compute_potential_scores(plateau: &Plateau) -> Vec<f32> {
 
 
 
-fn load_game_data<'a>(file_path: &'a str) -> impl Iterator<Item = MCTSResult> + 'a {
-    let file = File::open(file_path).expect("Unable to open file");
-    let reader = BufReader::new(file);
+pub fn load_game_data(file_path: &str) -> Vec<MCTSResult> {
+    // Paths for the .pt files
+    let states_path = format!("{}_states.pt", file_path);
+    let positions_path = format!("{}_positions.pt", file_path);
+    let subscores_path = format!("{}_subscores.pt", file_path);
 
-    reader.lines().filter_map(move |line| {
-        match line {
-            Ok(line_content) => deserialize_game_data(&line_content),
-            Err(e) => {
-                log::error!("Error reading line from file '{}': {}", file_path, e);
-                None
-            }
-        }
-    })
+    // Check if all files exist
+    if !Path::new(&states_path).exists() {
+        println!("⚠️  Warning: '{}' not found. Returning empty dataset.", states_path);
+        return Vec::new();
+    }
+    if !Path::new(&positions_path).exists() {
+        println!("⚠️  Warning: '{}' not found. Returning empty dataset.", positions_path);
+        return Vec::new();
+    }
+    if !Path::new(&subscores_path).exists() {
+        println!("⚠️  Warning: '{}' not found. Returning empty dataset.", subscores_path);
+        return Vec::new();
+    }
+
+    println!("🚀 Loading game data from .pt files...");
+
+    // Load the saved tensors
+    let state_tensor = Tensor::load(states_path).expect("Failed to load states");
+    let position_tensor = Tensor::load(positions_path).expect("Failed to load positions");
+    let subscore_tensor = Tensor::load(subscores_path).expect("Failed to load subscores");
+
+    // Convert them back into MCTSResult objects
+    let mut data = Vec::new();
+    for i in 0..state_tensor.size()[0] {
+        data.push(MCTSResult {
+            board_tensor: state_tensor.get(i),
+            best_position: position_tensor.get(i).int64_value(&[]) as usize,
+            subscore: subscore_tensor.get(i).double_value(&[]),
+        });
+    }
+    println!("✅ Loaded {} game records.", data.len());
+    data
 }
 
 
@@ -732,28 +768,34 @@ fn deserialize_game_data(line: &str) -> Option<MCTSResult> {
 
 
 fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
-    use std::fs::OpenOptions;
-    use std::io::{BufWriter, Write};
+    println!("🚀 Saving game data to .pt files...");
 
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(file_path)
-        .expect("Unable to open file");
-    let mut writer = BufWriter::new(file);
+    let mut tensors = vec![];
+    let mut positions = vec![];
+    let mut subscores = vec![];
 
     for result in game_data {
-        let state_str = serialize_tensor(result.board_tensor);
-        let best_position_str=result.best_position;
-
-
-        writeln!(
-            writer,
-            "{},{},{}",
-            state_str, result.subscore, best_position_str
-        )
-            .expect("Unable to write data");
+        tensors.push(result.board_tensor.shallow_clone());
+        positions.push(result.best_position as i64);
+        subscores.push(result.subscore as f32);
     }
+
+    let state_tensor = Tensor::stack(&tensors, 0);
+    let position_tensor = Tensor::of_slice(&positions).view([-1, 1]);
+    let subscore_tensor = Tensor::of_slice(&subscores).view([-1, 1]);
+
+    // Save and check for errors
+    if let Err(e) = state_tensor.save(format!("{}_states.pt", file_path)) {
+        log::info!("❌ Error saving states: {:?}", e);
+    }
+    if let Err(e) = position_tensor.save(format!("{}_positions.pt", file_path)) {
+        log::info!("❌ Error saving positions: {:?}", e);
+    }
+    if let Err(e) = subscore_tensor.save(format!("{}_subscores.pt", file_path)) {
+        log::info!("❌ Error saving subscores: {:?}", e);
+    }
+
+    log::info!("✅ Save complete!");
 }
 
 fn tensor_to_vec(tensor: &Tensor) -> Vec<f32> {
@@ -778,11 +820,21 @@ fn serialize_tensor(tensor: Tensor) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+#[derive(Debug)]
+pub struct MCTSResult {
+    pub board_tensor: Tensor,
+    pub best_position: usize,
+    pub subscore: f64,
+}
 
-struct MCTSResult {
-    board_tensor: Tensor,
-    best_position: usize,
-    subscore: f64,
+impl Clone for MCTSResult {
+    fn clone(&self) -> Self {
+        MCTSResult {
+            board_tensor: self.board_tensor.shallow_clone(), // Manually clone the tensor
+            best_position: self.best_position,
+            subscore: self.subscore,
+        }
+    }
 }
 
 fn append_to_results_file(file_path: &str,  avg_score: f64) {
@@ -942,8 +994,8 @@ async fn train_and_evaluate(
                 let mut batch_game_data = Vec::new();
 
                 // Prioritized historical data
-                let prioritized_data: Vec<MCTSResult> = load_game_data("game_data.csv")
-                    .filter(|r| r.subscore > 100.0) // Only select high-score games
+                let prioritized_data: Vec<MCTSResult> = load_game_data("game_data")
+                    .into_iter().filter(|r| r.subscore > 100.0) // Only select high-score games
                     .take(50) // Limit to 50 samples to prevent overfitting
                     .collect();
 
@@ -957,7 +1009,7 @@ async fn train_and_evaluate(
                     subscore: result.subscore,
                 }));
 
-                // Keep only last `max_memory_size` experiences
+                // Keep only last max_memory_size experiences
                 if batch_game_data.len() > max_memory_size {
                     let to_remove = batch_game_data.len() - max_memory_size;
                     batch_game_data.drain(0..to_remove); // Remove oldest data
@@ -993,7 +1045,7 @@ async fn train_and_evaluate(
                 }
 
                 // Save current game data for future training
-                save_game_data("game_data.csv", game_data);
+                save_game_data("game_data", game_data);
             }
 
 
@@ -1099,7 +1151,7 @@ fn is_plateau_full(plateau: &Plateau) -> bool {
 /// Finds the best move using MCTS
 
 
-/// Simulates `num_simulations` games and returns the average score
+/// Simulates num_simulations games and returns the average score
 
 fn simulate_games(plateau: Plateau, deck: Deck) -> i32 {
     let mut simulated_plateau = plateau.clone();
