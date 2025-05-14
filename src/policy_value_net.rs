@@ -100,25 +100,34 @@ impl<'a> PolicyNet {
 pub fn initialize_weights(vs: &nn::VarStore) {
     for (name, mut param) in vs.variables() {
         let size = param.size();
-        if name.contains("conv1") && size.len() == 4 {
+        log::info!("🔄 Initializing {} with size {:?}", name, size);
+
+        if size.len() == 4 {
+            // Kaiming Uniform for Convolution layers
             let fan_in = (size[1] * size[2] * size[3]) as f64;
-            kaiming_uniform(&mut param, fan_in);
-            // log::info!("Initialized {} with Kaiming uniform", name);
-        } else if size.len() == 2 {
-            let fan_in = size[1] as f64;
-            let bound = (1.0 / fan_in).sqrt();
+            let bound = (6.0f64).sqrt() / fan_in.sqrt();
             tch::no_grad(|| {
-                param.f_uniform_(-bound, bound).unwrap();
+                param.f_uniform_(-bound * 2.0, bound * 2.0).unwrap(); // 🔥 Increase variance
             });
-            // log::info!("Initialized Linear {} with Xavier uniform", name);
+        } else if size.len() == 2 {
+            // Kaiming Uniform for Linear layers (assuming ReLU is used)
+            let fan_in = size[1] as f64;
+            let bound = (6.0f64).sqrt() / fan_in.sqrt();
+            tch::no_grad(|| {
+                param.f_uniform_(-bound * 2.0, bound * 2.0).unwrap(); // 🔥 Increase variance
+            });
         } else if size.len() == 1 {
             tch::no_grad(|| {
                 param.f_zero_().unwrap();
             });
         }
 
+        if param.isnan().any().double_value(&[]) > 0.0 {
+            log::error!("🚨 NaNs detected in {} initialization!", name);
+        }
     }
 }
+
 
 
 //... other imports
@@ -166,7 +175,7 @@ impl ValueNet {
             flatten,
             fc1,
             value_head,
-            dropout_rate: 0.0,
+            dropout_rate: 0.3,
         }
     }
     pub fn save_model(&self, vs: &nn::VarStore, path: &str) -> Result<()> {
