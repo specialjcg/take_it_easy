@@ -451,11 +451,7 @@ fn normalize_input(tensor: &Tensor, global_mean: &Tensor, global_std: &Tensor) -
 }
 
 
-use tch::{ Kind};
-use std::time::Instant;
-use rand::prelude::SliceRandom;
-
-pub fn train_network_with_game_data(
+fn train_network_with_game_data(
     vs_policy: &nn::VarStore,
     vs_value: &nn::VarStore,
     game_data: &[MCTSResult],
@@ -469,123 +465,136 @@ pub fn train_network_with_game_data(
     let entropy_weight = 0.05;
     let gamma = 0.99;
     let epsilon = 1e-8;
-    let epochs = 10;
-    let batch_size = 32;
 
-    println!("🚀 Starting training for {} epochs", epochs);
+    // Initialize accumulators
+    let mut predictions = Vec::new();
+    let mut targets = Vec::new();
+    let mut total_policy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
+    let mut total_value_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
+    let mut total_entropy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
 
-    for epoch in 0..epochs {
-        println!("=== Epoch {} ===", epoch + 1);
-        let start_time = Instant::now();
+    // Initialize trajectory rewards and discounted sum
+    let mut trajectory_rewards = Vec::new();
+    let mut discounted_sum = Tensor::zeros(&[], (tch::Kind::Float, tch::Device::Cpu));
 
-        // === Shuffle the data for better generalization ===
-        let mut shuffled_data = game_data.to_vec();
-        shuffled_data.shuffle(&mut rand::thread_rng());
+    // === Training Loop ===
+    for (step, result) in game_data.iter().rev().enumerate() {
+        // 🛑 No Normalization: Use raw tensor
+        let state = result.board_tensor.shallow_clone();
+        let mean = state.mean(tch::Kind::Float);
+        let std = state.std(true);
+        let normalized_state = (state - mean) / (std + 1e-8);  // Avoid division by zero
+        // Forward pass through networks with normalized state
+        let pred_policy = policy_net.forward(&normalized_state, true).clamp_min(1e-7);
+        let pred_value = value_net.forward(&normalized_state, true);
 
-        let mut total_policy_loss = 0.0;
-        let mut total_value_loss = 0.0;
-        let mut total_entropy_loss = 0.0;
+        // Forward pass through networks with normalized state
+        // Normalize reward: divide by a constant max value (e.g., 100)
+        let reward = Tensor::from(result.subscore).to_kind(tch::Kind::Float) / 100.0;
+        let gamma_tensor = Tensor::of_slice(&[gamma]).to_kind(tch::Kind::Float);
 
-        // === Mini-batch processing ===
-        for chunk in shuffled_data.chunks(batch_size) {
-            // Initialize accumulators
-            let mut batch_policy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
-            let mut batch_value_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
-            let mut batch_entropy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
-
-            // === Process each sample in the mini-batch ===
-            for (step, result) in chunk.iter().enumerate() {
-                let state = result.board_tensor.shallow_clone();
-
-                // Forward pass through networks
-                let pred_policy = policy_net.forward(&state, true).clamp_min(1e-7);
-                let pred_value = value_net.forward(&state, true);
-
-                // Compute reward and update the discounted sum
-                let reward = Tensor::from(result.subscore).to_kind(tch::Kind::Float);
-                let gamma_tensor = Tensor::of_slice(&[gamma]).to_kind(tch::Kind::Float);
-
-                if reward.isnan().any().double_value(&[]) > 0.0 || reward.isinf().any().double_value(&[]) > 0.0 {
-                    log::error!("⚠️ NaN or Inf detected in reward at step {}", step);
-                    continue;
-                }
-
-                let discounted_sum = reward.shallow_clone() + gamma_tensor * reward.shallow_clone();
-
-                if discounted_sum.isnan().any().double_value(&[]) > 0.0 || discounted_sum.isinf().any().double_value(&[]) > 0.0 {
-                    log::error!("⚠️ NaN or Inf detected in discounted sum at step {}", step);
-                    continue;
-                }
-
-                // === Compute Losses ===
-                // Policy loss (Cross Entropy)
-                let best_position = result.best_position as i64;
-                let mut target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
-                target_policy.i((0, best_position)).fill_(1.0);
-                let log_policy = pred_policy.log();
-                let policy_loss = -(target_policy * log_policy.shallow_clone()).sum(tch::Kind::Float);
-                batch_policy_loss += policy_loss;
-
-                // Entropy loss to encourage exploration
-                let entropy_loss = -(pred_policy * (log_policy + epsilon)).sum(tch::Kind::Float);
-                batch_entropy_loss += entropy_loss;
-
-                // Value loss (Smooth L1 loss)
-                let delta = 1.0;
-                let diff = discounted_sum.shallow_clone() - pred_value.shallow_clone();
-                let value_loss = diff.abs().clamp_max(delta).pow_tensor_scalar(2.0) * 0.5
-                    + (diff.abs() - delta).clamp_min(0.0) * delta;
-                batch_value_loss += value_loss.mean(tch::Kind::Float);
-            }
-
-            // === Backpropagation for the mini-batch ===
-            let batch_total_loss: Tensor = batch_policy_loss.shallow_clone()
-                + batch_value_loss.shallow_clone()
-                + (entropy_weight * batch_entropy_loss.shallow_clone());
-
-            // Safety check for NaNs and Inf before backward
-            if batch_total_loss.isnan().any().double_value(&[]) > 0.0 {
-                log::error!("⚠️ NaN detected in total loss! Skipping backpropagation.");
-                continue;
-            }
-            if batch_total_loss.isinf().any().double_value(&[]) > 0.0 {
-                log::error!("⚠️ Inf detected in total loss! Skipping backpropagation.");
-                continue;
-            }
-
-            batch_total_loss.backward();
-
-            tch::no_grad(|| {
-                for (_, tensor) in vs_value.variables() {
-                    if tensor.grad().defined() {
-                        tensor.grad().clamp_(-5.0, 5.0); // Gradient Clipping
-                    }
-                }
-            });
-
-            // Optimizer step
-            optimizer_policy.step();
-            optimizer_policy.zero_grad();
-            optimizer_value.step();
-            optimizer_value.zero_grad();
-
-            total_policy_loss += batch_policy_loss.double_value(&[]);
-            total_value_loss += batch_value_loss.double_value(&[]);
-            total_entropy_loss += batch_entropy_loss.double_value(&[]);
+        // ✅ NaN & Inf Check for reward
+        // ✅ NaN & Inf Check for reward
+        if reward.isnan().any().double_value(&[]) > 0.0 || reward.isinf().any().double_value(&[]) > 0.0 {
+            log::error!("⚠️ NaN or Inf detected in reward at step {}", step);
+            continue;
         }
 
-        // === Logging for the epoch ===
-        log::info!(
-            "🧮 Epoch {} Completed - Time: {:?} | Policy Loss: {:.4} | Value Loss: {:.4} | Entropy Loss: {:.4}",
-            epoch + 1,
-            start_time.elapsed(),
-            total_policy_loss / game_data.len() as f64,
-            total_value_loss / game_data.len() as f64,
-            total_entropy_loss / game_data.len() as f64
+        // Update discounted sum with normalized reward
+        discounted_sum = reward + gamma_tensor * discounted_sum;
+
+        // ✅ NaN & Inf Check for discounted sum
+        if discounted_sum.isnan().any().double_value(&[]) > 0.0 || discounted_sum.isinf().any().double_value(&[]) > 0.0 {
+            log::error!("⚠️ NaN or Inf detected in discounted sum at step {}", step);
+            continue;
+        }
+
+        // Store the value for analysis
+        trajectory_rewards.push(discounted_sum.double_value(&[]));
+
+        // Generate target tensor directly from discounted sum
+        let discounted_reward = discounted_sum.shallow_clone();
+
+        // Compute the error for logging
+
+        // Log normalized values for better tracking
+        if step % 50 == 0 {
+            log::info!(
+            "🔍 Step {} | Normalized Value Prediction: {:.4} | Normalized Target: {:.4} | Error: {:.4}",
+            step,
+            pred_value.double_value(&[]),
+            discounted_sum.double_value(&[]),
+            (pred_value.double_value(&[]) - discounted_sum.double_value(&[])).abs()
         );
+        }
+
+        // Append for later analysis
+        predictions.push(pred_value.double_value(&[]));
+        targets.push(discounted_reward.double_value(&[]));
+
+        // === Compute Losses ===
+        // Policy loss
+        let best_position = result.best_position as i64;
+        let target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
+        target_policy.i((0, best_position)).fill_(1.0);
+        let log_policy = pred_policy.log();
+        let policy_loss = -(target_policy * log_policy.shallow_clone()).sum(tch::Kind::Float);
+        total_policy_loss += policy_loss;
+
+        // Entropy loss
+        let entropy_loss = -(pred_policy * (log_policy + epsilon)).sum(tch::Kind::Float);
+        total_entropy_loss += entropy_loss;
+
+        // Value loss (Smooth L1 loss)
+        let delta = 1.0;
+        let diff = discounted_reward.shallow_clone() - pred_value.shallow_clone();
+        let value_loss = diff.abs().clamp_max(delta).pow_tensor_scalar(2.0) * 0.5
+            + (diff.abs() - delta).clamp_min(0.0) * delta;
+        total_value_loss += value_loss.mean(tch::Kind::Float);
+
+        log::info!("🎯 ValueNet Prediction: {:.2} | Target: {:.2} | Error: {:.2}", pred_value.double_value(&[]), discounted_reward.double_value(&[]), (pred_value.double_value(&[]) - discounted_reward.double_value(&[])).abs());
     }
 
-    log::info!("✅ Training Complete.");
+    // === Backpropagation ===
+    let total_loss: Tensor = total_policy_loss.shallow_clone()
+        + total_value_loss.shallow_clone()
+        + (entropy_weight * total_entropy_loss.shallow_clone());
+
+    // Log the loss before backpropagation
+    log::info!("💡 Total Loss before backward: {:.4}", total_loss.double_value(&[]));
+
+    // ✅ NaN and Inf check before backpropagation
+    if total_loss.isnan().any().double_value(&[]) > 0.0 {
+        log::error!("⚠️ NaN detected in total loss! Skipping backpropagation.");
+        return;
+    }
+    if total_loss.isinf().any().double_value(&[]) > 0.0 {
+        log::error!("⚠️ Inf detected in total loss! Skipping backpropagation.");
+        return;
+    }
+
+    total_loss.backward();
+
+    tch::no_grad(|| {
+        for (_, tensor) in vs_value.variables() {
+            if tensor.grad().defined() {
+                tensor.grad().clamp_(-5.0, 5.0);
+            }
+        }
+    });
+
+    // === Optimizer Step ===
+    optimizer_policy.step();
+    optimizer_policy.zero_grad();
+    optimizer_value.step();
+    optimizer_value.zero_grad();
+
+    log::info!(
+        "🎯 Update Complete | Policy Loss: {:.4}, Value Loss: {:.4}, Entropy Loss: {:.4}",
+        total_policy_loss.double_value(&[]),
+        total_value_loss.double_value(&[]),
+        total_entropy_loss.double_value(&[])
+    );
 }
 
 
@@ -780,23 +789,44 @@ fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
         subscores.push(result.subscore as f32);
     }
 
+    // Création des nouveaux tensors
     let state_tensor = Tensor::stack(&tensors, 0);
     let position_tensor = Tensor::of_slice(&positions).view([-1, 1]);
     let subscore_tensor = Tensor::of_slice(&subscores).view([-1, 1]);
 
-    // Save and check for errors
-    if let Err(e) = state_tensor.save(format!("{}_states.pt", file_path)) {
+    // 🔄 Append logic: charger les anciens tensors s'ils existent
+    let combined_states = if let Ok(prev) = Tensor::load(format!("{}_states.pt", file_path)) {
+        Tensor::cat(&[prev, state_tensor], 0)
+    } else {
+        state_tensor
+    };
+
+    let combined_positions = if let Ok(prev) = Tensor::load(format!("{}_positions.pt", file_path)) {
+        Tensor::cat(&[prev, position_tensor], 0)
+    } else {
+        position_tensor
+    };
+
+    let combined_subscores = if let Ok(prev) = Tensor::load(format!("{}_subscores.pt", file_path)) {
+        Tensor::cat(&[prev, subscore_tensor], 0)
+    } else {
+        subscore_tensor
+    };
+
+    // 🔄 Sauvegarde des tensors concaténés
+    if let Err(e) = combined_states.save(format!("{}_states.pt", file_path)) {
         log::info!("❌ Error saving states: {:?}", e);
     }
-    if let Err(e) = position_tensor.save(format!("{}_positions.pt", file_path)) {
+    if let Err(e) = combined_positions.save(format!("{}_positions.pt", file_path)) {
         log::info!("❌ Error saving positions: {:?}", e);
     }
-    if let Err(e) = subscore_tensor.save(format!("{}_subscores.pt", file_path)) {
+    if let Err(e) = combined_subscores.save(format!("{}_subscores.pt", file_path)) {
         log::info!("❌ Error saving subscores: {:?}", e);
     }
 
     log::info!("✅ Save complete!");
 }
+
 
 fn tensor_to_vec(tensor: &Tensor) -> Vec<f32> {
     // Flatten the tensor into a 1D array
