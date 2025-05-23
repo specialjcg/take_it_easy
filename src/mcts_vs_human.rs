@@ -30,7 +30,7 @@ pub async fn play_mcts_vs_human(
     let mut current_turn = 0;
 
     while !is_plateau_full(&plateau_human) {
-        let tile_index = rand::thread_rng().gen_range(0..deck.tiles.len());
+        let tile_index = rand::rng().random_range(0..deck.tiles.len());
         let tile = deck.tiles[tile_index];
         deck = replace_tile_in_deck(&deck, &tile); // remove it from deck
         let tile_image = format!("../image/{}{}{}.png", tile.0, tile.1, tile.2);

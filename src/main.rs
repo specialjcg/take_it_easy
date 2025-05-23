@@ -1,22 +1,17 @@
 use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::fs::OpenOptions;
+use std::io::{BufWriter, Write};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Arc;
 use chrono::Utc;
-use rayon::iter::ParallelIterator;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use futures_util::stream::SplitSink;
 use rand::{Rng, rng};
-use rayon::prelude::IntoParallelIterator;
 use serde_json;
 use tch::{Device, IndexOp, nn, Tensor};
 use tch::nn::{Optimizer, OptimizerConfig};
 use tokio::net::TcpListener;
-use tokio::{spawn, task};
-use tokio::time::sleep;
 use tokio_tungstenite::{accept_async, WebSocketStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
@@ -26,7 +21,7 @@ use result::result;
 use crate::logging::setup_logging;
 use crate::mcts_vs_human::play_mcts_vs_human;
 use crate::policy_value_net::{PolicyNet, ValueNet};
-use crate::remove_tile_from_deck::{remove_tile_from_deck, replace_tile_in_deck};
+use crate::remove_tile_from_deck::replace_tile_in_deck;
 use crate::test::{Deck, Plateau, Tile};
 
 mod test;
@@ -259,7 +254,7 @@ fn mcts_find_best_position_for_tile_with_nn(
                 if lookahead_deck.tiles.is_empty() {
                     continue;
                 }
-                let tile2_index = rand::thread_rng().gen_range(0..lookahead_deck.tiles.len());
+                let tile2_index = rand::rng().random_range(0..lookahead_deck.tiles.len());
                 let tile2 = lookahead_deck.tiles[tile2_index];
 
                 // 🔍 Étape 1.2 — Simuler tous les placements possibles de cette tuile
@@ -339,7 +334,7 @@ fn mcts_find_best_position_for_tile_with_nn(
     final_deck = replace_tile_in_deck(&final_deck, &chosen_tile);
 
     while !is_plateau_full(&final_plateau) {
-        let tile_index = rand::thread_rng().gen_range(0..final_deck.tiles.len());
+        let tile_index = rand::rng().random_range(0..final_deck.tiles.len());
         let random_tile = final_deck.tiles[tile_index];
 
         let available_moves = get_legal_moves(final_plateau.clone());
@@ -347,7 +342,7 @@ fn mcts_find_best_position_for_tile_with_nn(
             break;
         }
 
-        let random_position = available_moves[rand::thread_rng().gen_range(0..available_moves.len())];
+        let random_position = available_moves[rand::rng().random_range(0..available_moves.len())];
         final_plateau.tiles[random_position] = random_tile;
         final_deck = replace_tile_in_deck(&final_deck, &random_tile);
     }
@@ -372,7 +367,7 @@ fn local_lookahead(mut plateau: Plateau, mut deck: Deck, depth: usize) -> i32 {
             break;
         }
 
-        let tile_index = rand::thread_rng().gen_range(0..deck.tiles.len());
+        let tile_index = rand::rng().random_range(0..deck.tiles.len());
         let chosen_tile = deck.tiles[tile_index];
 
         let legal_moves = get_legal_moves(plateau.clone());
@@ -491,7 +486,7 @@ fn train_network_with_game_data(
         // Forward pass through networks with normalized state
         // Normalize reward: divide by a constant max value (e.g., 100)
         let reward = Tensor::from(result.subscore).to_kind(tch::Kind::Float) / 100.0;
-        let gamma_tensor = Tensor::of_slice(&[gamma]).to_kind(tch::Kind::Float);
+        let gamma_tensor = Tensor::from_slice(&[gamma]).to_kind(tch::Kind::Float);
 
         // ✅ NaN & Inf Check for reward
         // ✅ NaN & Inf Check for reward
@@ -628,7 +623,7 @@ fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck, curren
     }
 
     // Convertir en tensor PyTorch
-    Tensor::of_slice(&features).view([1, 5, 47, 1])
+    Tensor::from_slice(&features).view([1, 5, 47, 1])
 }
 fn compute_potential_scores(plateau: &Plateau) -> Vec<f32> {
     let mut scores = vec![0.0; 19]; // Potential score for each position
@@ -752,7 +747,7 @@ fn deserialize_game_data(line: &str) -> Option<MCTSResult> {
         return None;
     }
 
-    let state_tensor = Tensor::of_slice(&state_values).view([1, 5, 47, 1]);
+    let state_tensor = Tensor::from_slice(&state_values).view([1, 5, 47, 1]);
 
     // Parse subscore
     let subscore = parts[1].parse::<f64>().unwrap_or_else(|_| {
@@ -791,8 +786,8 @@ fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
 
     // Création des nouveaux tensors
     let state_tensor = Tensor::stack(&tensors, 0);
-    let position_tensor = Tensor::of_slice(&positions).view([-1, 1]);
-    let subscore_tensor = Tensor::of_slice(&subscores).view([-1, 1]);
+    let position_tensor = Tensor::from_slice(&positions).view([-1, 1]);
+    let subscore_tensor = Tensor::from_slice(&subscores).view([-1, 1]);
 
     // 🔄 Append logic: charger les anciens tensors s'ils existent
     let combined_states = if let Ok(prev) = Tensor::load(format!("{}_states.pt", file_path)) {
