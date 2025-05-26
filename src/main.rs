@@ -44,19 +44,79 @@ fn generate_tile_image_names(tiles: &[Tile]) -> Vec<String> {
 #[command(name = "take_it_easy")]
 struct Config {
     /// Number of games to simulate
-    #[arg(short = 'g', long, default_value_t = 100)]
+    #[arg(short = 'g', long, default_value_t = 200)]
     num_games: usize,
 
     /// Number of simulations per game state
-    #[arg(short = 's', long, default_value_t = 100)]
+    #[arg(short = 's', long, default_value_t = 150)]
     num_simulations: usize,
 
     /// Run MCTS vs Human instead of training
     #[arg(long)]
     mcts_vs_human: bool,
 }
+fn enhanced_gradient_clipping(vs_value: &nn::VarStore, vs_policy: &nn::VarStore) -> (f64, f64) {
+    let mut max_grad_value: f64 = 0.0;
+    let mut max_grad_policy: f64 = 0.0;
 
+    tch::no_grad(|| {
+        // Value network - clipping très agressif
+        for (_name, tensor) in vs_value.variables() {
+            if tensor.grad().defined() {
+                let grad_norm = tensor.grad().norm().double_value(&[]);
+                max_grad_value = max_grad_value.max(grad_norm);
 
+                // BEAUCOUP plus agressif que (-1.0, 1.0)
+                tensor.grad().clamp_(-0.5, 0.5);
+            }
+        }
+
+        // Policy network - clipping modéré
+        for (_name, tensor) in vs_policy.variables() {
+            if tensor.grad().defined() {
+                let grad_norm = tensor.grad().norm().double_value(&[]);
+                max_grad_policy = max_grad_policy.max(grad_norm);
+
+                tensor.grad().clamp_(-1.0, 1.0);
+            }
+        }
+
+        // Log seulement si vraiment élevé
+        if max_grad_value > 1.0 {
+            log::warn!("🔥 Value grad norm: {:.3}", max_grad_value);
+        }
+        if max_grad_policy > 2.0 {
+            log::warn!("🔥 Policy grad norm: {:.3}", max_grad_policy);
+        }
+    });
+
+    (max_grad_value, max_grad_policy)
+}
+fn robust_state_normalization(state: &Tensor) -> Tensor {
+    // 1. Clamp les valeurs extrêmes
+    let clamped = state.clamp(-10.0, 10.0);
+
+    // 2. Calcul de la médiane pour normalisation robuste
+    let flattened = clamped.view(-1);
+    let sorted = flattened.sort(0, false).0;
+    let median_idx = sorted.size()[0] / 2;
+    let median = sorted.i(median_idx).double_value(&[]);
+
+    // 3. MAD (Median Absolute Deviation) au lieu de std
+    let deviations = (flattened - median).abs();
+    let sorted_dev = deviations.sort(0, false).0;
+    let mad = sorted_dev.i(median_idx).double_value(&[]) * 1.4826;
+
+    // 4. Normalisation avec MAD
+    let normalized = if mad > 1e-6 {
+        (clamped - median) / mad.max(1e-6)
+    } else {
+        clamped - median
+    };
+
+    // 5. Clamp final pour éviter les valeurs extrêmes
+    normalized.clamp(-3.0, 3.0)
+}
 #[tokio::main]
 async fn main() {
     let config = Config::parse();
@@ -91,11 +151,11 @@ async fn main() {
         log::info!("📭 No pre-trained model found. Initializing new models.");
     }
     let mut optimizer_policy = nn::Adam ::default().build(&vs_policy, 1e-3).unwrap();
+    // Change your optimizer (around line 100):
     let mut optimizer_value = nn::Adam {
-        wd: 1e-5, // 🔥 Lower weight decay to prevent excessive penalization
+        wd: 1e-6,  // Was 1e-5
         ..Default::default()
-    }.build(&vs_value, 1e-3).unwrap(); // 🔥 Higher learning rate to accelerate learning
-
+    }.build(&vs_value, 2e-4).unwrap(); // Was 1e-3
 
 
 
@@ -143,9 +203,88 @@ async fn main() {
     )
         .await;
 }
+fn random_index(max: usize) -> usize {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    rng.gen_range(0..max)
+}
 
+// Version simplifiée qui se concentre sur les positions stratégiques
+fn calculate_line_completion_bonus(plateau: &Plateau, position: usize, tile: &Tile) -> f64 {
+    let mut bonus = 0.0;
 
-/// Finds the best move using MCTS with neural network guidance
+    // Bonus basé sur les positions stratégiques identifiées dans tes données
+    bonus += match position {
+        8 => 5.0,   // Position 8: 150.6 moyenne - excellente
+        14 => 4.0,  // Position 14: 147.7 moyenne - très bonne
+        2 => 4.0,   // Position 2: 147.1 moyenne - très bonne
+        5 => 3.0,   // Position 5: 143.6 moyenne - bonne
+        11 => 3.0,  // Position 11: 142.9 moyenne - bonne
+        10 => 2.0,  // Position 10: 140.8 moyenne - correcte
+        13 => 2.0,  // Position 13: 140.2 moyenne - correcte
+        1 | 4 | 6 | 9 | 0 => 1.0,  // Positions moyennes
+        12 | 15 | 16 => 0.5,  // Positions plus faibles
+        7 | 17 => 0.0,  // Positions les plus faibles
+        _ => 0.0,
+    };
+
+    // Bonus pour les valeurs de tuiles élevées (plus de points potentiels)
+    let tile_value_bonus = ((tile.0 + tile.1) as f64) * 0.1;
+    bonus += tile_value_bonus;
+
+    // Bonus pour la cohérence des couleurs/formes
+    if tile.0 == tile.1 {
+        bonus += 1.0;  // Tuiles avec même couleur et forme
+    }
+
+    // Bonus central légèrement plus complexe
+    let row = position / 3;
+    let col = position % 3;
+    if row >= 1 && row <= 4 && col >= 1 && col <= 1 {
+        bonus += 2.0;  // Zone centrale du plateau
+    }
+
+    bonus
+}
+
+// ============================================================================
+// ALTERNATIVE PLUS SIMPLE (Si la version ci-dessus pose encore problème)
+// ============================================================================
+
+// Si vous préférez une version plus simple, utilisez celle-ci:
+
+fn enhanced_position_evaluation(plateau: &Plateau, position: usize, tile: &Tile, current_turn: usize) -> f64 {
+    // Score de base alignement (votre fonction existante)
+    let alignment_score = compute_alignment_score(plateau, position, tile);
+
+    // Bonus pour positions centrales stratégiques en début de partie
+    let position_bonus = if current_turn < 8 {
+        match position {
+            7 | 8 | 9 | 10 | 11 => 5.0,    // Ligne centrale - critique
+            4 | 5 | 6 | 12 | 13 | 14 | 15 => 3.0, // Positions stratégiques
+            _ => 0.0,
+        }
+    } else {
+        0.0 // En fin de partie, seul l'alignement compte
+    };
+
+    // Malus pour positions coins/bords si début de partie
+    let position_malus = if current_turn < 5 {
+        match position {
+            0 | 2 | 16 | 18 => -2.0,  // Coins - à éviter en début
+            1 | 17 => -1.0,           // Bords
+            _ => 0.0,
+        }
+    } else {
+        0.0
+    };
+
+    // Bonus pour complétion de lignes
+    let completion_bonus = calculate_line_completion_bonus(plateau, position, tile);
+
+    alignment_score + position_bonus + position_malus + completion_bonus
+}
+
 fn mcts_find_best_position_for_tile_with_nn(
     plateau: &mut Plateau,
     deck: &mut Deck,
@@ -168,9 +307,7 @@ fn mcts_find_best_position_for_tile_with_nn(
     let board_tensor = convert_plateau_to_tensor(plateau, &chosen_tile, deck,current_turn, total_turns);
     let policy_logits = policy_net.forward(&board_tensor, false);
     let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp(); // Log-softmax improves numerical stability
-    let dummy_input = Tensor::randn(&[1, 5, 47, 1], (tch::Kind::Float, tch::Device::Cpu));
-    let output = value_net.forward(&dummy_input, false);
-    log::info!("Dummy output ValueNet: {:.4}", output.double_value(&[]));
+
     let mut visit_counts: HashMap<usize, usize> = HashMap::new();
     let mut total_scores: HashMap<usize, f64> = HashMap::new();
     let mut ucb_scores: HashMap<usize, f64> = HashMap::new();
@@ -183,7 +320,13 @@ fn mcts_find_best_position_for_tile_with_nn(
         ucb_scores.insert(position, f64::NEG_INFINITY);
     }
 
-    let c_puct = 3.5;
+    let c_puct = if current_turn < 5 {
+        4.2  // Plus d'exploitation en début de partie (positions critiques)
+    } else if current_turn > 15 {
+        3.0  // Plus d'exploration en fin de partie (adaptation)
+    } else {
+        3.8  // Équilibre pour le milieu de partie
+    };
 
     // **Compute ValueNet scores for all legal moves**
     let mut value_estimates = HashMap::new();
@@ -209,7 +352,11 @@ fn mcts_find_best_position_for_tile_with_nn(
     }
 
     // **Dynamic Pruning Strategy**
-    let value_threshold = min_value + (max_value - min_value) * 0.2; // Keep top 80% moves
+    let value_threshold = if current_turn < 8 {
+        min_value + (max_value - min_value) * 0.1  // Garder plus de candidats en début
+    } else {
+        min_value + (max_value - min_value) * 0.15 // Pruning moins agressif
+    };
 
     for _ in 0..num_simulations {
         let mut moves_with_prior: Vec<_> = legal_moves
@@ -254,7 +401,7 @@ fn mcts_find_best_position_for_tile_with_nn(
                 if lookahead_deck.tiles.is_empty() {
                     continue;
                 }
-                let tile2_index = rand::rng().random_range(0..lookahead_deck.tiles.len());
+                let tile2_index = random_index(lookahead_deck.tiles.len());
                 let tile2 = lookahead_deck.tiles[tile2_index];
 
                 // 🔍 Étape 1.2 — Simuler tous les placements possibles de cette tuile
@@ -289,10 +436,13 @@ fn mcts_find_best_position_for_tile_with_nn(
             let prior_prob = policy.i((0, position as i64)).double_value(&[]);
             let average_score = *total_score / (*visits as f64);
             // 🧪 Reduce weight of rollout average
-            let mut ucb_score = (average_score * 0.5) // reduce rollout influence
-                + exploration_param * (prior_prob.sqrt())
-                + 0.25 * value_estimate.clamp(0.0, 2.0);
+            let enhanced_eval = enhanced_position_evaluation(&temp_plateau, position, &chosen_tile, current_turn);
 
+            // Intégrer dans le calcul UCB
+            let mut ucb_score = (average_score * 0.5)
+                + exploration_param * (prior_prob.sqrt())
+                + 0.25 * value_estimate.clamp(0.0, 2.0)
+                + 0.1 * enhanced_eval; // Nouveau facteur d'évaluation
 
             // 🔥 Explicit Priority Logic HERE 🔥
             // 1️⃣ Ajoute cette fonction en dehors de ta mcts_find_best_position_for_tile_with_nn
@@ -334,7 +484,7 @@ fn mcts_find_best_position_for_tile_with_nn(
     final_deck = replace_tile_in_deck(&final_deck, &chosen_tile);
 
     while !is_plateau_full(&final_plateau) {
-        let tile_index = rand::rng().random_range(0..final_deck.tiles.len());
+        let tile_index = random_index(final_deck.tiles.len());
         let random_tile = final_deck.tiles[tile_index];
 
         let available_moves = get_legal_moves(final_plateau.clone());
@@ -342,19 +492,15 @@ fn mcts_find_best_position_for_tile_with_nn(
             break;
         }
 
-        let random_position = available_moves[rand::rng().random_range(0..available_moves.len())];
+        let random_position = available_moves[random_index(available_moves.len())];
         final_plateau.tiles[random_position] = random_tile;
         final_deck = replace_tile_in_deck(&final_deck, &random_tile);
     }
 
     let final_score = result(&final_plateau); // Get actual game score
-    let prior_prob = policy.i((0, best_position as i64)).double_value(&[]);
-    let value_estimate = value_net.forward(&board_tensor, false).double_value(&[]);
 
-    log::info!(
-        "🤖 MCTS chose position {} | Policy Prior: {:.4} | ValueNet Estimate: {:.2} | Final Simulated Score: {:.2}",
-        best_position, prior_prob, value_estimate, final_score
-    );
+    log::info!("🤖 Pos:{} Score:{}", best_position, final_score as i32);
+
     MCTSResult {
         best_position,
         board_tensor,
@@ -367,7 +513,7 @@ fn local_lookahead(mut plateau: Plateau, mut deck: Deck, depth: usize) -> i32 {
             break;
         }
 
-        let tile_index = rand::rng().random_range(0..deck.tiles.len());
+        let tile_index = random_index(deck.tiles.len());
         let chosen_tile = deck.tiles[tile_index];
 
         let legal_moves = get_legal_moves(plateau.clone());
@@ -399,46 +545,7 @@ fn compute_global_stats(game_data: &[MCTSResult]) -> (Tensor, Tensor) {
     (mean, std)
 }
 
-fn compute_alignment_score(plateau: &Plateau, position: usize, tile: &Tile) -> f64 {
-    let patterns: Vec<(&[usize], Box<dyn Fn(&Tile) -> i32>)> = vec![
-        (&[0, 1, 2], Box::new(|t: &Tile| t.0)),
-        (&[3, 4, 5, 6], Box::new(|t: &Tile| t.0)),
-        (&[7, 8, 9, 10, 11], Box::new(|t: &Tile| t.0)),
-        (&[12, 13, 14, 15], Box::new(|t: &Tile| t.0)),
-        (&[16, 17, 18], Box::new(|t: &Tile| t.0)),
-        (&[0, 3, 7], Box::new(|t: &Tile| t.1)),
-        (&[1, 4, 8, 12], Box::new(|t: &Tile| t.1)),
-        (&[2, 5, 9, 13, 16], Box::new(|t: &Tile| t.1)),
-        (&[6, 10, 14, 17], Box::new(|t: &Tile| t.1)),
-        (&[11, 15, 18], Box::new(|t: &Tile| t.1)),
-        (&[7, 12, 16], Box::new(|t: &Tile| t.2)),
-        (&[3, 8, 13, 17], Box::new(|t: &Tile| t.2)),
-        (&[0, 4, 9, 14, 18], Box::new(|t: &Tile| t.2)),
-        (&[1, 5, 10, 15], Box::new(|t: &Tile| t.2)),
-        (&[2, 6, 11], Box::new(|t: &Tile| t.2)),
-    ];
 
-    let mut score = 0.0;
-
-    for (indices, selector) in patterns {
-        if indices.contains(&position) {
-            // Récupère les valeurs dans le pattern
-            let values: Vec<i32> = indices
-                .iter()
-                .map(|&i| selector(&plateau.tiles[i]))
-                .filter(|&v| v != 0) // Ignore les cases vides
-                .collect();
-
-            if !values.is_empty() {
-                // Moyenne ou somme des alignements existants
-                let sum = values.iter().sum::<i32>() as f64;
-                score += sum / values.len() as f64;
-            }
-        }
-    }
-
-    score
-}
 
 
 fn normalize_input(tensor: &Tensor, global_mean: &Tensor, global_std: &Tensor) -> Tensor {
@@ -446,6 +553,7 @@ fn normalize_input(tensor: &Tensor, global_mean: &Tensor, global_std: &Tensor) -
 }
 
 
+// Enhanced training function with better value network stabilization
 fn train_network_with_game_data(
     vs_policy: &nn::VarStore,
     vs_value: &nn::VarStore,
@@ -476,9 +584,8 @@ fn train_network_with_game_data(
     for (step, result) in game_data.iter().rev().enumerate() {
         // 🛑 No Normalization: Use raw tensor
         let state = result.board_tensor.shallow_clone();
-        let mean = state.mean(tch::Kind::Float);
-        let std = state.std(true);
-        let normalized_state = (state - mean) / (std + 1e-8);  // Avoid division by zero
+        let normalized_state = robust_state_normalization(&state);
+
         // Forward pass through networks with normalized state
         let pred_policy = policy_net.forward(&normalized_state, true).clamp_min(1e-7);
         let pred_value = value_net.forward(&normalized_state, true);
@@ -488,7 +595,6 @@ fn train_network_with_game_data(
         let reward = Tensor::from(result.subscore).to_kind(tch::Kind::Float) / 100.0;
         let gamma_tensor = Tensor::from_slice(&[gamma]).to_kind(tch::Kind::Float);
 
-        // ✅ NaN & Inf Check for reward
         // ✅ NaN & Inf Check for reward
         if reward.isnan().any().double_value(&[]) > 0.0 || reward.isinf().any().double_value(&[]) > 0.0 {
             log::error!("⚠️ NaN or Inf detected in reward at step {}", step);
@@ -510,19 +616,6 @@ fn train_network_with_game_data(
         // Generate target tensor directly from discounted sum
         let discounted_reward = discounted_sum.shallow_clone();
 
-        // Compute the error for logging
-
-        // Log normalized values for better tracking
-        if step % 50 == 0 {
-            log::info!(
-            "🔍 Step {} | Normalized Value Prediction: {:.4} | Normalized Target: {:.4} | Error: {:.4}",
-            step,
-            pred_value.double_value(&[]),
-            discounted_sum.double_value(&[]),
-            (pred_value.double_value(&[]) - discounted_sum.double_value(&[])).abs()
-        );
-        }
-
         // Append for later analysis
         predictions.push(pred_value.double_value(&[]));
         targets.push(discounted_reward.double_value(&[]));
@@ -540,17 +633,16 @@ fn train_network_with_game_data(
         let entropy_loss = -(pred_policy * (log_policy + epsilon)).sum(tch::Kind::Float);
         total_entropy_loss += entropy_loss;
 
-        // Value loss (Smooth L1 loss)
-        let delta = 1.0;
+        // Value loss (Huber loss for better stability)
         let diff = discounted_reward.shallow_clone() - pred_value.shallow_clone();
-        let value_loss = diff.abs().clamp_max(delta).pow_tensor_scalar(2.0) * 0.5
-            + (diff.abs() - delta).clamp_min(0.0) * delta;
+        let abs_diff = diff.abs();
+        let delta = 1.0;
+        let value_loss = abs_diff.le(delta).to_kind(tch::Kind::Float) * 0.5 * &diff * &diff
+            + abs_diff.gt(delta).to_kind(tch::Kind::Float) * (delta * (&abs_diff - 0.5 * delta));
         total_value_loss += value_loss.mean(tch::Kind::Float);
-
-        log::info!("🎯 ValueNet Prediction: {:.2} | Target: {:.2} | Error: {:.2}", pred_value.double_value(&[]), discounted_reward.double_value(&[]), (pred_value.double_value(&[]) - discounted_reward.double_value(&[])).abs());
     }
 
-    // === Backpropagation ===
+    // Fix: Add explicit type annotation for total_loss
     let total_loss: Tensor = total_policy_loss.shallow_clone()
         + total_value_loss.shallow_clone()
         + (entropy_weight * total_entropy_loss.shallow_clone());
@@ -558,7 +650,7 @@ fn train_network_with_game_data(
     // Log the loss before backpropagation
     log::info!("💡 Total Loss before backward: {:.4}", total_loss.double_value(&[]));
 
-    // ✅ NaN and Inf check before backpropagation
+    // ✅ Enhanced NaN and Inf check before backpropagation
     if total_loss.isnan().any().double_value(&[]) > 0.0 {
         log::error!("⚠️ NaN detected in total loss! Skipping backpropagation.");
         return;
@@ -568,15 +660,17 @@ fn train_network_with_game_data(
         return;
     }
 
+    // Check if total_loss requires gradients before calling backward
+    if !total_loss.requires_grad() {
+        log::error!("⚠️ Total loss does not require gradients! Skipping backpropagation.");
+        return;
+    }
+
     total_loss.backward();
 
-    tch::no_grad(|| {
-        for (_, tensor) in vs_value.variables() {
-            if tensor.grad().defined() {
-                tensor.grad().clamp_(-5.0, 5.0);
-            }
-        }
-    });
+    // Enhanced gradient clipping with fixed type annotation
+    let (_max_grad_value, _max_grad_policy) = enhanced_gradient_clipping(vs_value, vs_policy);
+
 
     // === Optimizer Step ===
     optimizer_policy.step();
@@ -592,16 +686,70 @@ fn train_network_with_game_data(
     );
 }
 
+// Fixed simulate_games function with updated rand API
+
+
+// N-step returns calculation for more stable targets
+fn calculate_n_step_returns(rewards: &[f32], gamma: f32, n: usize) -> Vec<f32> {
+    let mut returns = Vec::new();
+
+    for i in 0..rewards.len() {
+        let mut ret = 0.0;
+        let mut discount = 1.0;
+
+        // Calculate n-step return
+        for j in 0..n.min(rewards.len() - i) {
+            ret += discount * rewards[i + j];
+            discount *= gamma;
+        }
+
+        returns.push(ret / 100.0); // Normalize by dividing by max expected score
+    }
+
+    returns
+}
+
+// Huber loss for more stable value training
+fn huber_loss(predictions: &Tensor, targets: &Tensor, delta: f64) -> Tensor {
+    let diff = predictions - targets;
+    let abs_diff = diff.abs();
+    let quadratic = (abs_diff.le(delta)).to_kind(tch::Kind::Float) * 0.5 * &diff * &diff;
+    let linear = (abs_diff.gt(delta)).to_kind(tch::Kind::Float) *
+        (delta * (&abs_diff - 0.5 * delta));
+    (quadratic + linear).mean(tch::Kind::Float)
+}
+
+// Prediction accuracy calculation for monitoring
+fn calculate_prediction_accuracy(predictions: &[f64], targets: &[f64]) -> f64 {
+    if predictions.is_empty() || targets.is_empty() {
+        return 0.0;
+    }
+
+    let mse: f64 = predictions.iter()
+        .zip(targets.iter())
+        .map(|(p, t)| (p - t).powi(2))
+        .sum::<f64>() / predictions.len() as f64;
+
+    // Convert MSE to accuracy-like metric (higher is better)
+    1.0 / (1.0 + mse.sqrt())
+}
 
 
 
 
 
 
-fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck, current_turn: usize, total_turns: usize) -> Tensor {
-    let mut features = vec![0.0; 5 * 47]; // 5 channels: Plateau, Tile, Deck, Score Potential, Turn Indicator
 
-    // Channel 1-3: Plateau, Tile, Deck (Déjà implémenté)
+fn convert_plateau_to_tensor(
+    plateau: &Plateau,
+    _tile: &Tile,        // Add underscore prefix
+    _deck: &Deck,        // Add underscore prefix
+    current_turn: usize,
+    total_turns: usize
+) -> Tensor {
+    let mut features = vec![0.0; 5 * 47]; // 5 channels
+
+    // Channel 1-3: Plateau (only use plateau data, not tile/deck)
     for (i, t) in plateau.tiles.iter().enumerate() {
         if i < 19 {
             features[i] = (t.0 as f32 / 10.0).clamp(0.0, 1.0);
@@ -610,19 +758,18 @@ fn convert_plateau_to_tensor(plateau: &Plateau, tile: &Tile, deck: &Deck, curren
         }
     }
 
-    // Channel 4: **Score Potentiel pour chaque position**
+    // Channel 4: Score Potential for each position
     let potential_scores = compute_potential_scores(plateau);
     for i in 0..19 {
         features[3 * 47 + i] = potential_scores[i];
     }
 
-    // Channel 5: **Tour Actuel**
+    // Channel 5: Current Turn
     let turn_normalized = current_turn as f32 / total_turns as f32;
     for i in 0..19 {
         features[4 * 47 + i] = turn_normalized;
     }
 
-    // Convertir en tensor PyTorch
     Tensor::from_slice(&features).view([1, 5, 47, 1])
 }
 fn compute_potential_scores(plateau: &Plateau) -> Vec<f32> {
@@ -672,7 +819,45 @@ fn compute_potential_scores(plateau: &Plateau) -> Vec<f32> {
     scores
 }
 
+// Fix for alignment score function - add underscore prefix
+fn compute_alignment_score(plateau: &Plateau, position: usize, _tile: &Tile) -> f64 {
+    let patterns: Vec<(&[usize], Box<dyn Fn(&Tile) -> i32>)> = vec![
+        (&[0, 1, 2], Box::new(|t: &Tile| t.0)),
+        (&[3, 4, 5, 6], Box::new(|t: &Tile| t.0)),
+        (&[7, 8, 9, 10, 11], Box::new(|t: &Tile| t.0)),
+        (&[12, 13, 14, 15], Box::new(|t: &Tile| t.0)),
+        (&[16, 17, 18], Box::new(|t: &Tile| t.0)),
+        (&[0, 3, 7], Box::new(|t: &Tile| t.1)),
+        (&[1, 4, 8, 12], Box::new(|t: &Tile| t.1)),
+        (&[2, 5, 9, 13, 16], Box::new(|t: &Tile| t.1)),
+        (&[6, 10, 14, 17], Box::new(|t: &Tile| t.1)),
+        (&[11, 15, 18], Box::new(|t: &Tile| t.1)),
+        (&[7, 12, 16], Box::new(|t: &Tile| t.2)),
+        (&[3, 8, 13, 17], Box::new(|t: &Tile| t.2)),
+        (&[0, 4, 9, 14, 18], Box::new(|t: &Tile| t.2)),
+        (&[1, 5, 10, 15], Box::new(|t: &Tile| t.2)),
+        (&[2, 6, 11], Box::new(|t: &Tile| t.2)),
+    ];
 
+    let mut score = 0.0;
+
+    for (indices, selector) in patterns {
+        if indices.contains(&position) {
+            let values: Vec<i32> = indices
+                .iter()
+                .map(|&i| selector(&plateau.tiles[i]))
+                .filter(|&v| v != 0)
+                .collect();
+
+            if !values.is_empty() {
+                let sum = values.iter().sum::<i32>() as f64;
+                score += sum / values.len() as f64;
+            }
+        }
+    }
+
+    score
+}
 
 
 
@@ -1191,18 +1376,18 @@ fn simulate_games(plateau: Plateau, deck: Deck) -> i32 {
         .filter(|tile| *tile != Tile(0, 0, 0))
         .collect();
 
-    let mut rng = rand::thread_rng(); // Use fast RNG
+    let mut rng = rand::rng(); // Fixed: Use new API
 
     while !is_plateau_full(&simulated_plateau) {
         if legal_moves.is_empty() || valid_tiles.is_empty() {
             break;
         }
 
-        // Fast random selection using rand::Rng
-        let position_index = rng.gen_range(0..legal_moves.len());
+        // Fixed: Use new rand API
+        let position_index = rng.random_range(0..legal_moves.len());
         let position = legal_moves.swap_remove(position_index); // Swap-remove for O(1) removal
 
-        let tile_index = rng.gen_range(0..valid_tiles.len());
+        let tile_index = rng.random_range(0..valid_tiles.len());
         let chosen_tile = valid_tiles.swap_remove(tile_index); // Swap-remove for O(1) removal
 
         // Place the chosen tile

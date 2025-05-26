@@ -100,31 +100,36 @@ impl<'a> PolicyNet {
 pub fn initialize_weights(vs: &nn::VarStore) {
     for (name, mut param) in vs.variables() {
         let size = param.size();
-        log::info!("🔄 Initializing {} with size {:?}", name, size);
 
         if size.len() == 4 {
-            // Kaiming Uniform for Convolution layers
+            // Xavier/Glorot initialization for conv layers
             let fan_in = (size[1] * size[2] * size[3]) as f64;
-            let bound = (6.0f64).sqrt() / fan_in.sqrt();
+            let fan_out = (size[0] * size[2] * size[3]) as f64;
+            let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                param.f_uniform_(-bound * 2.0, bound * 2.0).unwrap(); // 🔥 Increase variance
+                param.f_uniform_(-bound, bound).unwrap();
             });
         } else if size.len() == 2 {
-            // Kaiming Uniform for Linear layers (assuming ReLU is used)
+            // Xavier initialization for linear layers
             let fan_in = size[1] as f64;
-            let bound = (6.0f64).sqrt() / fan_in.sqrt();
+            let fan_out = size[0] as f64;
+            let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                param.f_uniform_(-bound * 2.0, bound * 2.0).unwrap(); // 🔥 Increase variance
+                param.f_uniform_(-bound, bound).unwrap();
             });
         } else if size.len() == 1 {
+            // Zero initialization for biases
             tch::no_grad(|| {
                 param.f_zero_().unwrap();
             });
         }
 
+        // Validation after initialization
         if param.isnan().any().double_value(&[]) > 0.0 {
-            log::error!("🚨 NaNs detected in {} initialization!", name);
+            log::error!("🚨 NaN detected in {} after initialization!", name);
         }
+
+        log::debug!("🔧 Initialized {} with shape {:?}", name, size);
     }
 }
 
@@ -191,45 +196,63 @@ impl ValueNet {
         Ok(())
     }
     pub fn forward(&self, x: &Tensor, train: bool) -> Tensor {
-        // 🔍 Log des statistiques des entrées
-        let input_mean = x.mean(tch::Kind::Float).double_value(&[]);
-        let input_std = x.std(false).double_value(&[]);
-        // log::debug!("[ValueNet Input] Mean: {:.4}, Std: {:.4}", input_mean, input_std);
-
-        // 📏 Recentrer les entrées
-        let x = (x - x.mean(tch::Kind::Float)) / (x.std(false).clamp_min(1e-6));
-
-        // 🚫 Test avec LeakyReLU(alpha=0.2)
-        let mut h = x.apply(&self.conv1);
-        let conv1_mean = h.mean(tch::Kind::Float).double_value(&[]);
-        let conv1_std = h.std(false).double_value(&[]);
-        // log::debug!("[ValueNet Conv1 Output Before Activation] Mean: {:.4}, Std: {:.4}", conv1_mean, conv1_std);
-
-        // Pour un leaky_relu(0.2)
-        // Leaky ReLU custom avec pente 0.2
-        h = h.maximum(&(h.shallow_clone() * 0.2));
-
-        let post_relu_mean = h.mean(tch::Kind::Float).double_value(&[]);
-        // log::debug!("[ValueNet Conv1 Output After LeakyReLU] Mean: {:.4}", post_relu_mean);
-
-        for block in &self.res_blocks {
-            h = block.forward(&h, train);
+        // Input validation and normalization
+        if x.isnan().any().double_value(&[]) > 0.0 || x.isinf().any().double_value(&[]) > 0.0 {
+            log::error!("⚠️ Invalid input to ValueNet");
+            return Tensor::zeros(&[1, 1], (tch::Kind::Float, tch::Device::Cpu));
         }
 
+        // More robust normalization
+        let x_mean = x.mean(tch::Kind::Float);
+        let x_std = x.std(false).clamp_min(1e-6);
+        let x = (x - x_mean) / x_std;
+
+        // Forward pass with LeakyReLU for better gradient flow
+        let mut h = x.apply(&self.conv1).apply_t(&self.bn1, train);
+
+        // Use LeakyReLU instead of ReLU for better gradient flow
+        h = h.leaky_relu_();
+
+        // ResNet blocks
+        for block in &self.res_blocks {
+            h = block.forward(&h, train);
+
+            // Check for NaN/Inf after each block
+            if h.isnan().any().double_value(&[]) > 0.0 || h.isinf().any().double_value(&[]) > 0.0 {
+                log::error!("⚠️ Invalid values detected in ResNet block");
+                return Tensor::zeros(&[1, 1], (tch::Kind::Float, tch::Device::Cpu));
+            }
+        }
+
+        // Flatten and fully connected layers
         let flattened_size = {
             let size = h.size();
             size[1] * size[2] * size[3]
         };
 
         h = h.view([-1, flattened_size])
-            .apply(&self.flatten).relu();
-        if train { h = h.dropout(self.dropout_rate, train); }
+            .apply(&self.flatten).leaky_relu_();
 
-        h = h.apply(&self.fc1).relu();
-        if train { h = h.dropout(self.dropout_rate, train); }
+        if train {
+            h = h.dropout(self.dropout_rate, train);
+        }
 
-        h.apply(&self.value_head)
+        h = h.apply(&self.fc1).leaky_relu_();
 
+        if train {
+            h = h.dropout(self.dropout_rate, train);
+        }
+
+        // Final value prediction with tanh activation for bounded output
+        let output = h.apply(&self.value_head).tanh() * 2.0; // Scale to [-2, 2] range
+
+        // Final validation
+        if output.isnan().any().double_value(&[]) > 0.0 || output.isinf().any().double_value(&[]) > 0.0 {
+            log::error!("⚠️ Invalid output from ValueNet");
+            return Tensor::zeros(&[1, 1], (tch::Kind::Float, tch::Device::Cpu));
+        }
+
+        output
     }
 
 
