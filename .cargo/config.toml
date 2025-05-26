@@ -1,0 +1,10 @@
+[env]
+LIBTORCH = { value = "/home/jcgouleau/libtorch-clean/libtorch", force = true }
+LD_LIBRARY_PATH = { value = "/home/jcgouleau/libtorch-clean/libtorch/lib", force = true }
+
+[build]
+# Configuration optionnelle pour le build
+
+# Configuration pour les tests
+[target.'cfg(test)']
+rustflags = ["-C", "link-arg=-Wl,-rpath=/home/jcgouleau/libtorch-clean/libtorch/lib"]
