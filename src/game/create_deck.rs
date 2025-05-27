@@ -1,6 +1,7 @@
-use crate::test::{Deck, Tile};
+use crate::game::deck::Deck;
+use crate::game::tile::Tile;
 
-pub fn create_shuffle_deck() -> Deck {
+pub fn create_deck() -> Deck {
     let tiles = vec![
         new_tiles(1, 2, 3),
         new_tiles(1, 6, 8),
@@ -39,13 +40,14 @@ pub(crate) fn new_tiles(x: i32, y: i32, z: i32) -> Tile {
 }
 #[cfg(test)]
 mod tests {
-    use crate::test::{Deck, Tile};
-    use crate::create_shuffle_deck;
+    use crate::game::create_deck;
+    use crate::game::create_deck::create_deck;
+    use crate::game::tile::Tile;
 
     #[test]
     fn test_create_shuffle_deck() {
         // Create the shuffle deck
-        let deck = create_shuffle_deck();
+        let deck = create_deck();
 
         // Check that the deck has exactly 27 tiles
         assert_eq!(

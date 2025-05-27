@@ -3,9 +3,7 @@ use tch::{nn, Tensor};
 use tch::nn::VarStore;
 use tch::Result;
 
-use crate::policy_value_net::res_net_block::ResNetBlock;
-
-mod res_net_block;
+use crate::neural::res_net_block::ResNetBlock;
 
 pub struct PolicyNet {
     conv1: nn::Conv2D,
@@ -269,7 +267,7 @@ fn kaiming_uniform(tensor: &mut Tensor, fan_in: f64) {
 
 #[cfg(test)]
 mod tests {
-    use tch::{Device, nn};
+    use tch::{nn, Device};
 
     use super::*;
 

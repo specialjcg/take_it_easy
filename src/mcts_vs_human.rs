@@ -1,19 +1,20 @@
-use crate::create_shuffle_deck::create_shuffle_deck;
-use crate::create_plateau_empty::create_plateau_empty;
-use crate::remove_tile_from_deck::replace_tile_in_deck;
+use crate::game::create_deck::create_deck;
+use crate::game::remove_tile_from_deck::replace_tile_in_deck;
 use crate::generate_tile_image_names;
-use crate::result::result;
-use crate::test::{Deck, Plateau, Tile};
-use crate::{mcts_find_best_position_for_tile_with_nn, is_plateau_full};
+use crate::{is_plateau_full};
 
 use serde_json::json;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::WebSocketStream;
 use tokio::net::TcpStream;
-use futures_util::{StreamExt, SinkExt};
+use futures_util::{SinkExt, StreamExt};
 use futures_util::stream::SplitSink;
 use rand::Rng;
-use crate::policy_value_net::{PolicyNet, ValueNet};
+use crate::game::plateau::create_plateau_empty;
+use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::game::tile::Tile;
+use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
+use crate::scoring::scoring::result;
 
 pub async fn play_mcts_vs_human(
     policy_net: &PolicyNet,
@@ -22,7 +23,7 @@ pub async fn play_mcts_vs_human(
     write: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
     read: &mut (impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin),
 ) {
-    let mut deck = create_shuffle_deck();
+    let mut deck = create_deck();
     let mut plateau_human = create_plateau_empty();
     let mut plateau_mcts = create_plateau_empty();
 

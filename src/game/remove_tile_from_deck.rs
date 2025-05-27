@@ -1,5 +1,5 @@
-use crate::test::{Deck, Tile};
-
+use crate::game::deck::Deck;
+use crate::game::tile::Tile;
 
 // pub(crate) fn replace_tile_in_deck(deck: &Deck, tile_to_replace: &Tile) -> Deck {
 //     // Replace the specified tile with (0, 0, 0)
