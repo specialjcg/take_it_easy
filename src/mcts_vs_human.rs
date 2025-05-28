@@ -1,20 +1,22 @@
 use crate::game::create_deck::create_deck;
+use crate::game::plateau_is_full::is_plateau_full;
 use crate::game::remove_tile_from_deck::replace_tile_in_deck;
-use crate::generate_tile_image_names;
-use crate::{is_plateau_full};
+use crate::training::websocket::send_websocket_message;
+use crate::utils::image::generate_tile_image_names;
+// Import de votre fonction
 
-use serde_json::json;
-use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::WebSocketStream;
-use tokio::net::TcpStream;
-use futures_util::{SinkExt, StreamExt};
-use futures_util::stream::SplitSink;
-use rand::Rng;
 use crate::game::plateau::create_plateau_empty;
-use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::game::tile::Tile;
 use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
+use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::scoring::scoring::result;
+use futures_util::stream::SplitSink;
+use futures_util::StreamExt;
+use rand::Rng;
+use serde_json::json;
+use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::WebSocketStream;
 
 pub async fn play_mcts_vs_human(
     policy_net: &PolicyNet,
@@ -22,6 +24,7 @@ pub async fn play_mcts_vs_human(
     num_simulations: usize,
     write: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
     read: &mut (impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin),
+    listener: &TcpListener, // ✅ Ajout du listener pour votre fonction
 ) {
     let mut deck = create_deck();
     let mut plateau_human = create_plateau_empty();
@@ -36,19 +39,25 @@ pub async fn play_mcts_vs_human(
         deck = replace_tile_in_deck(&deck, &tile); // remove it from deck
         let tile_image = format!("../image/{}{}{}.png", tile.0, tile.1, tile.2);
 
-        // ✅ Send state to frontend
+        // ✅ Send state to frontend - REFACTORISÉ
         let payload = json!({
             "type": "mcts_vs_human_turn",
             "tile": tile_image,
             "plateau_human": generate_tile_image_names(&plateau_human.tiles),
             "plateau_mcts": generate_tile_image_names(&plateau_mcts.tiles)
         });
-        if write.send(Message::Text(payload.to_string())).await.is_err() {
-            eprintln!("❌ Failed to send turn info to frontend (WebSocket closed?)");
+
+        // 🔄 REMPLACEMENT: write.send() simple → send_websocket_message()
+        if let Err(e) = send_websocket_message(
+            write,
+            payload.to_string(),
+            listener
+        ).await {
+            eprintln!("❌ Failed to send turn info to frontend: {}", e);
             return;
         }
 
-        // ✅ Wait for HUMAN move
+        // ✅ Wait for HUMAN move (pas de changement nécessaire ici)
         let mut human_move: Option<usize> = None;
         while let Some(msg) = read.next().await {
             match msg {
@@ -97,7 +106,7 @@ pub async fn play_mcts_vs_human(
         current_turn += 1;
     }
 
-    // ✅ Game over - send results
+    // ✅ Game over - send results - REFACTORISÉ
     let score_human = result(&plateau_human);
     let score_mcts = result(&plateau_mcts);
 
@@ -107,7 +116,12 @@ pub async fn play_mcts_vs_human(
         "score_mcts": score_mcts
     });
 
-    if write.send(Message::Text(final_payload.to_string())).await.is_err() {
-        eprintln!("❌ Failed to send final results.");
+    // 🔄 REMPLACEMENT: write.send() simple → send_websocket_message()
+    if let Err(e) = send_websocket_message(
+        write,
+        final_payload.to_string(),
+        listener
+    ).await {
+        eprintln!("❌ Failed to send final results: {}", e);
     }
 }

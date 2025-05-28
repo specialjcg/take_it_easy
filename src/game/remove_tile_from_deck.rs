@@ -17,37 +17,23 @@ use crate::game::tile::Tile;
 //
 //     Deck { tiles: new_tiles } // Return the new deck with replaced tiles
 // }
-pub(crate) fn replace_tile_in_deck(deck: &Deck, tile_to_remove: &Tile) -> Deck {
-    let mut found = false;
-
+pub(crate) fn replace_tile_in_deck(deck: &Deck, tile_to_replace: &Tile) -> Deck {
     let new_tiles: Vec<Tile> = deck
         .tiles
         .iter()
-        .cloned()
-        .filter(|tile| {
-            if !found && tile == tile_to_remove {
-                found = true; // remove only the first match
-                false
+        .map(|tile| {
+            if tile == tile_to_replace {
+                Tile(0, 0, 0) // Replace the tile
             } else {
-                true
+                *tile // Keep the original tile
             }
         })
         .collect();
 
-    Deck { tiles: new_tiles }
+    Deck { tiles: new_tiles } // Return the new deck with replaced tiles
 }
 
-pub fn remove_tile_from_deck(deck: &Deck, tile_to_remove: &Tile) -> Deck {
-    // Filtre toutes les tuiles sauf celle à retirer
-    let new_tiles: Vec<Tile> = deck
-        .tiles
-        .iter()
-        .filter(|&tile| tile != tile_to_remove) // Conserve uniquement les tuiles différentes
-        .cloned() // Copie chaque tuile dans le nouveau vecteur
-        .collect();
 
-    Deck { tiles: new_tiles } // Crée un nouveau deck
-}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,10 +53,9 @@ mod tests {
         let tile_to_remove = Tile(4, 5, 6);
 
         // Remove the tile from the deck
-        let updated_deck = remove_tile_from_deck(&deck, &tile_to_remove);
+        let updated_deck = replace_tile_in_deck(&deck, &tile_to_remove);
 
         // Ensure the tile is removed
-        assert_eq!(updated_deck.tiles.len(), 2);
         assert!(!updated_deck.tiles.contains(&tile_to_remove));
 
         // Ensure other tiles are still present
@@ -93,7 +78,7 @@ mod tests {
         let tile_to_remove = Tile(0, 0, 0);
 
         // Remove the tile
-        let updated_deck = remove_tile_from_deck(&deck, &tile_to_remove);
+        let updated_deck = replace_tile_in_deck(&deck, &tile_to_remove);
 
         // Ensure the deck size remains unchanged
         assert_eq!(updated_deck.tiles.len(), 3);

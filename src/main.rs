@@ -1,49 +1,17 @@
-use chrono::Utc;
 use clap::Parser;
-use futures_util::stream::SplitSink;
-use futures_util::{SinkExt, StreamExt};
-use rand::{rng, Rng};
-use serde_json;
-use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::io::{BufWriter, Write};
+use futures_util::StreamExt;
 use std::path::Path;
-use std::sync::Arc;
-use tch::nn::{Optimizer, OptimizerConfig};
-use tch::{nn, Device, IndexOp, Tensor};
+use tch::nn::{self, OptimizerConfig};
+use tch::Device;
 use tokio::net::TcpListener;
-use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::{accept_async, WebSocketStream};
+use tokio_tungstenite::accept_async;
 
-use crate::game::deck::Deck;
-use crate::game::plateau::create_plateau_empty;
 use crate::logging::setup_logging;
-use crate::mcts::mcts_result::MCTSResult;
 use crate::mcts_vs_human::play_mcts_vs_human;
-use game::create_deck::create_deck;
-use game::plateau::Plateau;
-use game::remove_tile_from_deck::replace_tile_in_deck;
-use game::tile::Tile;
 use neural::policy_value_net::{PolicyNet, ValueNet};
-use crate::data::append_result::append_to_results_file;
-use crate::data::load_data::load_game_data;
-use crate::data::save_data::save_game_data;
-use crate::game::get_legal_moves::get_legal_moves;
-use crate::game::plateau_is_full::is_plateau_full;
-use crate::game::simulate_game::simulate_games;
-use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
-use crate::neural::tensor_conversion::convert_plateau_to_tensor;
-use crate::neural::training::gradient_clipping::enhanced_gradient_clipping;
-use crate::neural::training::normalization::robust_state_normalization;
-use crate::neural::training::trainer::train_network_with_game_data;
-use crate::scoring::scoring::result;
-use crate::strategy::position_evaluation::enhanced_position_evaluation;
-use crate::training::evaluator::evaluate_model;
 use crate::training::session::train_and_evaluate;
-use crate::training::websocket::reconnect_websocket;
-use crate::utils::image::generate_tile_image_names;
-use crate::utils::random_index::random_index;
 
+#[cfg(test)]
 mod test;
 
 mod game;
@@ -68,10 +36,21 @@ struct Config {
     #[arg(short = 's', long, default_value_t = 150)]
     num_simulations: usize,
 
-    /// Run MCTS vs Human instead of training
-    #[arg(long, default_value_t = true)]
-    mcts_vs_human: bool,
+    /// Mode de jeu
+    #[arg(long, value_enum, default_value = "mcts-vs-human")]
+    mode: GameMode,
 }
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum GameMode {
+    /// Mode entraînement normal
+    Training,
+    /// MCTS vs un seul humain
+    MctsVsHuman,
+    /// MCTS vs plusieurs humains (style Kahoot)
+    Multiplayer,
+}
+
 
 #[tokio::main]
 async fn main() {
@@ -113,47 +92,63 @@ async fn main() {
     .unwrap(); // Was 1e-3
 
     // ➕ Duel Mode: MCTS vs Human
-    if config.mcts_vs_human {
-        let listener = TcpListener::bind("127.0.0.1:9001")
-            .await
-            .expect("Unable to bind WebSocket on port 9001 for MCTS vs Human");
+    match config.mode {
+        GameMode::Training => {
+            log::info!("🧠 Starting training mode...");
+            let listener = TcpListener::bind("127.0.0.1:9000")
+                .await
+                .expect("Unable to bind WebSocket on port 9000 for training");
+            log::info!("🧠 Training WebSocket server started at ws://127.0.0.1:9000");
 
-        log::info!("🧍‍♂️🤖 Waiting for MCTS vs Human connection...");
-        let (stream, _) = listener.accept().await.unwrap();
-        let ws_stream = accept_async(stream).await.unwrap();
-        let (mut write, mut read) = ws_stream.split();
+            train_and_evaluate(
+                &vs_policy,
+                &vs_value,
+                &mut policy_net,
+                &mut value_net,
+                &mut optimizer_policy,
+                &mut optimizer_value,
+                config.num_games,
+                config.num_simulations,
+                50,
+                listener.into(),
+            )
+                .await;
+        }
 
-        play_mcts_vs_human(
-            &policy_net,
-            &value_net,
-            config.num_simulations,
-            &mut write,
-            &mut read,
-        )
-        .await;
+        GameMode::MctsVsHuman => {
+            log::info!("🧍‍♂️🤖 Starting MCTS vs Human mode...");
+            let listener = TcpListener::bind("127.0.0.1:9001")
+                .await
+                .expect("Unable to bind WebSocket on port 9001 for MCTS vs Human");
 
-        return; // Exit after duel game
+            let (stream, _) = listener.accept().await.unwrap();
+            let ws_stream = accept_async(stream).await.unwrap();
+            let (mut write, mut read) = ws_stream.split();
+
+            play_mcts_vs_human(
+                &policy_net,
+                &value_net,
+                config.num_simulations,
+                &mut write,
+                &mut read,
+                (&listener).into(),
+            )
+                .await;
+        }
+
+        GameMode::Multiplayer => {
+            log::info!("🎮👥 Starting Multiplayer mode (MCTS vs Multiple Humans)...");
+            log::info!("🔗 Players can connect and create/join sessions");
+            log::info!("📋 Session codes will be generated for easy joining");
+
+            // start_multiplayer_server(
+            //     policy_net,
+            //     value_net,
+            //     config.num_simulations,
+            // )
+            //     .await;
+        }
     }
-
-    // 🧠 Training Mode
-    let listener = TcpListener::bind("127.0.0.1:9000")
-        .await
-        .expect("Unable to bind WebSocket on port 9000 for training");
-    log::info!("🧠 Training WebSocket server started at ws://127.0.0.1:9000");
-
-    train_and_evaluate(
-        &vs_policy,
-        &vs_value,
-        &mut policy_net,
-        &mut value_net,
-        &mut optimizer_policy,
-        &mut optimizer_value,
-        config.num_games,
-        config.num_simulations,
-        50, // Evaluate every 50 games
-        listener.into(),
-    )
-    .await;
 }
 
 

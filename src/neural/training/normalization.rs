@@ -46,6 +46,7 @@ fn normalize_with_mad(tensor: &Tensor, median: f64, mad: f64) -> Tensor {
 }
 
 /// Version simple de normalisation z-score
+#[allow(dead_code)]
 pub fn simple_normalization(tensor: &Tensor) -> Tensor {
     let mean = tensor.mean(tch::Kind::Float);
     let std = tensor.std(false).clamp_min(1e-8);
@@ -53,6 +54,7 @@ pub fn simple_normalization(tensor: &Tensor) -> Tensor {
 }
 
 /// Normalisation min-max
+#[allow(dead_code)]
 pub fn min_max_normalization(tensor: &Tensor) -> Tensor {
     let min_val = tensor.min();
     let max_val = tensor.max();

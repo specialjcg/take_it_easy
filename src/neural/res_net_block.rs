@@ -1,7 +1,5 @@
 use tch::{nn, Tensor};
 
-use crate::neural::policy_value_net::initialize_weights;
-
 /// Residual Block
 pub struct ResNetBlock {
     pub(crate) conv1: nn::Conv2D,

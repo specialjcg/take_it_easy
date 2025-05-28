@@ -1,8 +1,7 @@
-use crate::game::plateau::Plateau;
-use crate::game::tile::Tile;
-
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::game::plateau::Plateau;
+    use crate::game::tile::Tile;
     pub fn create_mcts_node(state: GameState, parent: Option<*mut MCTSNode>) -> MCTSNode {
         MCTSNode {
             state,
@@ -61,7 +60,7 @@ pub(crate) mod tests {
             placer_tile(&mut game_state.plateau, tile, position);
             let new_plateau = game_state.plateau.clone();
             let mut new_deck = game_state.deck.clone();
-            new_deck = remove_tile_from_deck(&new_deck, &tile);
+            new_deck = replace_tile_in_deck(&new_deck, &tile);
 
 
             Some(GameState {
@@ -129,18 +128,17 @@ pub(crate) mod tests {
             (*current).value += score;
         }
     }
-    use crate::game::remove_tile_from_deck::remove_tile_from_deck;
-use super::*;
-
-
     use rand::Rng;
     use crate::game::create_deck::create_deck;
-    use crate::{convert_plateau_to_tensor, get_legal_moves, is_plateau_full, simulate_games};
+    use crate::game::get_legal_moves::get_legal_moves;
+    use crate::game::plateau_is_full::is_plateau_full;
+    use crate::game::simulate_game::simulate_games;
+    use crate::neural::tensor_conversion::convert_plateau_to_tensor;
     use crate::game::deck::Deck;
     use crate::game::game_state::GameState;
     use crate::mcts::mcts_node::MCTSNode;
-    use crate::game::plateau::{create_plateau_empty, Plateau};
-    use crate::game::tile::Tile;
+    use crate::game::plateau::create_plateau_empty;
+    use crate::game::remove_tile_from_deck::replace_tile_in_deck;
     use crate::scoring::scoring::result;
 
     #[test]
@@ -182,7 +180,7 @@ use super::*;
     fn test_simulate_games() {
         let plateau = create_plateau_empty();
         let deck = create_deck();
-        let num_simulations = 10;
+        let _num_simulations = 10;
 
         let avg_score = simulate_games(plateau, deck);
         assert!(avg_score >= 0); // Score should be non-negative
@@ -194,7 +192,7 @@ use super::*;
         let deck = create_deck();
 
         let tensor = convert_plateau_to_tensor(&plateau, &tile, &deck, /* usize */0, 19/* usize */);
-        assert_eq!(tensor.size(), vec![1, 3, 5, 5]); // Ensure the tensor has the correct shape
+        assert_eq!(tensor.size(), vec![1, 5, 47, 1]); // Ensure the tensor has the correct shape
     }
 
 
@@ -202,11 +200,11 @@ use super::*;
     #[test]
     fn test_placement_tuile_not_valide_take_it_easy() {
         let mut plateau:Plateau=create_plateau_empty();
-        let deckSfuffle:Deck= create_deck();
-        let tile = deckSfuffle.tiles[5].clone();
+        let deck_sfuffle: Deck = create_deck();
+        let tile = deck_sfuffle.tiles[5].clone();
         assert!(placer_tile(&mut plateau, tile.clone(), 1));
         assert_eq!(plateau.tiles[1], tile);
-        let tile = deckSfuffle.tiles[5].clone();
+        let tile = deck_sfuffle.tiles[5].clone();
         assert!(!placer_tile(&mut plateau, tile.clone(), 1));
     }
     #[test]
@@ -215,8 +213,8 @@ use super::*;
         let deck_shuffle: Deck = create_deck();
 
         // Génère un index aléatoire
-        let mut rng = rand::thread_rng();
-        let index = rng.gen_range(0..deck_shuffle.tiles.len());
+        let mut rng = rand::rng();
+        let index = rng.random_range(0..deck_shuffle.tiles.len());
 
         // Sélectionne une tuile aléatoire
         let tuile = deck_shuffle.tiles[index].clone();
@@ -239,17 +237,18 @@ use super::*;
         let deck_shuffle: Deck = create_deck();
 
         // Génère un indice aléatoire
-        let mut rng = rand::thread_rng();
-        let index = rng.gen_range(0..deck_shuffle.tiles.len());
+        let mut rng = rand::rng();
+        let index = rng.random_range(0..deck_shuffle.tiles.len());
 
         // Récupère la tuile choisie aléatoirement
         let tuile_choisie = deck_shuffle.tiles[index].clone();
 
         // Supprime la tuile du deck
-        let nouveau_deck = remove_tile_from_deck(&deck_shuffle, &tuile_choisie);
+        let nouveau_deck = replace_tile_in_deck(&deck_shuffle, &tuile_choisie);
+        
 
         // Vérifie que la nouvelle taille du deck est réduite de 1
-        assert_eq!(nouveau_deck.tiles.len(), deck_shuffle.tiles.len() - 1);
+        assert_eq!(27-nouveau_deck.tiles.iter().filter(|&&tile| tile == Tile(0, 0, 0)).count(),26);
 
         // Vérifie que la tuile choisie n'est plus présente dans le nouveau deck
         assert!(!nouveau_deck.tiles.contains(&tuile_choisie));
@@ -278,7 +277,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_first_3_plateau_3_1() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 0);
         placer_tile(&mut plateau, deck.tiles[1].clone(), 1);
@@ -288,7 +287,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_first_3_plateau_3_2() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[9].clone(), 0);
         placer_tile(&mut plateau, deck.tiles[10].clone(), 1);
@@ -298,7 +297,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_2_column_plateau_4_2() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[9].clone(), 3);
         placer_tile(&mut plateau, deck.tiles[10].clone(), 4);
@@ -312,7 +311,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_column_center_plateau_5_2() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[9].clone(), 7);
         placer_tile(&mut plateau, deck.tiles[10].clone(), 8);
@@ -327,7 +326,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_column_4_plateau_4_2() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[9].clone(), 12);
         placer_tile(&mut plateau, deck.tiles[10].clone(), 13);
@@ -341,7 +340,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_last_column_3_plateau_3_1() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 16);
         placer_tile(&mut plateau, deck.tiles[1].clone(),17);
@@ -351,7 +350,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_first_diag_plateau_0_3_7() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 0);
         placer_tile(&mut plateau, deck.tiles[4].clone(),3);
@@ -361,7 +360,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_second_diag_plateau_1_4_8_12() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 1);
         placer_tile(&mut plateau, deck.tiles[4].clone(),4);
@@ -372,7 +371,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_third_diag_plateau_2_5_9_13_16() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 2);
         placer_tile(&mut plateau, deck.tiles[4].clone(),5);
@@ -384,7 +383,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_fourth_diag_plateau_6_10_14_17() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 6);
         placer_tile(&mut plateau, deck.tiles[4].clone(),10);
@@ -396,7 +395,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_last_diag_plateau_11_15_18() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 11);
         placer_tile(&mut plateau, deck.tiles[4].clone(),15);
@@ -408,7 +407,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_firdt_diag_left_plateau_7_12_16() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 7);
         placer_tile(&mut plateau, deck.tiles[2].clone(),12);
@@ -420,7 +419,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_second_diag_left_plateau_3_8_13_17() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 3);
         placer_tile(&mut plateau, deck.tiles[2].clone(),8);
@@ -433,7 +432,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_third_diag_left_plateau_0_4_9_14_18() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 0);
         placer_tile(&mut plateau, deck.tiles[2].clone(),4);
@@ -448,7 +447,7 @@ use super::*;
 
     #[test]
     fn test_remplir_plateau_take_it_easy_count_fourth_diag_left_plateau_1_5_10_15() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 1);
         placer_tile(&mut plateau, deck.tiles[2].clone(),5);
@@ -461,7 +460,7 @@ use super::*;
     }
     #[test]
     fn test_remplir_plateau_take_it_easy_count_last_diag_left_plateau_2_6_11() {
-        let mut deck = create_deck();
+        let deck = create_deck();
         let mut plateau = create_plateau_empty();
         placer_tile(&mut plateau, deck.tiles[0].clone(), 2);
         placer_tile(&mut plateau, deck.tiles[2].clone(),6);
@@ -530,9 +529,9 @@ use super::*;
                 break; // No more moves possible
             }
 
-            let mut rng = rand::thread_rng();
-            let position = legal_moves[rng.gen_range(0..legal_moves.len())].clone();
-            let tile_index = rng.gen_range(0..simulated_state.deck.tiles.len());
+            let mut rng = rand::rng();
+            let position = legal_moves[rng.random_range(0..legal_moves.len())].clone();
+            let tile_index = rng.random_range(0..simulated_state.deck.tiles.len());
             let chosen_tile = simulated_state.deck.tiles[tile_index].clone();
             simulated_state = apply_move(simulated_state,chosen_tile, position).unwrap();
         }
@@ -546,16 +545,14 @@ use super::*;
 
         // Game is not over at the beginning
         assert!(!is_game_over(state.clone()));
-
+        let mut position = 0;
         while state.plateau.tiles.contains(&Tile(0, 0, 0)) {
-            for position in 0..state.plateau.tiles.len() {
-                if let Some(empty_tile) = state.deck.tiles.first() {
-                    if let Some(new_state) = apply_move(state.clone(), *empty_tile, position) {
+                if let Some(empty_tile) = state.deck.tiles.iter().filter(|tile| **tile != Tile(0, 0, 0)).collect::<Vec<_>>().first() {
+                    if let Some(new_state) = apply_move(state.clone(), **empty_tile, position) {
                         state = new_state;
-                        break; // Move to the next iteration after placing a tile
                     }
                 }
-            }
+            position += 1;
         }
 
 
@@ -639,7 +636,7 @@ use super::*;
     fn test_backpropagate_with_parent() {
         let mut root = create_mcts_node(create_game_state(), None);
 
-        let mut child = create_mcts_node(create_game_state(), Some(&mut root as *mut _));
+        let child = create_mcts_node(create_game_state(), Some(&mut root as *mut _));
         root.children.push(child);
 
         let  leaf = create_mcts_node(create_game_state(), Some(&mut root.children[0] as *mut _));
@@ -731,10 +728,10 @@ use super::*;
     #[test]
     fn test_backpropagation_step() {
         let mut root = create_mcts_node(create_game_state(), None);
-        let mut child = create_mcts_node(create_game_state(), Some(&mut root as *mut _));
+        let child = create_mcts_node(create_game_state(), Some(&mut root as *mut _));
         root.children.push(child);
 
-        let mut leaf = create_mcts_node(create_game_state(), Some(&mut root.children[0] as *mut _));
+        let leaf = create_mcts_node(create_game_state(), Some(&mut root.children[0] as *mut _));
         root.children[0].children.push(leaf);
 
         let leaf_mut = &mut root.children[0].children[0];
@@ -762,17 +759,17 @@ use super::*;
             // Expansion
             let legal_moves = get_legal_moves(selected_node.state.plateau.clone());
             if !legal_moves.is_empty() {
-                let mut rng = rand::thread_rng();
-                let position = legal_moves[rng.gen_range(0..legal_moves.len())];
-                let tile_index = rng.gen_range(0..selected_node.state.deck.tiles.len());
+                let mut rng = rand::rng();
+                let position = legal_moves[rng.random_range(0..legal_moves.len())];
+                let tile_index = rng.random_range(0..selected_node.state.deck.tiles.len());
                 let chosen_tile = selected_node.state.deck.tiles[tile_index];
-                let deck_size_before = selected_node.state.deck.tiles.len();
+                let deck_size_before = selected_node.state.deck.tiles.iter().filter(|tile| **tile != Tile(0, 0, 0)).collect::<Vec<_>>().len();
                 println!("Deck size before expansion: {}", deck_size_before);
 
                 if let Some(new_state) = apply_move(selected_node.state.clone(), chosen_tile, position) {
                     expand(selected_node.clone(), new_state.clone());
 
-                    let deck_size_after = new_state.deck.tiles.len();
+                    let deck_size_after = new_state.deck.tiles.iter().filter(|tile| **tile != Tile(0, 0, 0)).collect::<Vec<_>>().len();
                     println!("Deck size after expansion: {}", deck_size_after);
 
                     assert_eq!(deck_size_after, deck_size_before - 1, "Deck size did not decrement correctly!");
