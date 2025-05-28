@@ -40,7 +40,6 @@ pub(crate) fn new_tiles(x: i32, y: i32, z: i32) -> Tile {
 }
 #[cfg(test)]
 mod tests {
-    use crate::game::create_deck;
     use crate::game::create_deck::create_deck;
     use crate::game::tile::Tile;
 

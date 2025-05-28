@@ -105,7 +105,7 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             let fan_out = (size[0] * size[2] * size[3]) as f64;
             let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                param.f_uniform_(-bound, bound).unwrap();
+                let _ = param.f_uniform_(-bound, bound).unwrap();
             });
         } else if size.len() == 2 {
             // Xavier initialization for linear layers
@@ -113,12 +113,12 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             let fan_out = size[0] as f64;
             let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                param.f_uniform_(-bound, bound).unwrap();
+                let _ = param.f_uniform_(-bound, bound).unwrap();
             });
         } else if size.len() == 1 {
             // Zero initialization for biases
             tch::no_grad(|| {
-                param.f_zero_().unwrap();
+                let _ = param.f_zero_().unwrap();
             });
         }
 
@@ -256,10 +256,11 @@ impl ValueNet {
 
 
 }
+#[allow(dead_code)]
 fn kaiming_uniform(tensor: &mut Tensor, fan_in: f64) {
     let bound = (6.0f64).sqrt() / fan_in.sqrt();
     tch::no_grad(|| {
-        tensor.f_uniform_(-bound, bound).unwrap();
+        let _ = tensor.f_uniform_(-bound, bound).unwrap();
     });
 }
 

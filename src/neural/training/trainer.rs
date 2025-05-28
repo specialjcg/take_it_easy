@@ -9,7 +9,7 @@ pub fn train_network_with_game_data(
     vs_policy: &nn::VarStore,
     vs_value: &nn::VarStore,
     game_data: &[MCTSResult],
-    discount_factor: f64,
+    _discount_factor: f64,
     policy_net: &PolicyNet,
     value_net: &ValueNet,
     optimizer_policy: &mut Optimizer,
@@ -79,7 +79,7 @@ pub fn train_network_with_game_data(
         // Policy loss
         let best_position = result.best_position as i64;
         let target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
-        target_policy.i((0, best_position)).fill_(1.0);
+        let _ = target_policy.i((0, best_position)).fill_(1.0);
         let log_policy = pred_policy.log();
         let policy_loss = -(target_policy * log_policy.shallow_clone()).sum(tch::Kind::Float);
         total_policy_loss += policy_loss;

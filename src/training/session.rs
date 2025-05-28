@@ -8,15 +8,13 @@ use crate::game::remove_tile_from_deck::replace_tile_in_deck;
 use crate::game::tile::Tile;
 use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
 use crate::mcts::mcts_result::MCTSResult;
-use crate::mcts_vs_human::play_mcts_vs_human;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::training::trainer::train_network_with_game_data;
 use crate::scoring::scoring::result;
 use crate::training::evaluator::evaluate_model;
-use crate::training::websocket::reconnect_websocket;
+use crate::training::websocket::{send_websocket_message};
 use crate::utils::image::generate_tile_image_names;
-use crate::Config;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{StreamExt};
 use rand::{rng, Rng};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,9 +22,8 @@ use tch::nn;
 use tch::nn::Optimizer;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
-use tokio_tungstenite::tungstenite::Message;
-/// Lance une session MCTS vs Humain
 
+/// Lance une session MCTS vs Humain - Version refactorisée avec send_websocket_message
 pub async fn train_and_evaluate(
     vs_policy: &nn::VarStore,
     vs_value: &nn::VarStore,
@@ -64,7 +61,6 @@ pub async fn train_and_evaluate(
             );
 
             let mut batch_games_played = 0; // Tracks games processed in this evaluation interval
-
             let max_memory_size = 1000; // Store last 500 games
 
             for game in 0..evaluation_interval {
@@ -74,11 +70,12 @@ pub async fn train_and_evaluate(
                 let mut first_move: Option<(usize, Tile)> = None;
                 let total_turns = 19; // The number of moves in the game
                 let mut current_turn = 0;
+
                 while !is_plateau_full(&plateau) {
                     let tile_index = rng().random_range(0..deck.tiles.len());
                     let chosen_tile = deck.tiles[tile_index];
-                    // ✅ **Send preview before placement**
-                    // ✅ **INSERT YOUR NEW CODE HERE**
+
+                    // ✅ Send preview before placement - REFACTORISÉ
                     let chosen_tile_image = format!(
                         "../image/{}{}{}.png",
                         chosen_tile.0, chosen_tile.1, chosen_tile.2
@@ -87,8 +84,16 @@ pub async fn train_and_evaluate(
                         "next_tile": chosen_tile_image,
                         "plateau_tiles": generate_tile_image_names(&plateau.tiles)
                     });
-                    let serialized = serde_json::to_string(&payload).unwrap();
-                    write.send(Message::Text(serialized)).await.unwrap();
+
+                    // 🔄 REMPLACEMENT: write.send() → send_websocket_message()
+                    if let Err(e) = send_websocket_message(
+                        &mut write,
+                        payload.to_string(),
+                        &listener
+                    ).await {
+                        log::error!("Failed to send tile preview: {}", e);
+                        break;
+                    }
 
                     let game_result = mcts_find_best_position_for_tile_with_nn(
                         &mut plateau,
@@ -107,44 +112,42 @@ pub async fn train_and_evaluate(
                     }
                     plateau.tiles[best_position] = chosen_tile;
                     deck = replace_tile_in_deck(&deck, &chosen_tile);
-                    // ✅ INSERT THIS TO SEND SCORE TO CLIENT
+
+                    // ✅ Send score to client - REFACTORISÉ
                     let current_score = result(&plateau);
                     let score_payload = serde_json::json!({
                         "type": "score_update",
                         "current_score": current_score,
                     });
-                    let serialized_score = serde_json::to_string(&score_payload).unwrap();
-                    if let Err(e) = write.send(Message::Text(serialized_score)).await {
-                        log::error!("WebSocket error when sending score: {:?}", e);
-                        if let Some(new_write) = reconnect_websocket(&listener).await {
-                            write = new_write;
-                        } else {
-                            log::error!("Failed to reconnect WebSocket. Exiting...");
-                            break;
-                        }
+
+                    // 🔄 REMPLACEMENT: Logique complexe de reconnexion → send_websocket_message()
+                    if let Err(e) = send_websocket_message(
+                        &mut write,
+                        score_payload.to_string(),
+                        &listener
+                    ).await {
+                        log::error!("Failed to send score update: {}", e);
+                        break;
                     }
 
                     game_data.push(game_result); // Store training data
 
-                    // ✅ **INSERT YOUR NEW CODE HERE**
+                    // ✅ Send updated plateau state - REFACTORISÉ
                     let payload_after_placement = serde_json::json!({
                         "next_tile": null, // Clear preview
                         "plateau_tiles": generate_tile_image_names(&plateau.tiles) // new updated state
                     });
-                    let serialized = serde_json::to_string(&payload_after_placement).unwrap();
 
-                    // ✅ Handle WebSocket disconnections
-                    if let Err(e) = write.send(Message::Text(serialized.clone())).await {
-                        log::error!("WebSocket error: {:?}. Attempting to reconnect...", e);
-
-                        // **Reconnect WebSocket**
-                        if let Some(new_write) = reconnect_websocket(&listener).await {
-                            write = new_write;
-                        } else {
-                            log::error!("Failed to reconnect WebSocket. Exiting...");
-                            break;
-                        }
+                    // 🔄 REMPLACEMENT: Logique complexe de reconnexion → send_websocket_message()
+                    if let Err(e) = send_websocket_message(
+                        &mut write,
+                        payload_after_placement.to_string(),
+                        &listener
+                    ).await {
+                        log::error!("Failed to send plateau update: {}", e);
+                        break;
                     }
+
                     current_turn += 1; // Increment turn counter each time a tile is placed
                 }
 
@@ -213,10 +216,16 @@ pub async fn train_and_evaluate(
                         games_played
                     );
                     log::info!("batch {} - Score moyen: {:.2}", game, moyenne);
-                    write
-                        .send(Message::Text(format!("GAME_RESULT:{}", moyenne)))
-                        .await
-                        .unwrap();
+
+                    // 🔄 REMPLACEMENT: write.send().await.unwrap() → send_websocket_message()
+                    let result_message = format!("GAME_RESULT:{}", moyenne);
+                    if let Err(e) = send_websocket_message(
+                        &mut write,
+                        result_message,
+                        &listener
+                    ).await {
+                        log::error!("Failed to send game result: {}", e);
+                    }
                 }
 
                 // Save current game data for future training

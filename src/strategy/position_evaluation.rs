@@ -3,7 +3,7 @@ use crate::game::tile::Tile;
 use crate::scoring::scoring::compute_alignment_score;
 
 // Version simplifiée qui se concentre sur les positions stratégiques
-pub fn calculate_line_completion_bonus(plateau: &Plateau, position: usize, tile: &Tile) -> f64 {
+pub fn calculate_line_completion_bonus(_plateau: &Plateau, position: usize, tile: &Tile) -> f64 {
     let mut bonus = 0.0;
 
     // Bonus basé sur les positions stratégiques identifiées dans tes données

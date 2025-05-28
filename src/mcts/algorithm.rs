@@ -141,8 +141,8 @@ pub fn mcts_find_best_position_for_tile_with_nn(
             let mut total_simulated_score = 0.0;
 
             for _ in 0..rollout_count {
-                let mut lookahead_plateau = temp_plateau.clone();
-                let mut lookahead_deck = temp_deck.clone();
+                let lookahead_plateau = temp_plateau.clone();
+                let lookahead_deck = temp_deck.clone();
 
                 // 🔮 Étape 1.1 — Tirer une tuile hypothétique (T2)
                 if lookahead_deck.tiles.is_empty() {

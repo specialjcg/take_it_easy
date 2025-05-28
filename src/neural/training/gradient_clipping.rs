@@ -36,7 +36,7 @@ fn clip_value_network_gradients(vs_value: &nn::VarStore) -> f64 {
                 max_grad_value = max_grad_value.max(grad_norm);
 
                 // Clipping très agressif pour stabilité
-                tensor.grad().clamp_(-0.5, 0.5);
+                let _ = tensor.grad().clamp_(-0.5, 0.5);
             }
         }
     });
@@ -55,7 +55,7 @@ fn clip_policy_network_gradients(vs_policy: &nn::VarStore) -> f64 {
                 max_grad_policy = max_grad_policy.max(grad_norm);
 
                 // Clipping modéré
-                tensor.grad().clamp_(-1.0, 1.0);
+                let _ = tensor.grad().clamp_(-1.0, 1.0);
             }
         }
     });
@@ -74,6 +74,7 @@ fn log_gradient_norms(max_grad_value: f64, max_grad_policy: f64) {
 }
 
 /// Version simple du clipping des gradients
+#[allow(dead_code)]
 pub fn simple_gradient_clipping(
     vs: &nn::VarStore,
     max_norm: f64,
@@ -86,7 +87,7 @@ pub fn simple_gradient_clipping(
                 let grad_norm = tensor.grad().norm().double_value(&[]);
                 max_grad = max_grad.max(grad_norm);
 
-                tensor.grad().clamp_(-max_norm, max_norm);
+                let _ = tensor.grad().clamp_(-max_norm, max_norm);
             }
         }
     });
