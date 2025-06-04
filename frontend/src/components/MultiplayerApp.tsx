@@ -40,7 +40,6 @@ const MultiplayerApp: Component = () => {
                 gameState.setPlateauTiles,
                 gameState.setAvailablePositions,
                 gameState.session,
-                gameState.addDebugLog
             );
         } else {
             // Mode normal : afficher le plateau du joueur
@@ -49,7 +48,6 @@ const MultiplayerApp: Component = () => {
                 gameState.setPlateauTiles,
                 gameState.setAvailablePositions,
                 gameState.session,
-                gameState.addDebugLog
             );
         }
     };
@@ -65,7 +63,6 @@ const MultiplayerApp: Component = () => {
         gameState.setMyTurn,
         gameState.setMctsLastMove,
         updatePlateauFunction(), // ✅ Fonction adaptée
-        gameState.addDebugLog
     );
 
     const polling = usePolling(
@@ -80,7 +77,6 @@ const MultiplayerApp: Component = () => {
         gameState.setStatusMessage,
         updatePlateauFunction(), // ✅ Fonction adaptée
         GameStateManager.convertSessionState,
-        gameState.addDebugLog
     );
 
     // ============================================================================
@@ -92,7 +88,6 @@ const MultiplayerApp: Component = () => {
         GameStateManager.handleAutoConnection(
             gameState.setPlayerName,
             gameState.setSessionCode,
-            gameState.addDebugLog,
             () => gameActions.joinSession(
                 gameState.playerName,
                 gameState.sessionCode,
@@ -108,7 +103,6 @@ const MultiplayerApp: Component = () => {
         const currentSession = gameState.session();
         if (currentSession) {
             polling.startPolling(currentSession.sessionId);
-            gameState.addDebugLog(`Polling activé pour session: ${currentSession.sessionCode}`);
         } else {
             polling.stopPolling();
         }
@@ -120,7 +114,6 @@ const MultiplayerApp: Component = () => {
         if (state && state.state === SessionState.IN_PROGRESS && !gameState.isGameStarted()) {
             console.log('🎮 Jeu commencé ! Prêt pour démarrer le premier tour...');
             gameState.setStatusMessage('🎮 Le jeu commence ! Cliquez sur "Démarrer le tour"');
-            gameState.addDebugLog('🎮 Jeu commencé');
         }
     });
 
@@ -132,7 +125,6 @@ const MultiplayerApp: Component = () => {
             gameState.lastTileHash,
             gameState.setImageCache,
             gameState.setLastTileHash,
-            gameState.addDebugLog
         );
     });
 
@@ -168,7 +160,7 @@ const MultiplayerApp: Component = () => {
     };
 
     const handleOpenMctsSession = () => {
-        GameStateManager.openMctsSession(gameState.session, gameState.addDebugLog);
+        GameStateManager.openMctsSession(gameState.session);
     };
 
     const handleStartGameTurn = () => {
@@ -225,7 +217,6 @@ const MultiplayerApp: Component = () => {
                                 currentTile={gameState.currentTile}
                                 currentTileImage={gameState.currentTileImage}
                                 imageCache={gameState.imageCache}
-                                addDebugLog={gameState.addDebugLog}
                             />
 
                             {/* Status du tour */}
@@ -255,7 +246,6 @@ const MultiplayerApp: Component = () => {
                             myTurn={gameState.myTurn}
                             session={gameState.session}
                             onTileClick={handlePlayMove}
-                            addDebugLog={gameState.addDebugLog}
                         />
                     </div>
                 </Show>

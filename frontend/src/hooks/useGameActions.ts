@@ -19,7 +19,6 @@ export const useGameActions = (
     setMyTurn: (turn: boolean) => void,
     setMctsLastMove: (move: string) => void,
     updatePlateauTiles: (gameState: any) => void,
-    addDebugLog: (message: string) => void,
 ) => {
 
     /**
@@ -170,7 +169,6 @@ export const useGameActions = (
 
         setLoading(true);
         setError('');
-        addDebugLog(`🎯 Création session pour ${playerName()}`);
 
         const result = await gameClient.createSession(playerName());
 
@@ -179,12 +177,10 @@ export const useGameActions = (
             if (!result.sessionId || !result.playerId || !result.sessionCode) {
                 const error = `Données de session manquantes: sessionId=${result.sessionId}, playerId=${result.playerId}, sessionCode=${result.sessionCode}`;
                 setError(error);
-                addDebugLog(`❌ ${error}`);
                 setLoading(false);
                 return;
             }
 
-            addDebugLog(`✅ Session créée avec succès: sessionId=${result.sessionId}, playerId=${result.playerId}`);
 
             setSession({
                 playerId: result.playerId,
@@ -211,10 +207,8 @@ export const useGameActions = (
             }
 
             setStatusMessage(`Session créée ! Code: ${result.sessionCode}`);
-            addDebugLog(`✅ Session créée: ${result.sessionCode}`);
         } else {
             setError(result.error || 'Erreur lors de la création');
-            addDebugLog(`❌ Échec création: ${result.error}`);
         }
 
         setLoading(false);
@@ -237,7 +231,6 @@ export const useGameActions = (
 
         setLoading(true);
         setError('');
-        addDebugLog(`🚪 Join session: ${sessionCode()} par ${playerName()}`);
 
         const result = await gameClient.joinSession(sessionCode(), playerName());
 
@@ -246,12 +239,10 @@ export const useGameActions = (
             if (!result.sessionId || !result.playerId || !result.sessionCode) {
                 const error = `Données de session manquantes: sessionId=${result.sessionId}, playerId=${result.playerId}, sessionCode=${result.sessionCode}`;
                 setError(error);
-                addDebugLog(`❌ ${error}`);
                 setLoading(false);
                 return;
             }
 
-            addDebugLog(`✅ Session jointe avec succès: sessionId=${result.sessionId}, playerId=${result.playerId}`);
 
             setSession({
                 playerId: result.playerId,
@@ -278,10 +269,8 @@ export const useGameActions = (
             }
 
             setStatusMessage(`Rejoint la session ${result.sessionCode}`);
-            addDebugLog(`✅ Session jointe: ${result.sessionCode}`);
         } else {
             setError(result.error || 'Erreur lors du join');
-            addDebugLog(`❌ Échec join: ${result.error}`);
         }
 
         setLoading(false);
@@ -295,7 +284,6 @@ export const useGameActions = (
     ) => {
         const currentSession = session();
         if (!currentSession) {
-            addDebugLog('❌ Pas de session active');
             return;
         }
 
@@ -303,12 +291,10 @@ export const useGameActions = (
         const sessionId = currentSession.sessionId;
         const playerId = currentSession.playerId;
 
-        addDebugLog(`⚡ SET_READY: sessionId="${sessionId}", playerId="${playerId}"`);
 
         if (!sessionId || !playerId) {
             const error = `Données manquantes: sessionId=${sessionId}, playerId=${playerId}`;
             setError(error);
-            addDebugLog(`❌ ${error}`);
             return;
         }
 
@@ -330,16 +316,13 @@ export const useGameActions = (
             });
 
             setStatusMessage('Vous êtes maintenant prêt !');
-            addDebugLog(`✅ Ready défini - Game Started: ${result.gameStarted}`);
 
             if (result.gameStarted) {
                 setGameState(prev => prev ? { ...prev, state: 1 } : null); // SessionState.IN_PROGRESS
                 setStatusMessage('La partie commence !');
-                addDebugLog('🎮 Jeu démarré');
             }
         } else {
             setError(result.error || 'Erreur');
-            addDebugLog(`❌ Échec setReady: ${result.error}`);
         }
 
         setLoading(false);
@@ -352,7 +335,6 @@ export const useGameActions = (
         const currentSession = session();
         if (currentSession) {
             await gameClient.leaveSession(currentSession.sessionId, currentSession.playerId);
-            addDebugLog(`🚪 Session quittée: ${currentSession.sessionCode}`);
         }
 
         resetSession();

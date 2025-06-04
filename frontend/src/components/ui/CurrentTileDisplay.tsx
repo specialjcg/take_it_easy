@@ -5,7 +5,6 @@ interface CurrentTileDisplayProps {
     currentTile: () => string | null;
     currentTileImage: () => string | null;
     imageCache: () => string | null;
-    addDebugLog: (message: string) => void;
 }
 
 /**
@@ -26,10 +25,8 @@ export const CurrentTileDisplay: Component<CurrentTileDisplayProps> = (props) =>
                             style="opacity: 0; width: 110px; height: 110px; object-fit: cover; transform: scale(5.2); transition: opacity 0.3s ease;"
                             onLoad={(e) => {
                                 e.currentTarget.style.opacity = '1';
-                                props.addDebugLog(`✅ Image cachée chargée: ${props.imageCache()}`);
                             }}
                             onError={(e) => {
-                                props.addDebugLog(`❌ Erreur image cachée: ${props.imageCache()}`);
                                 e.currentTarget.style.border = '4px solid red';
                                 e.currentTarget.style.opacity = '1';
                             }}

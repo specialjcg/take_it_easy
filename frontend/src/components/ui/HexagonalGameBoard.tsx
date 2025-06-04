@@ -7,7 +7,6 @@ interface HexagonalGameBoardProps {
     myTurn: () => boolean;
     session: () => { playerId: string } | null;
     onTileClick: (position: number) => void;
-    addDebugLog: (message: string) => void;
 }
 
 export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) => {
@@ -131,31 +130,6 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
             playerId: currentSession?.playerId
         });
     };
-    const getDisplayedPlateau = (): string[] => {
-        const currentSession = props.session();
-        const allPlateaus = props.plateauTiles();
-
-        if (currentSession && currentSession.playerId.includes('viewer')) {
-            // Mode viewer : afficher le plateau MCTS
-            const mctsPlateau = allPlateaus['mcts_ai'];
-            if (mctsPlateau) {
-                props.addDebugLog(`👁️ Affichage plateau MCTS (${mctsPlateau.length} positions)`);
-                return mctsPlateau;
-            }
-            // Fallback : afficher le premier plateau disponible
-            const firstPlayerId = Object.keys(allPlateaus)[0];
-            if (firstPlayerId) {
-                props.addDebugLog(`👁️ Fallback: affichage plateau ${firstPlayerId}`);
-                return allPlateaus[firstPlayerId];
-            }
-            return [];
-        } else {
-            // Mode normal : afficher le plateau du joueur actuel
-            const playerTiles = currentSession ? allPlateaus[currentSession.playerId] || [] : [];
-            props.addDebugLog(`🎮 Affichage plateau joueur (${playerTiles.length} positions)`);
-            return playerTiles;
-        }
-    };
     /**
      * 🚀 DESSINER LE PLATEAU (OPTIMISÉ)
      */
@@ -194,12 +168,10 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
             // Mode viewer : SEULEMENT le plateau MCTS
             playerTiles = allPlateaus['mcts_ai'] || [];
             displayMode = 'MCTS Viewer';
-            props.addDebugLog(`👁️ Rendu plateau MCTS: ${playerTiles.filter(t => t !== '').length} tuiles`);
         } else {
             // Mode normal : plateau du joueur actuel
             playerTiles = currentSession ? allPlateaus[currentSession.playerId] || [] : [];
             displayMode = 'Player';
-            props.addDebugLog(`🎮 Rendu plateau joueur: ${playerTiles.filter(t => t !== '').length} tuiles`);
         }
 
         // Dessiner les hexagones avec couleurs unifiées
@@ -280,7 +252,6 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
         setLastDrawState(newStateHash);
 
         const endTime = performance.now();
-        props.addDebugLog(`🎨 Plateau redessiné en ${(endTime - startTime).toFixed(1)}ms (${imagePromises.length} images)`);
     };
 
     /**
@@ -293,7 +264,6 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
         const isViewerMode = currentSession && currentSession.playerId.includes('viewer');
 
         if (isViewerMode) {
-            props.addDebugLog('👁️ Mode viewer : clics désactivés');
             return;
         }
         // Debounce pour éviter les clics multiples
@@ -303,13 +273,11 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
 
         clickTimeout = setTimeout(() => {
             if (!canvasRef || !props.myTurn()) {
-                props.addDebugLog(`❌ Clic ignoré: ${!canvasRef ? 'pas de canvas' : 'pas mon tour'}`);
                 return;
             }
 
             const currentSession = props.session();
             if (!currentSession) {
-                props.addDebugLog(`❌ Clic ignoré: pas de session`);
                 return;
             }
 
@@ -328,16 +296,13 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
 
                 if (isPointInHexagon(clickX, clickY, x, y, hexRadius)) {
                     if (props.availablePositions().includes(index)) {
-                        props.addDebugLog(`✅ Clic position ${index}`);
                         props.onTileClick(index);
                     } else {
-                        props.addDebugLog(`❌ Position ${index} non disponible`);
                     }
                     return;
                 }
             }
 
-            props.addDebugLog(`❌ Clic hors hexagones`);
         }, 100); // Debounce de 100ms
     };
 

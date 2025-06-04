@@ -61,13 +61,7 @@ export const useGameState = () => {
     const [lastTileHash, setLastTileHash] = createSignal<string>('');
 
     // Fonctions utilitaires pour l'état
-    const addDebugLog = (message: string) => {
-        if (showDebugLogs()) {
-            const timestamp = new Date().toLocaleTimeString();
-            const logEntry = `${timestamp}: ${message}`;
-            setDebugLogs(prev => [logEntry, ...prev.slice(0, 15)]);
-        }
-    };
+
 
     const clearError = () => setError('');
     const clearStatusMessage = () => setStatusMessage('');
@@ -148,11 +142,6 @@ export const useGameState = () => {
         isGameStarted, setIsGameStarted,
         currentTurnNumber, setCurrentTurnNumber,
         mctsLastMove, setMctsLastMove,
-        
-        // État debug
-        showDebugLogs, setShowDebugLogs,
-        debugLogs, setDebugLogs,
-        addDebugLog,
         
         // Cache images
         imageCache, setImageCache,
