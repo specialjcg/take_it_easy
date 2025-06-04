@@ -103,11 +103,6 @@ pub fn train_network_with_game_data(
         + (entropy_weight * total_entropy_loss.shallow_clone());
 
     // Log the loss before backpropagation
-    log::info!(
-        "💡 Total Loss before backward: {:.4}",
-        total_loss.double_value(&[])
-    );
-
     // ✅ Enhanced NaN and Inf check before backpropagation
     if total_loss.isnan().any().double_value(&[]) > 0.0 {
         log::error!("⚠️ NaN detected in total loss! Skipping backpropagation.");
@@ -135,12 +130,4 @@ pub fn train_network_with_game_data(
     optimizer_policy.step();
     optimizer_policy.zero_grad();
     optimizer_value.step();
-    optimizer_value.zero_grad();
-
-    log::info!(
-        "🎯 Update Complete | Policy Loss: {:.4}, Value Loss: {:.4}, Entropy Loss: {:.4}",
-        total_policy_loss.double_value(&[]),
-        total_value_loss.double_value(&[]),
-        total_entropy_loss.double_value(&[])
-    );
-}
+    optimizer_value.zero_grad();}

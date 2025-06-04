@@ -50,16 +50,6 @@ pub async fn train_and_evaluate(
         let evaluation_interval_average = 10;
 
         while games_played < num_games {
-            log::info!(
-                "Starting training iteration {}/{}...",
-                games_played + 1,
-                num_games
-            );
-            log::info!(
-                "\n🚀 Starting Batch {}",
-                games_played / evaluation_interval + 1
-            );
-
             let mut batch_games_played = 0; // Tracks games processed in this evaluation interval
             let max_memory_size = 1000; // Store last 500 games
 
@@ -198,10 +188,7 @@ pub async fn train_and_evaluate(
                         optimizer_policy,
                         optimizer_value,
                     );
-                }
-
-                log::info!("Game {} finished with score: {}", game + 1, final_score);
-                scores.push(final_score);
+                }                scores.push(final_score);
 
                 // Update batch-specific counters
                 batch_games_played += 1;
@@ -209,14 +196,6 @@ pub async fn train_and_evaluate(
 
                 if game % evaluation_interval_average == 0 && game != 0 {
                     let moyenne: f64 = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
-                    log::info!(
-                        "📊 [Batch {}] Avg Score: {:.2} | Games Played: {}",
-                        games_played / evaluation_interval,
-                        moyenne,
-                        games_played
-                    );
-                    log::info!("batch {} - Score moyen: {:.2}", game, moyenne);
-
                     // 🔄 REMPLACEMENT: write.send().await.unwrap() → send_websocket_message()
                     let result_message = format!("GAME_RESULT:{}", moyenne);
                     if let Err(e) = send_websocket_message(
@@ -263,16 +242,9 @@ pub async fn train_and_evaluate(
             // Evaluate model after each interval
             evaluate_model(policy_net, value_net, num_simulations).await;
 
-            log::info!(
-                "Games Played: {}, Total Score: {}, Avg Score: {:.2}",
-                games_played,
-                total_score,
-                total_score as f32 / games_played as f32
-            );
+         
             let model_path = "model_weights";
             // Save model weights
-            log::info!("Saving models to {}", model_path);
-            log::info!("Saving model weights...");
             if let Err(e) = policy_net.save_model(vs_policy, "model_weights/policy/policy.params") {
                 log::error!("Error saving PolicyNet weights: {:?}", e);
             }

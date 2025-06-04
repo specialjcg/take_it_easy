@@ -125,10 +125,7 @@ pub fn initialize_weights(vs: &nn::VarStore) {
         // Validation after initialization
         if param.isnan().any().double_value(&[]) > 0.0 {
             log::error!("🚨 NaN detected in {} after initialization!", name);
-        }
-
-        log::debug!("🔧 Initialized {} with shape {:?}", name, size);
-    }
+        }    }
 }
 
 

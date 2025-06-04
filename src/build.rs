@@ -4,8 +4,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         .build_client(true)
         .compile(
-            &["proto/session_manager.proto"],
-            &["proto/"],
+            &["protos/session_manager.protos"],
+            &["protos/"],
         )?;
 
     // Alternative si vous voulez plus de contrôle :
@@ -15,8 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         .build_client(true)
         .compile(
-            &["proto/session_manager.proto"],
-            &["proto/"],
+            &["protos/session_manager.protos"],
+            &["protos/"],
         )?;
     */
 
