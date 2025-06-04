@@ -42,7 +42,6 @@ export class GameStateManager {
         setPlateauTiles: (tiles: { [playerId: string]: string[] }) => void,
         setAvailablePositions: (positions: number[]) => void,
         session: () => { playerId: string } | null,
-        addDebugLog: (message: string) => void
     ) {
         if (gameState.player_plateaus) {
             const newPlateauTiles: { [playerId: string]: string[] } = {};
@@ -50,7 +49,6 @@ export class GameStateManager {
             Object.entries(gameState.player_plateaus).forEach(([playerId, plateau]: [string, any]) => {
                 // ✅ UTILISER les images du backend
                 newPlateauTiles[playerId] = plateau.tile_images || [];
-                addDebugLog(`🎨 ${playerId}: ${(plateau.tile_images || []).length} images backend`);
             });
 
             setPlateauTiles(newPlateauTiles);
@@ -63,7 +61,6 @@ export class GameStateManager {
             if (myPlateau) {
                 // ✅ UTILISER les positions du backend
                 setAvailablePositions(myPlateau.available_positions || []);
-                addDebugLog(`📍 Positions disponibles: ${(myPlateau.available_positions || []).length}`);
             }
         } else {
             setAvailablePositions([]);
@@ -73,7 +70,7 @@ export class GameStateManager {
     /**
      * Ouvrir une session MCTS dans une nouvelle fenêtre
      */
-    static openMctsSession(session: () => { sessionCode: string } | null, addDebugLog: (message: string) => void) {
+    static openMctsSession(session: () => { sessionCode: string } | null) {
         const currentSession = session();
         if (!currentSession) return;
 
@@ -85,7 +82,6 @@ export class GameStateManager {
             `mode=viewer`;
 
         window.open(mctsUrl, '_blank', 'width=1200,height=800');
-        addDebugLog(`🔗 Session MCTS ouverte: ${mctsUrl}`);
     }
 
     /**
@@ -94,7 +90,6 @@ export class GameStateManager {
     static handleAutoConnection(
         setPlayerName: (name: string) => void,
         setSessionCode: (code: string) => void,
-        addDebugLog: (message: string) => void,
         joinSession: () => Promise<void>
     ) {
         const urlParams = new URLSearchParams(window.location.search);
@@ -108,14 +103,11 @@ export class GameStateManager {
             setPlayerName(decodeURIComponent(playerName));
             setSessionCode(sessionCode);
 
-            addDebugLog(`🔗 Auto-connexion mode viewer: ${playerName} à ${sessionCode}`);
 
             setTimeout(async () => {
                 try {
                     await joinSession();
-                    addDebugLog(`✅ Connexion réussie en mode viewer`);
                 } catch (error) {
-                    addDebugLog(`❌ Erreur connexion viewer: ${error}`);
                 }
             }, 1000);
         }
@@ -130,7 +122,6 @@ export class GameStateManager {
         lastTileHash: () => string,
         setImageCache: (cache: string | null) => void,
         setLastTileHash: (hash: string) => void,
-        addDebugLog: (message: string) => void
     ) {
         const tile = currentTile();
         const image = currentTileImage();
@@ -140,7 +131,6 @@ export class GameStateManager {
             if (hash !== lastTileHash()) {
                 setImageCache(image);
                 setLastTileHash(hash);
-                addDebugLog(`🔒 Image verrouillée: ${tile}`);
             }
         }
     }
@@ -152,7 +142,6 @@ export class GameStateManager {
         setPlateauTiles: (tiles: {[playerId: string]: string[]}) => void,
         setAvailablePositions: (positions: number[]) => void,
         session: () => { playerId: string } | null,
-        addDebugLog: (message: string) => void
     ) {
         if (gameState.player_plateaus) {
             // 🔧 NOUVEAU: Pour le viewer, afficher SEULEMENT le plateau MCTS
@@ -165,7 +154,6 @@ export class GameStateManager {
 
                     // ✅ UTILISER les positions du backend pour MCTS
                     setAvailablePositions(mctsPlateau.available_positions || []);
-                    addDebugLog(`👁️ VIEWER: Plateau MCTS uniquement - ${(mctsPlateau.tile_images || []).filter((t: string) => t !== '').length} tuiles placées`);
                     return; // ✅ SORTIR ICI pour éviter la logique normale
                 }
             }

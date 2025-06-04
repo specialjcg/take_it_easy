@@ -18,7 +18,6 @@ export const usePolling = (
     setStatusMessage: (message: string) => void,
     updatePlateauTiles: (gameState: any) => void,
     convertSessionState: (sessionState: any) => any,
-    addDebugLog: (message: string) => void
 ) => {
     // ============================================================================
     // VARIABLES D'ÉTAT SIMPLIFIÉES
@@ -41,7 +40,6 @@ export const usePolling = (
 
     const markActionPerformed = () => {
         lastActionTime = Date.now();
-        addDebugLog(`⚡ Action marquée: ${lastActionTime}`);
     };
 
     // ✅ INTERVALLES MODÉRÉS (pas trop agressifs)
@@ -85,7 +83,6 @@ export const usePolling = (
                     setCurrentTile(newTile);
                     setCurrentTileImage(newTileImage || null); // ✅ BACKEND IMAGE!
                     markActionPerformed();
-                    addDebugLog(`📡 Nouvelle tuile: ${newTile} → ${newTileImage}`);
 
                 } else if (!newTile && currentTileValue) {
                     // Pas de tuile courante
@@ -93,7 +90,6 @@ export const usePolling = (
                     if (timeSinceAction > 8000) {
                         setCurrentTile(null);
                         setCurrentTileImage(null);
-                        addDebugLog(`⚠️ Clear tuile après 8s`);
                     }
                 }
 
@@ -105,7 +101,6 @@ export const usePolling = (
                     if (newMyTurn !== currentMyTurn) {
                         currentMyTurn = newMyTurn;
                         setMyTurn(newMyTurn);
-                        addDebugLog(`🔄 Tour: ${newMyTurn ? 'MON TOUR' : 'Attente'}`);
 
                         if (newMyTurn) {
                             markActionPerformed();
@@ -122,12 +117,9 @@ export const usePolling = (
                         try {
                             const parsedState = JSON.parse(result.gameState);
                             updatePlateauTiles(parsedState); // ✅ Cette fonction utilise les données backend
-                            addDebugLog(`🔄 Plateau mis à jour (${timeSinceAction}ms depuis action)`);
                         } catch (e) {
-                            addDebugLog(`❌ Erreur parse plateau: ${e}`);
                         }
                     } else {
-                        addDebugLog(`⏳ Protection optimiste: ${timeSinceAction}ms`);
                     }
                 }
 
@@ -137,7 +129,6 @@ export const usePolling = (
                         const scores = JSON.parse(result.finalScores);
                         setStatusMessage(`🏁 Terminé ! Scores: ${JSON.stringify(scores, null, 2)}`);
                         setIsGameStarted(false);
-                        addDebugLog('🏁 Jeu terminé');
                     } catch (e) {
                         setStatusMessage(`🏁 Jeu terminé !`);
                         setIsGameStarted(false);
@@ -145,15 +136,12 @@ export const usePolling = (
                 }
 
                 // ✅ DEBUG SIMPLE
-                addDebugLog(`📊 Poll OK - Tuile: ${newTile || 'none'}, Tour: ${currentMyTurn}, Attente: ${result.waitingForPlayers?.length || 0}`);
 
             } else {
                 consecutiveErrors++;
-                addDebugLog(`❌ Poll error #${consecutiveErrors}: ${result.error || 'Unknown'}`);
             }
         } catch (error) {
             consecutiveErrors++;
-            addDebugLog(`💥 Poll exception #${consecutiveErrors}: ${error}`);
         }
     };
 
@@ -172,7 +160,6 @@ export const usePolling = (
                 // Pas de log pour éviter le spam
             }
         } catch (error) {
-            addDebugLog(`❌ Session poll error: ${error}`);
         }
     };
 
@@ -182,12 +169,10 @@ export const usePolling = (
 
     const startPolling = (sessionId: string) => {
         if (!sessionId || typeof sessionId !== 'string' || sessionId.trim() === '') {
-            addDebugLog(`❌ sessionId invalide: "${sessionId}"`);
             return;
         }
 
         stopPolling();
-        addDebugLog(`🔄 Démarrage polling pour: ${sessionId.slice(0, 8)}...`);
 
         const poll = async () => {
             try {
@@ -207,7 +192,6 @@ export const usePolling = (
                             setCurrentTileImage(gameplayResult.currentTileImage || null);
                             setIsGameStarted(true);
                             markActionPerformed();
-                            addDebugLog(`📡 Tuile détectée: ${gameplayResult.currentTile}`);
                         }
                     } catch (e) {
                         // Silencieux pour éviter spam
@@ -216,7 +200,6 @@ export const usePolling = (
 
             } catch (error) {
                 consecutiveErrors++;
-                addDebugLog(`💥 Poll général #${consecutiveErrors}: ${error}`);
             }
 
             // ✅ PROGRAMMATION SIMPLE du prochain poll
@@ -227,7 +210,6 @@ export const usePolling = (
 
             // Debug seulement si erreurs
             if (consecutiveErrors > 0) {
-                addDebugLog(`⏰ Prochain poll: ${finalInterval}ms (erreurs: ${consecutiveErrors})`);
             }
         };
 
@@ -243,7 +225,6 @@ export const usePolling = (
         if (pollInterval) {
             clearTimeout(pollInterval);
             pollInterval = undefined;
-            addDebugLog('🛑 Polling arrêté');
         }
     };
 
@@ -251,7 +232,6 @@ export const usePolling = (
         consecutiveErrors = 0;
         lastActionTime = 0;
         currentMyTurn = false;
-        addDebugLog('🔄 État polling reset');
     };
 
     const forceRefresh = async () => {
@@ -259,7 +239,6 @@ export const usePolling = (
         if (currentSession) {
             markActionPerformed();
             await pollGameplayState(currentSession.sessionId);
-            addDebugLog('🔄 Refresh forcé');
         }
     };
 
@@ -269,7 +248,6 @@ export const usePolling = (
 
     onCleanup(() => {
         stopPolling();
-        addDebugLog('🧹 usePolling cleanup');
     });
 
     // ============================================================================
