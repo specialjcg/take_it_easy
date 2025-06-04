@@ -1,4 +1,4 @@
-use crate::game::deck::Deck;
+pub(crate) use crate::game::deck::Deck;
 use crate::game::tile::Tile;
 
 pub fn create_deck() -> Deck {

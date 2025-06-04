@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package takeiteasygame.v1;
+
+import "common.proto";
+
+// ============================================================================
+// MESSAGES SESSION SERVICE
+// ============================================================================
+
+message CreateSessionRequest {
+  string player_name = 1;
+  int32 max_players = 2;
+  string game_mode = 3;
+}
+
+message CreateSessionSuccess {
+  string session_code = 1;
+  string session_id = 2;
+  string player_id = 3;
+  Player player = 4;
+}
+
+message CreateSessionResponse {
+  oneof result {
+    CreateSessionSuccess success = 1;
+    Error error = 2;
+  }
+}
+
+message JoinSessionRequest {
+  string session_code = 1;
+  string player_name = 2;
+}
+
+message JoinSessionSuccess {
+  string session_id = 1;
+  string player_id = 2;
+  GameState game_state = 3;
+}
+
+message JoinSessionResponse {
+  oneof result {
+    JoinSessionSuccess success = 1;
+    Error error = 2;
+  }
+}
+
+message SetReadyRequest {
+  string session_id = 1;
+  string player_id = 2;
+  bool ready = 3;
+}
+
+message SetReadyResponse {
+  bool success = 1;
+  Error error = 2;
+  bool game_started = 3;
+}
+
+message GetSessionStateRequest {
+  string session_id = 1;
+}
+
+message GetSessionStateResponse {
+  GameState game_state = 1;
+  Error error = 2;
+}
+
+service SessionService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc JoinSession(JoinSessionRequest) returns (JoinSessionResponse);
+  rpc SetReady(SetReadyRequest) returns (SetReadyResponse);
+  rpc GetSessionState(GetSessionStateRequest) returns (GetSessionStateResponse);
+}

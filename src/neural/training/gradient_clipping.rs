@@ -65,12 +65,8 @@ fn clip_policy_network_gradients(vs_policy: &nn::VarStore) -> f64 {
 
 /// Log les normes de gradients si elles sont élevées
 fn log_gradient_norms(max_grad_value: f64, max_grad_policy: f64) {
-    if max_grad_value > 1.0 {
-        log::warn!("🔥 Value grad norm: {:.3}", max_grad_value);
-    }
-    if max_grad_policy > 2.0 {
-        log::warn!("🔥 Policy grad norm: {:.3}", max_grad_policy);
-    }
+    if max_grad_value > 1.0 {    }
+    if max_grad_policy > 2.0 {    }
 }
 
 /// Version simple du clipping des gradients

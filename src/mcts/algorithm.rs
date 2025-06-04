@@ -244,9 +244,6 @@ pub fn mcts_find_best_position_for_tile_with_nn(
     }
 
     let final_score = result(&final_plateau); // Get actual game score
-
-    log::info!("🤖 Pos:{} Score:{}", best_position, final_score as i32);
-
     MCTSResult {
         best_position,
         board_tensor,

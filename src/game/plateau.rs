@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use crate::game::tile::Tile;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq,Serialize,Deserialize)]
 pub(crate) struct Plateau{
     pub(crate) tiles: Vec<Tile>,
 }

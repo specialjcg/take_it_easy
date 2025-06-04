@@ -1,0 +1,78 @@
+syntax = "proto3";
+package takeiteasygame.v1;
+
+import "common.proto";
+
+service GameService {
+  // Faire un mouvement
+  rpc MakeMove(MakeMoveRequest) returns (MakeMoveResponse);
+
+  // Obtenir les mouvements disponibles
+  rpc GetAvailableMoves(GetAvailableMovesRequest) returns (GetAvailableMovesResponse);
+  // 🎲 NOUVELLES MÉTHODES GAMEPLAY
+  rpc StartTurn(StartTurnRequest) returns (StartTurnResponse);
+  rpc GetGameState(GetGameStateRequest) returns (GetGameStateResponse);
+
+}
+
+message MakeMoveRequest {
+  string session_id = 1;
+  string player_id = 2;
+  string move_data = 3; // JSON du mouvement
+  int64 timestamp = 4;
+}
+
+message MakeMoveResponse {
+  oneof result {
+    MakeMoveSuccess success = 1;
+    Error error = 2;
+  }
+}
+
+message MakeMoveSuccess {
+  GameState new_game_state = 1;
+  string mcts_response = 2; // Réponse de l'IA si applicable
+  int32 points_earned = 3;
+  bool is_game_over = 4;
+}
+
+message GetAvailableMovesRequest {
+  string session_id = 1;
+  string player_id = 2;
+}
+
+message GetAvailableMovesResponse {
+  repeated string available_moves = 1; // JSON des mouvements possibles
+  Error error = 2;
+}
+
+// Démarrer un nouveau tour
+message StartTurnRequest {
+  string session_id = 1;
+}
+
+message StartTurnResponse {
+  bool success = 1;
+  string announced_tile = 2;      // "5-3-7"
+  string tile_image = 3;          // "537.png"
+  int32 turn_number = 4;
+  repeated string waiting_for_players = 5;
+  string game_state = 6;          // JSON complet de l'état
+  Error error = 7;
+}
+
+// Obtenir l'état complet du jeu
+message GetGameStateRequest {
+  string session_id = 1;
+}
+message GetGameStateResponse {
+  bool success = 1;
+  string game_state = 2;          // JSON complet de l'état
+  string current_tile = 3;        // "5-3-7" ou vide
+  string current_tile_image = 4;  // ✅ NOUVEAU: "../image/537.png"
+  int32 current_turn = 5;         // Numéro du tour (0-18) - RENUMÉROTÉ
+  repeated string waiting_for_players = 6; // RENUMÉROTÉ
+  bool is_game_finished = 7;      // RENUMÉROTÉ
+  string final_scores = 8;        // JSON des scores finaux - RENUMÉROTÉ
+  Error error = 9;                // RENUMÉROTÉ
+}

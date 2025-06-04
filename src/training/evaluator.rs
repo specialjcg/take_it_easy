@@ -7,9 +7,7 @@ use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::scoring::scoring::result;
 
-pub async fn evaluate_model(policy_net: &PolicyNet, value_net: &ValueNet, num_simulations: usize) {
-    log::info!("Evaluating model...");
-    let mut scores = Vec::new();
+pub async fn evaluate_model(policy_net: &PolicyNet, value_net: &ValueNet, num_simulations: usize) {    let mut scores = Vec::new();
 
     for _ in 0..10 {
         let mut deck = create_deck();
@@ -39,7 +37,5 @@ pub async fn evaluate_model(policy_net: &PolicyNet, value_net: &ValueNet, num_si
         scores.push(game_score);
     }
 
-    let avg_score: f64 = scores.iter().copied().sum::<i32>() as f64 / scores.len() as f64;
-    log::info!("Model Evaluation Complete. Avg Score: {:.2}", avg_score);
-    // **Stop ping task**
+    let avg_score: f64 = scores.iter().copied().sum::<i32>() as f64 / scores.len() as f64;    // **Stop ping task**
 }
