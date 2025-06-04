@@ -76,16 +76,19 @@ export const useGameActions = (
      */
     const playMove = async (position: number, myTurn: () => boolean, markActionPerformed?: () => void) => {
         const currentSession = session();
+
         if (!currentSession || !myTurn()) {
             setStatusMessage("Ce n'est pas votre tour !");
             return;
         }
+
         batch(() => {
             setStatusMessage(`🎯 Position ${position}...`);
             setMyTurn(false); // Bloquer immédiatement les clics
             setLoading(true);
             setError('');
         });
+
         // Marquer pour éviter les conflits polling
         markActionPerformed?.();
 
@@ -97,58 +100,60 @@ export const useGameActions = (
                 position
             );
 
-            // ✅ BATCH 2: Mise à jour résultat (1 seul re-render)
-            batch(() => {
-                if (result.success) {
+            if (result.success) {
+                // ✅ CAS DE SUCCÈS - TRAITEMENT IMMÉDIAT
+                batch(() => {
+                    const parsedState = result.newGameState ? JSON.parse(result.newGameState) : {};
+                    updatePlateauTiles(parsedState);
+
                     setStatusMessage(`✅ Position ${position}! +${result.pointsEarned} pts`);
                     setLoading(false);
+                });
 
-                    // État plateau mis à jour en arrière-plan (pas de re-render immédiat)
-                    if (result.newGameState) {
-                        queueMicrotask(() => {
-                            const parsedState = JSON.parse(result.newGameState);
-                            updatePlateauTiles(parsedState);
-                        });
-                    }
+                // ✅ MCTS en différé pour ne pas bloquer l'UI
+                if (result.mctsResponse && result.mctsResponse !== "{}") {
+                    setTimeout(() => {
+                        try {
+                            const mctsData = JSON.parse(result.mctsResponse);
+                            const mctsMessage = `🤖 MCTS: position ${mctsData.position}`;
+                            batch(() => {
+                                setMctsLastMove(mctsMessage);
+                                setStatusMessage(mctsMessage);
+                            });
+                        } catch (e) {
+                            setMctsLastMove('🤖 MCTS a joué');
+                        }
+                    }, 500);
+                }
 
-                    // MCTS en différé pour ne pas bloquer l'UI
-                    if (result.mctsResponse && result.mctsResponse !== "{}") {
-                        setTimeout(() => {
-                            try {
-                                const mctsData = JSON.parse(result.mctsResponse);
-                                const mctsMessage = `🤖 MCTS: position ${mctsData.position}`;
-                                batch(() => {
-                                    setMctsLastMove(mctsMessage);
-                                    setStatusMessage(mctsMessage);
-                                });
-                            } catch (e) {
-                                setMctsLastMove('🤖 MCTS a joué');
-                            }
-                        }, 500); // Délai pour voir la confirmation du joueur
-                    }
+                // ✅ Tour suivant en différé
+                if (!result.isGameOver) {
+                    setTimeout(() => {
+                        startGameTurn();
+                    }, 2000);
+                }
 
-                    // Tour suivant en différé
-                    if (!result.isGameOver) {
-                        setTimeout(() => {
-                            startGameTurn();
-                        }, 2000);
-                    }
-                } else {
-                    // ROLLBACK en cas d'échec
-                    setMyTurn(true);
+                return; // ✅ SORTIR ICI - SUCCÈS TRAITÉ
+            } else {
+                // ✅ CAS D'ÉCHEC SERVEUR (result.success = false)
+                console.log('❌ ÉCHEC SERVEUR:', result.error);
+                batch(() => {
+                    setMyTurn(true); // Rollback - rendre le tour
                     setLoading(false);
                     setError(result.error || 'Mouvement refusé');
-                    setStatusMessage(`❌ ${result.error}`);
-                }
-            });
+                    setStatusMessage(`❌ ${result.error || 'Mouvement refusé'}`);
+                });
+                return; // ✅ SORTIR ICI - ÉCHEC TRAITÉ
+            }
 
         } catch (error) {
-            // ✅ BATCH 3: Gestion d'erreur (1 seul re-render)
+            // ✅ CAS D'EXCEPTION RÉSEAU (vraie erreur technique)
+
             batch(() => {
-                setMyTurn(true);
+                setMyTurn(true); // Rollback - rendre le tour
                 setLoading(false);
                 setError('Erreur réseau');
-                setStatusMessage('💥 Réessayez');
+                setStatusMessage('💥 Problème de connexion - Réessayez');
             });
         }
     };

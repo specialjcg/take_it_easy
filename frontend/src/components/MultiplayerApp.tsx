@@ -156,6 +156,7 @@ const MultiplayerApp: Component = () => {
     };
 
     const handleLeaveSession = () => {
+        GameStateManager.resetCache(); // ✅ AJOUTER CETTE LIGNE
         gameActions.leaveSession(gameState.resetSession);
     };
 
@@ -169,6 +170,8 @@ const MultiplayerApp: Component = () => {
 
     const handlePlayMove = (position: number) => {
         gameActions.playMove(position, gameState.myTurn);
+
+
     };
 
     // ============================================================================
