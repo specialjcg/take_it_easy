@@ -41,7 +41,7 @@ export const useGameState = () => {
     const [loading, setLoading] = createSignal(false);
     const [error, setError] = createSignal('');
     const [statusMessage, setStatusMessage] = createSignal('');
-    
+
     // État du gameplay
     const [currentTile, setCurrentTile] = createSignal<string | null>(null);
     const [currentTileImage, setCurrentTileImage] = createSignal<string | null>(null);
@@ -53,9 +53,7 @@ export const useGameState = () => {
     const [mctsLastMove, setMctsLastMove] = createSignal<string>('');
     
     // État debug
-    const [showDebugLogs, setShowDebugLogs] = createSignal(false);
-    const [debugLogs, setDebugLogs] = createSignal<string[]>([]);
-    
+
     // Cache pour les images
     const [imageCache, setImageCache] = createSignal<string | null>(null);
     const [lastTileHash, setLastTileHash] = createSignal<string>('');
@@ -132,7 +130,7 @@ export const useGameState = () => {
         loading, setLoading,
         error, setError,
         statusMessage, setStatusMessage,
-        
+
         // État du gameplay
         currentTile, setCurrentTile,
         currentTileImage, setCurrentTileImage,

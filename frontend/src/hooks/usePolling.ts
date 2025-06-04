@@ -113,7 +113,7 @@ export const usePolling = (
                     const timeSinceAction = Date.now() - lastActionTime;
 
                     // ✅ CONDITION SIMPLIFIÉE - toujours mettre à jour après 2s
-                    if (timeSinceAction > 2000) {
+                    if (timeSinceAction > 100) {
                         try {
                             const parsedState = JSON.parse(result.gameState);
                             updatePlateauTiles(parsedState); // ✅ Cette fonction utilise les données backend
