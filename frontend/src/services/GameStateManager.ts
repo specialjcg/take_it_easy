@@ -144,10 +144,42 @@ export class GameStateManager {
     }
 
     /**
+     * 🚀 MISE À JOUR OPTIMISTE POUR RÉACTIVITÉ IMMÉDIATE
+     */
+    static updatePlateauTilesOptimistic(
+        position: number,
+        currentTile: string,
+        plateauTiles: () => {[playerId: string]: string[]},
+        setPlateauTiles: (tiles: {[playerId: string]: string[]}) => void,
+        session: () => { playerId: string } | null,
+        currentTileImage?: string
+    ) {
+        const currentSession = session();
+        if (!currentSession) return;
+
+        const currentPlateaus = plateauTiles();
+        const playerPlateau = currentPlateaus[currentSession.playerId] || [];
+
+        // Créer nouveau plateau avec la tuile placée optimistiquement
+        const newPlayerPlateau = [...playerPlateau];
+        
+        // Utiliser l'image si fournie, sinon générer à partir du nom de tuile
+        const tileImageToUse = currentTileImage || `../image/${currentTile.replace('-', '')}.png`;
+        newPlayerPlateau[position] = tileImageToUse;
+
+        const newPlateaus = {
+            ...currentPlateaus,
+            [currentSession.playerId]: newPlayerPlateau
+        };
+
+        setPlateauTiles(newPlateaus);
+    }
+
+    /**
      * ✅ FONCTION POUR RESET LE CACHE (quand on change de session)
      */
     static resetCache() {
-        console.log('🧹 RESET GAMESTATE CACHE');
+        // console.log('🧹 RESET GAMESTATE CACHE'); // Log désactivé
         this.lastPlateauTilesHash = '';
         this.lastAvailablePositionsHash = '';
     }
