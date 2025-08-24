@@ -12,18 +12,46 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Gestion du flag --rebuild
+if [[ "$1" == "--rebuild" ]]; then
+    echo -e "${YELLOW}🧹 Rebuild complet demandé...${NC}"
+
+    # Clean + rebuild backend (à la racine)
+    echo -e "${BLUE}🔧 Nettoyage du backend...${NC}"
+    cargo clean
+    echo -e "${GREEN}✅ Backend nettoyé${NC}"
+
+    echo -e "${BLUE}🔨 Rebuild du backend...${NC}"
+    cargo build --release
+    echo -e "${GREEN}✅ Backend rebuilded${NC}"
+
+    # Clean + rebuild frontend
+    echo -e "${BLUE}🔧 Nettoyage du frontend...${NC}"
+    cd frontend
+    rm -rf node_modules dist .vite
+    echo -e "${GREEN}✅ Frontend nettoyé${NC}"
+
+    echo -e "${BLUE}🔨 Rebuild du frontend...${NC}"
+    npm install
+    npm run build
+    echo -e "${GREEN}✅ Frontend rebuilded${NC}"
+    cd ..
+
+    echo -e "${GREEN}🚀 Rebuild complet terminé ! Lancement des services...${NC}"
+fi
+
 # Fonction de nettoyage
 cleanup() {
     echo -e "\n${YELLOW}🛑 Arrêt en cours...${NC}"
     
     # Arrêter les processus enfants
     if [[ -f .rust_pid ]]; then
-        kill $(cat .rust_pid) 2>/dev/null || true
+        kill "$(cat .rust_pid)" 2>/dev/null || true
         rm -f .rust_pid
     fi
     
     if [[ -f .frontend_pid ]]; then
-        kill $(cat .frontend_pid) 2>/dev/null || true
+        kill "$(cat .frontend_pid)" 2>/dev/null || true
         rm -f .frontend_pid
     fi
     
@@ -74,7 +102,7 @@ echo -e "${YELLOW}⏳ Attente du démarrage du backend...${NC}"
 sleep 3
 
 # Vérifier que le backend est lancé
-if [[ -f .rust_pid ]] && kill -0 $(cat .rust_pid) 2>/dev/null; then
+if [[ -f .rust_pid ]] && kill -0 "$(cat .rust_pid)" 2>/dev/null; then
     echo -e "${GREEN}✅ Backend démarré (PID: $(cat .rust_pid))${NC}"
 else
     echo -e "${RED}❌ Échec du démarrage du backend${NC}"
@@ -106,19 +134,18 @@ echo -e "${YELLOW}⏳ Attente du démarrage du frontend...${NC}"
 sleep 5
 
 # Vérifier que le frontend est lancé
-if [[ -f .frontend_pid ]] && kill -0 $(cat .frontend_pid) 2>/dev/null; then
+if [[ -f .frontend_pid ]] && kill -0 "$(cat .frontend_pid)" 2>/dev/null; then
     echo -e "${GREEN}✅ Frontend démarré (PID: $(cat .frontend_pid))${NC}"
 else
     echo -e "${RED}❌ Échec du démarrage du frontend${NC}"
     cleanup
-    exit 1
 fi
 
 # Affichage des informations finales
 echo -e "\n${GREEN}🎉 Take It Easy est prêt !${NC}"
 echo -e "${BLUE}==============================${NC}"
 echo -e "${GREEN}🦀 Backend Rust:${NC} http://localhost:51051 (gRPC: 50051)"
-echo -e "${GREEN}⚛️ Frontend:${NC}     http://localhost:5173"
+echo -e "${GREEN}⚛️ Frontend:${NC}     http://localhost:3000"
 echo -e "${BLUE}📋 Logs Backend:${NC}  tail -f backend.log"
 echo -e "${BLUE}📋 Logs Frontend:${NC} tail -f frontend.log"
 echo -e "\n${YELLOW}Appuyez sur Ctrl+C pour arrêter les deux serveurs${NC}"
@@ -126,16 +153,14 @@ echo -e "\n${YELLOW}Appuyez sur Ctrl+C pour arrêter les deux serveurs${NC}"
 # Boucle infinie pour maintenir le script actif
 while true; do
     # Vérifier que les processus sont toujours actifs
-    if [[ -f .rust_pid ]] && ! kill -0 $(cat .rust_pid) 2>/dev/null; then
+    if [[ -f .rust_pid ]] && ! kill -0 "$(cat .rust_pid)" 2>/dev/null; then
         echo -e "${RED}❌ Backend arrêté de manière inattendue${NC}"
         cleanup
-        exit 1
     fi
     
-    if [[ -f .frontend_pid ]] && ! kill -0 $(cat .frontend_pid) 2>/dev/null; then
+    if [[ -f .frontend_pid ]] && ! kill -0 "$(cat .frontend_pid)" 2>/dev/null; then
         echo -e "${RED}❌ Frontend arrêté de manière inattendue${NC}"
         cleanup
-        exit 1
     fi
     
     sleep 2

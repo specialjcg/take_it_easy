@@ -437,7 +437,7 @@ async fn start_turn_logic(
     };
 
     // Récupérer ou créer l'état de jeu
-    let mut game_state: TakeItEasyGameState = if session.board_state.is_empty() || session.board_state == "{}" {
+    let game_state: TakeItEasyGameState = if session.board_state.is_empty() || session.board_state == "{}" {
         // Première fois - créer le jeu
         let player_ids: Vec<String> = session.players.keys().cloned().collect();
         create_take_it_easy_game(session_id.clone(), player_ids)
@@ -448,7 +448,8 @@ async fn start_turn_logic(
                 state.session_id = session_id.clone();
                 state
             },
-            Err(e) => {                let player_ids: Vec<String> = session.players.keys().cloned().collect();
+            Err(_e) => {
+                let player_ids: Vec<String> = session.players.keys().cloned().collect();
                 create_take_it_easy_game(session_id.clone(), player_ids)
             }
         }

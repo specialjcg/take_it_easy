@@ -122,8 +122,8 @@ pub fn start_new_turn(
     }
 
     // 🎲 Piocher une tuile aléatoire SEULEMENT parmi les tuiles valides
-    let tile_index = rand::rng().random_range(0..valid_tiles.len());
-    let chosen_tile = valid_tiles[tile_index];
+    let _tile_index = rand::rng().random_range(0..valid_tiles.len());
+    let chosen_tile = valid_tiles[_tile_index];
 
 
     // 🔧 UTILISER VOTRE FONCTION : Remplacer la tuile dans le deck
@@ -279,12 +279,12 @@ pub fn process_mcts_turn(
 // Dans game_manager.rs - NOUVELLE fonction de debug complète
 pub fn debug_game_state(game_state: &TakeItEasyGameState) {
     // 🔧 UTILISER VOS FONCTIONS pour le debug
-    let remaining_tiles = count_remaining_tiles(&game_state.deck);
-    let available_tiles = get_available_tiles_from_deck(&game_state.deck);
+    let _remaining_tiles = count_remaining_tiles(&game_state.deck);
+    let _available_tiles = get_available_tiles_from_deck(&game_state.deck);
     // Debug plateaux
-    for (player_id, plateau) in &game_state.player_plateaus {
-        let legal_moves = get_legal_moves(plateau.clone());
-        let filled_positions = plateau.tiles.iter()
+    for (_player_id, plateau) in &game_state.player_plateaus {
+        let _legal_moves = get_legal_moves(plateau.clone());
+        let _filled_positions = plateau.tiles.iter()
             .enumerate()
             .filter(|(_, tile)| **tile != Tile(0, 0, 0))
             .count();    }}
@@ -294,7 +294,7 @@ pub fn check_turn_completion(
 ) -> Result<TakeItEasyGameState, String> {
     // Si tous les joueurs (humains + MCTS) ont joué
     if game_state.waiting_for_players.is_empty() {
-        let completed_turn = game_state.current_turn;
+        let _completed_turn = game_state.current_turn;
         game_state.current_turn += 1;
         game_state.current_tile = None;
         // Vérifier si le jeu est terminé

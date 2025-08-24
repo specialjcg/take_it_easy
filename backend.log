@@ -1,0 +1,139 @@
+[0m[1m[33mwarning[0m[0m[1m: struct `GameState` is never constructed[0m
+[0m [0m[0m[1m[38;5;12m--> [0m[0msrc/game/game_state.rs:5:12[0m
+[0m  [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m5[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct GameState {[0m
+[0m  [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^^^^^^[0m
+[0m  [0m[0m[1m[38;5;12m|[0m
+[0m  [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(dead_code)]` on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: struct `MCTSNode` is never constructed[0m
+[0m [0m[0m[1m[38;5;12m--> [0m[0msrc/mcts/mcts_node.rs:4:12[0m
+[0m  [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct MCTSNode {[0m
+[0m  [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: associated function `new` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_service.rs:22:12[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m21[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl SessionServiceImpl {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m-----------------------[0m[0m [0m[0m[1m[38;5;12massociated function in this implementation[0m
+[0m[1m[38;5;12m22[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn new() -> Self {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: fields `game_mode` and `created_at` are never read[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:21:9[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m14[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct GameSession {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;12m-----------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
+[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m21[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub game_mode: String,[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[33m^^^^^^^^^[0m
+[0m[1m[38;5;12m22[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub created_at: std::time::Instant,[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[33m^^^^^^^^^^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `GameSession` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis[0m
+
+[0m[1m[33mwarning[0m[0m[1m: variant `RemoveSession` is never constructed[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:31:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub enum SessionAction {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;12m-------------[0m[0m [0m[0m[1m[38;5;12mvariant in this enum[0m
+[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m31[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    RemoveSession { session_id: String },[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `SessionAction` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `count_sessions` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:110:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m110[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn count_sessions(state: &SessionStoreState) -> usize {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `get_all_session_codes` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:114:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m114[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn get_all_session_codes(state: &SessionStoreState) -> Vec<String> {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `remove_player_from_session` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:205:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m205[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn remove_player_from_session([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `advance_turn` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:220:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m220[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn advance_turn(session: GameSession) -> GameSession {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `query_store` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:358:14[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m358[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub async fn query_store<F, T>([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[33m^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `create_session_with_manager` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:373:14[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m373[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub async fn create_session_with_manager([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `transform_session_with_manager` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:411:14[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m411[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub async fn transform_session_with_manager<F>([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `with_session_state_from_manager` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:424:14[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m424[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub async fn with_session_state_from_manager<F, T>([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: associated function `new` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:440:12[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m438[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl SessionManager {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m-------------------[0m[0m [0m[0m[1m[38;5;12massociated function in this implementation[0m
+[0m[1m[38;5;12m439[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    // Seule fonction dans l'impl - construction[0m
+[0m[1m[38;5;12m440[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn new() -> Self {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `get_available_tiles_from_deck` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:141:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m141[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn get_available_tiles_from_deck(deck: &Deck) -> Vec<Tile> {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `count_remaining_tiles` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:150:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m150[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn count_remaining_tiles(deck: &Deck) -> usize {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `is_deck_empty` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:155:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m155[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn is_deck_empty(deck: &Deck) -> bool {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `debug_game_state` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:280:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m280[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn debug_game_state(game_state: &TakeItEasyGameState) {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: field `tile` is never read[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:426:9[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m424[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    struct MoveData {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;12m--------[0m[0m [0m[0m[1m[38;5;12mfield in this struct[0m
+[0m[1m[38;5;12m425[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        position: usize,[0m
+[0m[1m[38;5;12m426[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        tile: Option<(i32, i32, i32)>, // Optionnel car défini par le serveur[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[33m^^^^[0m
+
+[1m[33mwarning[0m[1m:[0m `take_it_easy` (bin "take_it_easy") generated 19 warnings
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.12s
+[1m[32m     Running[0m `target/debug/take_it_easy --mode multiplayer -p 50051`

@@ -243,7 +243,7 @@ pub async fn train_and_evaluate(
             evaluate_model(policy_net, value_net, num_simulations).await;
 
          
-            let model_path = "model_weights";
+            let _model_path = "model_weights";
             // Save model weights
             if let Err(e) = policy_net.save_model(vs_policy, "model_weights/policy/policy.params") {
                 log::error!("Error saving PolicyNet weights: {:?}", e);

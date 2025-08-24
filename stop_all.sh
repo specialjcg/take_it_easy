@@ -17,14 +17,14 @@ cd "$(dirname "$0")"
 # Arrêter via les PIDs sauvegardés
 if [[ -f .rust_pid ]]; then
     echo -e "${BLUE}🦀 Arrêt du backend Rust...${NC}"
-    kill $(cat .rust_pid) 2>/dev/null || true
+    kill "$(cat .rust_pid)" 2>/dev/null || true
     rm -f .rust_pid
     echo -e "${GREEN}✅ Backend arrêté${NC}"
 fi
 
 if [[ -f .frontend_pid ]]; then
     echo -e "${BLUE}⚛️ Arrêt du frontend...${NC}"
-    kill $(cat .frontend_pid) 2>/dev/null || true
+    kill "$(cat .frontend_pid)" 2>/dev/null || true
     rm -f .frontend_pid
     echo -e "${GREEN}✅ Frontend arrêté${NC}"
 fi
