@@ -10,7 +10,6 @@ interface PlayersListProps {
     isPlayerReady: () => boolean;
     loading: () => boolean;
     onSetReady: () => void;
-    onOpenMctsSession: () => void;
     session: () => { playerId: string; sessionCode: string } | null;
 }
 
@@ -23,16 +22,6 @@ export const PlayersList: Component<PlayersListProps> = (props) => {
         <div class="players-section glass-container">
             <h3>Joueurs ({props.gameState()?.players.length || 0})</h3>
             
-            {/* Contrôles MCTS */}
-            <div class="mcts-controls">
-                <button
-                    class="open-mcts-button"
-                    onClick={props.onOpenMctsSession}
-                    disabled={!props.session()}
-                >
-                    🤖 Voir session MCTS
-                </button>
-            </div>
 
             <div class="players-list">
                 <For each={props.gameState()?.players || []}>

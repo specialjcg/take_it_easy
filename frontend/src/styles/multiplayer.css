@@ -181,9 +181,23 @@ button:disabled {
   color: white;
 }
 
+/* Session actions container */
+.session-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .leave-button {
   background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
   color: #333;
+}
+
+.open-mcts-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 14px;
 }
 
 .ready-button {

@@ -42,14 +42,14 @@ export const usePolling = (
         lastActionTime = Date.now();
     };
 
-    // ✅ INTERVALLES MODÉRÉS (pas trop agressifs)
+    // ✅ INTERVALLES FORTEMENT AUGMENTÉS - Moins de spam réseau
     const getPollingInterval = (): number => {
-        if (!isGameStarted()) return 4000;           // 4s en attente
+        if (!isGameStarted()) return 15000;          // 15s en attente (doublé)
 
         const timeSinceAction = Date.now() - lastActionTime;
-        if (timeSinceAction < 5000) return 800;      // 800ms après action
-        if (currentMyTurn) return 1500;              // 1.5s mon tour
-        return 3000;                                 // 3s normal
+        if (timeSinceAction < 3000) return 3000;     // 3s après action (plus long)
+        if (currentMyTurn) return 5000;              // 5s mon tour  
+        return 8000;                                 // 8s normal (plus long)
     };
 
     // ✅ BACKOFF MODÉRÉ
@@ -73,27 +73,27 @@ export const usePolling = (
             if (result.success) {
                 consecutiveErrors = 0;
 
-                // ✅ GESTION TUILE SIMPLIFIÉE - Utilise fonction locale
+                // ✅ GESTION TUILE AVEC LOGS CONDITIONNELS
                 const newTile = result.currentTile;
-                const newTileImage = result.currentTileImage; // ✅ BACKEND DIRECT!
+                const newTileImage = result.currentTileImage;
                 const currentTileValue = currentTile();
 
                 if (newTile && newTile !== currentTileValue) {
-                    // Nouvelle tuile détectée
+                    // ✅ LOG DÉSACTIVÉ - Évite spam console
+                    // console.log('🎲 Nouvelle tuile détectée:', newTile);
                     setCurrentTile(newTile);
-                    setCurrentTileImage(newTileImage || null); // ✅ BACKEND IMAGE!
+                    setCurrentTileImage(newTileImage || null);
                     markActionPerformed();
 
                 } else if (!newTile && currentTileValue) {
-                    // Pas de tuile courante
                     const timeSinceAction = Date.now() - lastActionTime;
-                    if (timeSinceAction > 8000) {
+                    if (timeSinceAction > 10000) { // Plus long pour éviter les resets prématurés
                         setCurrentTile(null);
                         setCurrentTileImage(null);
                     }
                 }
 
-                // ✅ GESTION DU TOUR SIMPLIFIÉE
+                // ✅ GESTION DU TOUR AVEC LOGS RÉDUITS
                 const currentSession = session();
                 if (currentSession) {
                     const newMyTurn = result.waitingForPlayers?.includes(currentSession.playerId) || false;
@@ -102,46 +102,55 @@ export const usePolling = (
                         currentMyTurn = newMyTurn;
                         setMyTurn(newMyTurn);
 
+                        // ✅ LOG DÉSACTIVÉ - Évite spam console
+                        // console.log('🎯 À votre tour !', newMyTurn);
+
                         if (newMyTurn) {
                             markActionPerformed();
                         }
                     }
                 }
 
-                // ✅ PLATEAU - MISE À JOUR DIRECTE (utilise backend via updatePlateauTiles)
+                // ✅ PLATEAU - MISE À JOUR SANS LOGS RÉPÉTITIFS
                 if (result.gameState) {
                     const timeSinceAction = Date.now() - lastActionTime;
 
-                    // ✅ CONDITION SIMPLIFIÉE - toujours mettre à jour après 2s
-                    if (timeSinceAction > 100) {
+                    if (timeSinceAction > 200) { // Légèrement plus long
                         try {
                             const parsedState = JSON.parse(result.gameState);
-                            updatePlateauTiles(parsedState); // ✅ Cette fonction utilise les données backend
+                            updatePlateauTiles(parsedState);
                         } catch (e) {
+                            // Silencieux
                         }
-                    } else {
                     }
                 }
 
-                // ✅ FIN DE PARTIE
+                // ✅ FIN DE PARTIE AVEC LOG UNIQUE
                 if (result.isGameFinished && result.finalScores && result.finalScores !== "{}") {
                     try {
                         const scores = JSON.parse(result.finalScores);
-                        setStatusMessage(`🏁 Terminé ! Scores: ${JSON.stringify(scores, null, 2)}`);
+                        setStatusMessage(`🏁 Partie terminée ! Scores: ${JSON.stringify(scores, null, 2)}`);
                         setIsGameStarted(false);
+                        console.log('🏁 Partie terminée avec scores:', scores);
                     } catch (e) {
                         setStatusMessage(`🏁 Jeu terminé !`);
                         setIsGameStarted(false);
                     }
                 }
 
-                // ✅ DEBUG SIMPLE
-
             } else {
                 consecutiveErrors++;
+                // ✅ LOG D'ERREUR SEULEMENT APRÈS PLUSIEURS ÉCHECS
+                if (consecutiveErrors > 3 && process.env.NODE_ENV === 'development') {
+                    console.warn('⚠️ Erreurs de polling consécutives:', consecutiveErrors);
+                }
             }
         } catch (error) {
             consecutiveErrors++;
+            // ✅ LOG D'ERREUR SEULEMENT SI CRITIQUE
+            if (consecutiveErrors > 5 && process.env.NODE_ENV === 'development') {
+                console.error('❌ Erreur critique de polling:', error);
+            }
         }
     };
 
@@ -154,12 +163,15 @@ export const usePolling = (
             const sessionResult = await gameClient.getSessionState(sessionId);
 
             if (sessionResult.success && sessionResult.sessionState) {
-                // ✅ MISE À JOUR DIRECTE
                 const convertedState = convertSessionState(sessionResult.sessionState);
                 setGameState(convertedState);
-                // Pas de log pour éviter le spam
+                // ✅ AUCUN LOG - Session polling silencieux
             }
         } catch (error) {
+            // ✅ SILENCIEUX SAUF EN DEBUG
+            if (process.env.NODE_ENV === 'development' && consecutiveErrors > 5) {
+                console.warn('Session polling error:', error);
+            }
         }
     };
 

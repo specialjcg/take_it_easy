@@ -65,16 +65,13 @@ export class GameStateManager {
             const newPlateauHash = this.generateHash(newPlateauTiles);
 
             if (newPlateauHash !== this.lastPlateauTilesHash) {
-                console.log('🔄 PLATEAU TILES CHANGED', {
-                    oldHash: this.lastPlateauTilesHash.slice(-20),
-                    newHash: newPlateauHash.slice(-20)
-                });
+                // ✅ LOGS DÉSACTIVÉS - Évite spam console
+                // console.log('🔄 PLATEAU TILES CHANGED');
 
                 this.lastPlateauTilesHash = newPlateauHash;
                 setPlateauTiles(newPlateauTiles);
-            } else {
-                console.log('⏩ PLATEAU TILES UNCHANGED - SKIP UPDATE');
             }
+            // ✅ SUPPRESSION COMPLÈTE DES LOGS "unchanged"
         }
 
         // ✅ MÊME LOGIQUE POUR LES POSITIONS DISPONIBLES
@@ -86,11 +83,10 @@ export class GameStateManager {
                 const newPositionsHash = this.generateHash(newPositions);
 
                 if (newPositionsHash !== this.lastAvailablePositionsHash) {
-                    console.log('🔄 AVAILABLE POSITIONS CHANGED');
+                    // ✅ LOGS DÉSACTIVÉS - Évite spam console  
+                    // console.log('🎯 Available positions updated:', newPositions.length);
                     this.lastAvailablePositionsHash = newPositionsHash;
                     setAvailablePositions(newPositions);
-                } else {
-                    console.log('⏩ AVAILABLE POSITIONS UNCHANGED - SKIP UPDATE');
                 }
             }
         } else {
@@ -104,7 +100,7 @@ export class GameStateManager {
     }
 
     /**
-     * ✅ VERSION VIEWER AVEC COMPARAISON AUSSI
+     * ✅ VERSION VIEWER AVEC LOGS RÉDUITS AUSSI
      */
     static updatePlateauTilesForViewer(
         gameState: any,
@@ -123,11 +119,10 @@ export class GameStateManager {
                     const newPlateauHash = this.generateHash(newPlateauTiles);
 
                     if (newPlateauHash !== this.lastPlateauTilesHash) {
-                        console.log('🔄 VIEWER PLATEAU CHANGED');
+                        // ✅ LOGS DÉSACTIVÉS - Même pour le viewer
+                        // console.log('👀 VIEWER: plateau changed');
                         this.lastPlateauTilesHash = newPlateauHash;
                         setPlateauTiles(newPlateauTiles);
-                    } else {
-                        console.log('⏩ VIEWER PLATEAU UNCHANGED - SKIP UPDATE');
                     }
 
                     // Positions pour viewer
