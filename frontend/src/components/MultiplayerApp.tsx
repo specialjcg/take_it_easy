@@ -53,7 +53,7 @@ const MultiplayerApp: Component = () => {
     };
     const gameActions = useGameActions(
         gameState.session,
-        gameState.setLoading,
+        gameState.loadingManager,
         gameState.setError,
         gameState.setStatusMessage,
         gameState.setCurrentTile,
@@ -207,7 +207,7 @@ const MultiplayerApp: Component = () => {
                                 <div class="draw-tile-section">
                                     <button
                                         onClick={handleStartGameTurn}
-                                        disabled={gameState.loading()}
+                                        disabled={gameState.loadingManager.isAnyLoading()}
                                         class="draw-tile-button"
                                     >
                                         🎲 Démarrer la partie
@@ -222,22 +222,10 @@ const MultiplayerApp: Component = () => {
                                 imageCache={gameState.imageCache}
                             />
 
-                            {/* Status du tour */}
-                            <Show when={gameState.isGameStarted() && gameState.currentTile()}>
-                                <div class="turn-status">
-                                    <Show when={gameState.myTurn()}>
-                                        <div class="player-turn-indicator">
-                                            <span class="turn-text">🎯 À votre tour !</span>
-                                            <span class="positions-count">
-                                                {gameState.availablePositions().length} positions disponibles
-                                            </span>
-                                        </div>
-                                    </Show>
-                                    <Show when={!gameState.myTurn()}>
-                                        <div class="waiting-indicator">
-                                            <span class="waiting-text">⏳ En attente des autres joueurs...</span>
-                                        </div>
-                                    </Show>
+                            {/* Message d'attente simplifié */}
+                            <Show when={gameState.isGameStarted() && gameState.currentTile() && !gameState.myTurn()}>
+                                <div class="waiting-indicator">
+                                    <span class="waiting-text">⏳ En attente des autres joueurs...</span>
                                 </div>
                             </Show>
                         </div>
@@ -261,7 +249,7 @@ const MultiplayerApp: Component = () => {
                             isCurrentPlayer={gameState.isCurrentPlayer}
                             getPlayerStatus={gameState.getPlayerStatus}
                             isPlayerReady={gameState.isPlayerReady}
-                            loading={gameState.loading}
+                            loading={gameState.loadingManager.isAnyLoading}
                             onSetReady={handleSetReady}
                             onOpenMctsSession={handleOpenMctsSession}
                             session={gameState.session}
@@ -306,7 +294,7 @@ const MultiplayerApp: Component = () => {
                         setPlayerName={gameState.setPlayerName}
                         sessionCode={gameState.sessionCode}
                         setSessionCode={gameState.setSessionCode}
-                        loading={gameState.loading}
+                        loading={gameState.loadingManager.isAnyLoading}
                         onCreateSession={handleCreateSession}
                         onJoinSession={handleJoinSession}
                     />
@@ -320,9 +308,18 @@ const MultiplayerApp: Component = () => {
                             <p>Joueur: <strong>{gameState.playerName()}</strong></p>
                             <p class="player-id">ID: {gameState.session()?.playerId}</p>
                         </div>
-                        <button onClick={handleLeaveSession} class="leave-button">
-                            Quitter la session
-                        </button>
+                        <div class="session-actions">
+                            <button
+                                class="open-mcts-button"
+                                onClick={handleOpenMctsSession}
+                                disabled={!gameState.session()}
+                            >
+                                🤖 Voir session MCTS
+                            </button>
+                            <button onClick={handleLeaveSession} class="leave-button">
+                                Quitter la session
+                            </button>
+                        </div>
                     </div>
 
                     <PlayersList
@@ -330,9 +327,8 @@ const MultiplayerApp: Component = () => {
                         isCurrentPlayer={gameState.isCurrentPlayer}
                         getPlayerStatus={gameState.getPlayerStatus}
                         isPlayerReady={gameState.isPlayerReady}
-                        loading={gameState.loading}
+                        loading={gameState.loadingManager.isAnyLoading}
                         onSetReady={handleSetReady}
-                        onOpenMctsSession={handleOpenMctsSession}
                         session={gameState.session}
                     />
 

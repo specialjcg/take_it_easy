@@ -9,7 +9,7 @@ import {batch} from "solid-js";
  */
 export const useGameActions = (
     session: () => Session | null,
-    setLoading: (loading: boolean) => void,
+    loadingManager: ReturnType<typeof import('./useLoadingManager').useLoadingManager>,
     setError: (error: string) => void,
     setStatusMessage: (message: string) => void,
     setCurrentTile: (tile: string | null) => void,
@@ -29,9 +29,9 @@ export const useGameActions = (
             const currentSession = session();
             if (!currentSession) return;
 
-            // ✅ BATCH: État de chargement
+            // ✅ BATCH: État de chargement centralisé
             batch(() => {
-                setLoading(true);
+                loadingManager.setLoading('start-turn', true);
                 setError('');
             });
 
@@ -47,7 +47,7 @@ export const useGameActions = (
                         setStatusMessage(`🎲 Tour ${result.turnNumber}: ${result.announcedTile}`);
                         setIsGameStarted(true);
                         setMyTurn(result.waitingForPlayers?.includes(currentSession.playerId) || false);
-                        setLoading(false);
+                        loadingManager.setLoading('start-turn', false);
                     });
 
                     // ✅ PLATEAU EN DIFFÉRÉ (non-bloquant)
@@ -60,13 +60,13 @@ export const useGameActions = (
                 } else {
                     batch(() => {
                         setError(result.error || 'Erreur tour');
-                        setLoading(false);
+                        loadingManager.setLoading('start-turn', false);
                     });
                 }
             } catch (error) {
                 batch(() => {
                     setError('Erreur connexion');
-                    setLoading(false);
+                    loadingManager.setLoading('start-turn', false);
                 });
             }
         };
@@ -85,7 +85,7 @@ export const useGameActions = (
         batch(() => {
             setStatusMessage(`🎯 Position ${position}...`);
             setMyTurn(false); // Bloquer immédiatement les clics
-            setLoading(true);
+            loadingManager.setLoading('play-move', true);
             setError('');
         });
 
@@ -107,7 +107,7 @@ export const useGameActions = (
                     updatePlateauTiles(parsedState);
 
                     setStatusMessage(`✅ Position ${position}! +${result.pointsEarned} pts`);
-                    setLoading(false);
+                    loadingManager.setLoading('play-move', false);
                 });
 
                 // ✅ MCTS en différé pour ne pas bloquer l'UI
@@ -139,7 +139,7 @@ export const useGameActions = (
                 console.log('❌ ÉCHEC SERVEUR:', result.error);
                 batch(() => {
                     setMyTurn(true); // Rollback - rendre le tour
-                    setLoading(false);
+                    loadingManager.setLoading('play-move', false);
                     setError(result.error || 'Mouvement refusé');
                     setStatusMessage(`❌ ${result.error || 'Mouvement refusé'}`);
                 });
@@ -151,7 +151,7 @@ export const useGameActions = (
 
             batch(() => {
                 setMyTurn(true); // Rollback - rendre le tour
-                setLoading(false);
+                loadingManager.setLoading('play-move', false);
                 setError('Erreur réseau');
                 setStatusMessage('💥 Problème de connexion - Réessayez');
             });
@@ -172,7 +172,7 @@ export const useGameActions = (
             return;
         }
 
-        setLoading(true);
+        loadingManager.setLoading('create-session', true);
         setError('');
 
         const result = await gameClient.createSession(playerName());
@@ -182,7 +182,7 @@ export const useGameActions = (
             if (!result.sessionId || !result.playerId || !result.sessionCode) {
                 const error = `Données de session manquantes: sessionId=${result.sessionId}, playerId=${result.playerId}, sessionCode=${result.sessionCode}`;
                 setError(error);
-                setLoading(false);
+                loadingManager.setLoading('create-session', false);
                 return;
             }
 
@@ -216,7 +216,7 @@ export const useGameActions = (
             setError(result.error || 'Erreur lors de la création');
         }
 
-        setLoading(false);
+        loadingManager.setLoading('create-session', false);
     };
 
     /**
@@ -234,7 +234,7 @@ export const useGameActions = (
             return;
         }
 
-        setLoading(true);
+        loadingManager.setLoading('join-session', true);
         setError('');
 
         const result = await gameClient.joinSession(sessionCode(), playerName());
@@ -244,7 +244,7 @@ export const useGameActions = (
             if (!result.sessionId || !result.playerId || !result.sessionCode) {
                 const error = `Données de session manquantes: sessionId=${result.sessionId}, playerId=${result.playerId}, sessionCode=${result.sessionCode}`;
                 setError(error);
-                setLoading(false);
+                loadingManager.setLoading('join-session', false);
                 return;
             }
 
@@ -278,7 +278,7 @@ export const useGameActions = (
             setError(result.error || 'Erreur lors du join');
         }
 
-        setLoading(false);
+        loadingManager.setLoading('join-session', false);
     };
 
     /**
@@ -303,7 +303,7 @@ export const useGameActions = (
             return;
         }
 
-        setLoading(true);
+        loadingManager.setLoading('set-ready', true);
 
         const result = await gameClient.setPlayerReady(sessionId, playerId);
 
@@ -330,7 +330,7 @@ export const useGameActions = (
             setError(result.error || 'Erreur');
         }
 
-        setLoading(false);
+        loadingManager.setLoading('set-ready', false);
     };
 
     /**

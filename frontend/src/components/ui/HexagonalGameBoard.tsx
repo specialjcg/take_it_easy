@@ -225,7 +225,7 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
     };
 
     /**
-     * 🎯 CREATEEFFECT AVEC SIGNAL POUR PERSISTANCE
+     * 🎯 CREATEEFFECT AVEC SIGNAL POUR PERSISTANCE - OPTIMISÉ
      */
     let isDrawing = false;
     let redrawTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -241,16 +241,13 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
             return;
         }
 
-        console.log('🎨 REAL CONTENT CHANGE', {
-            old: currentKey,
-            new: tilesData.key,
-            tilesCount: tilesData.realTiles.length
-        });
+        // ✅ LOGS CANVAS DÉSACTIVÉS - Trop de spam 
+        // (Réactiver seulement pour debug avancé si besoin)
 
         // ✅ METTRE À JOUR LE SIGNAL IMMÉDIATEMENT
         setLastContentKey(tilesData.key);
 
-        // ✅ SIMPLE DEBOUNCE
+        // ✅ DEBOUNCE AUGMENTÉ POUR RÉDUIRE LE SCINTILLEMENT
         if (redrawTimeout) {
             clearTimeout(redrawTimeout);
         }
@@ -267,7 +264,7 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
             } else {
                 isDrawing = false;
             }
-        }, 50);
+        }, 100); // ✅ DOUBLÉ: 50ms → 100ms pour réduire le scintillement
     });
 
     onCleanup(() => {

@@ -21,7 +21,7 @@ export class GameClient {
     private sessionClient: SessionServiceClient;
     private gameClient: GameServiceClient;
     private transport: GrpcWebFetchTransport;
-    private debugEnabled = true; // 🔧 AJOUT: Debug activé
+    private debugEnabled = false; // ✅ DEBUG DÉSACTIVÉ - Trop de spam dans les logs
 
     constructor() {
         this.transport = new GrpcWebFetchTransport({

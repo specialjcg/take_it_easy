@@ -1,6 +1,7 @@
 // hooks/useGameState.ts - State management centralisé
 import { createSignal } from 'solid-js';
 import { SessionState } from '../generated/common';
+import { useLoadingManager } from './useLoadingManager';
 
 // Types pour l'état local (réutilisés du composant principal)
 export interface Player {
@@ -37,8 +38,8 @@ export const useGameState = () => {
     const [gameState, setGameState] = createSignal<GameState | null>(null);
     const [session, setSession] = createSignal<Session | null>(null);
     
-    // État UI
-    const [loading, setLoading] = createSignal(false);
+    // État UI avec loading manager centralisé
+    const loadingManager = useLoadingManager();
     const [error, setError] = createSignal('');
     const [statusMessage, setStatusMessage] = createSignal('');
 
@@ -126,8 +127,8 @@ export const useGameState = () => {
         gameState, setGameState,
         session, setSession,
         
-        // État UI
-        loading, setLoading,
+        // État UI avec loading manager
+        loadingManager,
         error, setError,
         statusMessage, setStatusMessage,
 

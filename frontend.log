@@ -1,0 +1,5 @@
+npm error Missing script: "preview"
+npm error
+npm error To see a list of scripts, run:
+npm error   npm run
+npm error A complete log of this run can be found in: /home/jcgouleau/.npm/_logs/2025-08-24T09_06_10_158Z-debug-0.log
