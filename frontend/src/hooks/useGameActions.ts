@@ -72,14 +72,20 @@ export const useGameActions = (
         };
 
     /**
-     * Jouer un mouvement (position sur le plateau) - VERSION OPTIMISTE
+     * Jouer un mouvement (position sur le plateau) - VERSION ULTRA RÉACTIVE
      */
-    const playMove = async (position: number, myTurn: () => boolean, markActionPerformed?: () => void) => {
+    const playMove = async (position: number, myTurn: () => boolean, markActionPerformed?: () => void, updatePlateauTilesOptimistic?: (position: number, currentTile: string | null) => void, getCurrentTile?: () => string | null) => {
         const currentSession = session();
 
         if (!currentSession || !myTurn()) {
             setStatusMessage("Ce n'est pas votre tour !");
             return;
+        }
+
+        // ✅ RÉTROACTION OPTIMISTE IMMÉDIATE
+        const currentTileValue = getCurrentTile?.() || null;
+        if (updatePlateauTilesOptimistic && currentTileValue) {
+            updatePlateauTilesOptimistic(position, currentTileValue);
         }
 
         batch(() => {

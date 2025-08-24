@@ -169,9 +169,27 @@ const MultiplayerApp: Component = () => {
     };
 
     const handlePlayMove = (position: number) => {
-        gameActions.playMove(position, gameState.myTurn);
+        // ✅ FONCTION OPTIMISTE POUR RÉACTIVITÉ IMMÉDIATE
+        const updatePlateauTilesOptimistic = (pos: number, tile: string | null) => {
+            if (tile) {
+                GameStateManager.updatePlateauTilesOptimistic(
+                    pos,
+                    tile,
+                    gameState.plateauTiles,
+                    gameState.setPlateauTiles,
+                    gameState.session,
+                    gameState.currentTileImage() || undefined
+                );
+            }
+        };
 
-
+        gameActions.playMove(
+            position, 
+            gameState.myTurn, 
+            polling.markActionPerformed,
+            updatePlateauTilesOptimistic,
+            gameState.currentTile
+        );
     };
 
     // ============================================================================
