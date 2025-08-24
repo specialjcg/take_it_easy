@@ -123,7 +123,7 @@ async fn create_session_logic_with_manager(
 ) -> Result<Response<CreateSessionResponse>, Status> {
     match create_session_functional_with_manager(manager, max_players, game_mode).await {
         Ok(session_code) => {
-            if let Some(mut session) = get_session_by_code_with_manager(manager, &session_code).await {
+            if let Some(session) = get_session_by_code_with_manager(manager, &session_code).await {
                 // Ajouter le joueur humain
                 match add_player_to_session(session.clone(), player_name.clone()) {
                     Ok((mut updated_session, player_id)) => {
@@ -195,7 +195,7 @@ async fn join_session_logic(
     if player_name.contains("Viewer") || player_name.contains("Observer") {
         // Créer un joueur viewer (read-only)
         let viewer_id = format!("viewer_{}", uuid::Uuid::new_v4().to_string()[0..8].to_string());
-        let viewer_player = Player {
+        let _viewer_player = Player {
             id: viewer_id.clone(),
             name: player_name.clone(),
             score: 0,
@@ -254,7 +254,7 @@ async fn set_ready_logic(
     match get_session_by_id_with_manager(manager, &session_id).await {
         Some(session) => {
             // Vérifier si le joueur existe
-            if let Some(player) = session.players.get(&player_id) {            } else {
+            if let Some(_player) = session.players.get(&player_id) {            } else {
                 log::error!("❌ Joueur {} introuvable dans session {}", player_id, session_id);
                 return Ok(Response::new(set_ready_error_response(
                     "PLAYER_NOT_FOUND".to_string(),

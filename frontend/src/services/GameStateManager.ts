@@ -65,13 +65,9 @@ export class GameStateManager {
             const newPlateauHash = this.generateHash(newPlateauTiles);
 
             if (newPlateauHash !== this.lastPlateauTilesHash) {
-                // ✅ LOGS DÉSACTIVÉS - Évite spam console
-                // console.log('🔄 PLATEAU TILES CHANGED');
-
                 this.lastPlateauTilesHash = newPlateauHash;
                 setPlateauTiles(newPlateauTiles);
             }
-            // ✅ SUPPRESSION COMPLÈTE DES LOGS "unchanged"
         }
 
         // ✅ MÊME LOGIQUE POUR LES POSITIONS DISPONIBLES

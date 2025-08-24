@@ -1,6 +1,13 @@
 // components/ui/HexagonalGameBoard.tsx - VERSION SIMPLE ET STABLE
 import {Component, createEffect, createMemo, createSignal, onCleanup, Show, untrack} from 'solid-js';
 
+// ✅ CACHE GLOBAL PERSISTANT pour survivre aux re-créations de composant
+const GLOBAL_BOARD_CACHE = new Map<string, {
+    lastContentKey: string;
+    backgroundDrawn: boolean;
+    lastDrawnTiles: string[];
+}>();
+
 interface HexagonalGameBoardProps {
     plateauTiles: () => {[playerId: string]: string[]};
     availablePositions: () => number[];
@@ -14,10 +21,27 @@ interface HexagonalGameBoardProps {
 export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) => {
     let canvasRef: HTMLCanvasElement | undefined;
 
-    // ✅ ÉTAT INTELLIGENT AVEC CACHE DIFFÉRENTIEL
+    // ✅ CLÉ UNIQUE POUR CE BOARD (basée sur la session)
+    const getBoardKey = () => {
+        const session = props.session();
+        return session ? `board-${session.playerId}` : 'board-no-session';
+    };
+
+    // ✅ RÉCUPÉRER OU CRÉER LE CACHE PERSISTANT
+    const getOrCreateCache = () => {
+        const key = getBoardKey();
+        if (!GLOBAL_BOARD_CACHE.has(key)) {
+            GLOBAL_BOARD_CACHE.set(key, {
+                lastContentKey: '',
+                backgroundDrawn: false,
+                lastDrawnTiles: []
+            });
+        }
+        return GLOBAL_BOARD_CACHE.get(key)!;
+    };
+
+    // ✅ ÉTAT LOCAL AVEC CACHE D'IMAGES
     const [imageCache, setImageCache] = createSignal<Map<string, HTMLImageElement>>(new Map());
-    const [backgroundDrawn, setBackgroundDrawn] = createSignal(false);
-    const [lastDrawnTiles, setLastDrawnTiles] = createSignal<string[]>([]);
 
     // Positions hexagonales du plateau
     const hexPositions = [
@@ -34,15 +58,21 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
     const offsetY = 0.45 * hexHeight;
 
     /**
-     * 🎯 MEMO STABLE QUI FILTRE LES VRAIS CHANGEMENTS
+     * 🎯 MEMO ULTRA-STABLE AVEC COMPARAISON PROFONDE
      */
-    const stableTilesData = createMemo(() => {
+    const stableTilesData = createMemo((prev) => {
         const currentSession = props.session();
-        if (!currentSession) return { key: 'no-session', tiles: [] };
+        if (!currentSession) {
+            const result = { key: 'no-session', tiles: [], debugInfo: 'no-session' };
+            return prev && prev.key === result.key ? prev : result;
+        }
 
         const isViewerMode = currentSession.playerId.includes('viewer');
         const allPlateaus = props.plateauTiles();
 
+        // 🔍 DEBUG: Voir si allPlateaus change de référence
+        const plateauStringified = JSON.stringify(allPlateaus);
+        
         let playerTiles: string[] = [];
         if (isViewerMode) {
             playerTiles = allPlateaus['mcts_ai'] || [];
@@ -50,15 +80,35 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
             playerTiles = allPlateaus[currentSession.playerId] || [];
         }
 
-        // ✅ CLÉ UNIQUE BASÉE SUR LE CONTENU RÉEL
+        // ✅ CLÉ ULTRA-STABLE: Hash du contenu réel ET structure
         const realTiles = playerTiles.filter(t => t && t !== '' && !t.includes('000'));
-        const contentKey = `${currentSession.playerId}-${realTiles.length}-${realTiles.join('|')}`;
+        const contentKey = `${currentSession.playerId}-${realTiles.length}-${plateauStringified.length}-${realTiles.join('|')}`;
 
-        return {
+        // 🔍 DEBUG: Traquer les changements
+        const debugInfo = {
+            playerId: currentSession.playerId,
+            tilesCount: playerTiles.length,
+            realTilesCount: realTiles.length,
+            plateauKeys: Object.keys(allPlateaus),
+            plateauSizes: Object.fromEntries(Object.entries(allPlateaus).map(([k,v]) => [k, v?.length || 0])),
+            plateauStringifiedLength: plateauStringified.length,
+            prevKey: prev?.key || 'none',
+            timestamp: Date.now()
+        };
+
+        const result = {
             key: contentKey,
             tiles: playerTiles,
-            realTiles: realTiles
+            realTiles: realTiles,
+            debugInfo
         };
+
+        // ✅ RETURNER LA MÊME RÉFÉRENCE SI LE CONTENU EST IDENTIQUE
+        if (prev && prev.key === contentKey) {
+            return prev;
+        }
+        
+        return result;
     });
     /**
      * 🚀 CACHE D'IMAGES SIMPLE
@@ -123,31 +173,46 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
      * 🚀 FONCTION DRAW DIFFÉRENTIELLE - SEULEMENT LES CHANGEMENTS
      */
     const drawBackground = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
-        // Dessiner le fond seulement si pas encore fait
-        if (!backgroundDrawn()) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#1e1e1e';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        console.log('🎨 DRAWING BACKGROUND - FORCE REDRAW EVERY TIME');
+        
+        // ✅ FORCER LE DESSIN À CHAQUE FOIS POUR ÉVITER L'ÉCRAN NOIR
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#1e1e1e';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        console.log('🎨 DRAWING BACKGROUND - Canvas cleared and filled');
 
-            // Calculer l'origine
-            const gridOriginX = canvas.width / 2 - hexWidth;
-            const gridOriginY = canvas.height / 2 - 2 * offsetY;
+        // Calculer l'origine
+        const gridOriginX = canvas.width / 2 - hexWidth;
+        const gridOriginY = canvas.height / 2 - 2 * offsetY;
 
-            // Dessiner TOUS les hexagones neutres UNE SEULE FOIS
-            hexPositions.forEach(([q, r], index) => {
-                const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 50;
-                const y = gridOriginY + r * offsetY - 50;
-                drawNeutralHexagon(ctx, x, y, hexRadius);
-            });
+        console.log('🎨 DRAWING BACKGROUND - Drawing hexagons', {
+            gridOriginX,
+            gridOriginY,
+            hexPositionsCount: hexPositions.length
+        });
 
-            setBackgroundDrawn(true);
-        }
+        // Dessiner TOUS les hexagones neutres À CHAQUE FOIS
+        hexPositions.forEach(([q, r], index) => {
+            const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 50;
+            const y = gridOriginY + r * offsetY - 50;
+            drawNeutralHexagon(ctx, x, y, hexRadius);
+        });
+
+        console.log('🎨 DRAWING BACKGROUND - All hexagons redrawn');
     };
 
     const drawSingleTile = async (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, index: number, tileImage: string) => {
+        console.log(`🎯 DRAW SINGLE TILE ${index}:`, { tileImage: tileImage?.slice(0, 50) || 'empty' });
+        
         if (!tileImage || tileImage === '' || tileImage.includes('000')) {
+            console.log(`🎯 TILE ${index} SKIPPED - Empty tile`);
             return;
         }
+        
+        console.log(`🎯 TILE ${index} DRAWING - Valid tile`);
+        
+        // Le reste du code continue...
 
         // Calculer position
         const gridOriginX = canvas.width / 2 - hexWidth;
@@ -211,28 +276,42 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
      * 🎯 DESSIN DIFFÉRENTIEL - SEULEMENT LES TUILES QUI ONT CHANGÉ
      */
     const drawHexagonalGridDifferential = async (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, tiles: string[]) => {
-        const previousTiles = lastDrawnTiles();
-
+        const cache = getOrCreateCache();
+        
+        console.log('🎯 DIFFERENTIAL DRAW - Starting', {
+            tilesLength: tiles.length,
+            cacheLastDrawnTilesLength: cache.lastDrawnTiles.length
+        });
+        
         // 1. Dessiner le fond (une seule fois)
         drawBackground(ctx, canvas);
 
         // 2. Identifier les changements
         const changedIndices: number[] = [];
         for (let i = 0; i < tiles.length; i++) {
-            if (tiles[i] !== previousTiles[i]) {
+            if (tiles[i] !== cache.lastDrawnTiles[i]) {
                 changedIndices.push(i);
             }
         }
 
-        // 3. Redessiner SEULEMENT les tuiles qui ont changé
-        const drawPromises = changedIndices.map(index => 
-            drawSingleTile(ctx, canvas, index, tiles[index])
-        );
+        console.log('🎯 DIFFERENTIAL DRAW - Changes detected', {
+            changedIndices,
+            changedCount: changedIndices.length
+        });
 
-        await Promise.all(drawPromises);
+        // 3. Redessiner SEULEMENT les tuiles qui ont changé
+        if (changedIndices.length > 0) {
+            console.log('🎯 DIFFERENTIAL DRAW - Drawing changed tiles');
+            const drawPromises = changedIndices.map(index => 
+                drawSingleTile(ctx, canvas, index, tiles[index])
+            );
+            await Promise.all(drawPromises);
+            console.log('🎯 DIFFERENTIAL DRAW - All changed tiles drawn');
+        }
 
         // 4. Mettre à jour le cache des tuiles
-        setLastDrawnTiles([...tiles]);
+        cache.lastDrawnTiles = [...tiles];
+        console.log('🎯 DIFFERENTIAL DRAW - Completed');
     };
 
     /**
@@ -277,46 +356,58 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
     };
 
     /**
-     * 🎯 CREATEEFFECT AVEC SIGNAL POUR PERSISTANCE - OPTIMISÉ
+     * 🎯 CREATEEFFECT AVEC CACHE GLOBAL PERSISTANT - RÉSOUT RE-MOUNTING
      */
+    // ✅ VARIABLES PERSISTANTES HORS DU CREATEEFFECT
     let isDrawing = false;
     let redrawTimeout: ReturnType<typeof setTimeout> | undefined;
-    const [lastContentKey, setLastContentKey] = createSignal('');
 
     createEffect(() => {
-        // ✅ TRACK SEULEMENT LE MEMO STABLE
         const tilesData = stableTilesData();
-        const currentKey = lastContentKey();
+        
+        if (!canvasRef) return;
+        
+        const tiles = (tilesData as any)?.tiles || [];
+        
+        // ✅ SIMPLE: Redessiner à chaque changement de données
+        const ctx = canvasRef.getContext('2d');
+        if (ctx) {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvasRef.width, canvasRef.height);
+            
+            // Dessiner le fond
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, canvasRef.width, canvasRef.height);
 
-        // ✅ SKIP SI LE CONTENU N'A PAS VRAIMENT CHANGÉ
-        if (tilesData.key === currentKey || isDrawing || !canvasRef) {
-            return;
+            // Calculer l'origine
+            const gridOriginX = canvasRef.width / 2 - hexWidth;
+            const gridOriginY = canvasRef.height / 2 - 2 * offsetY;
+
+            // Dessiner TOUS les hexagones
+            hexPositions.forEach(([q, r], index) => {
+                const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 50;
+                const y = gridOriginY + r * offsetY - 50;
+                
+                // Dessiner l'hexagone neutre
+                drawNeutralHexagon(ctx, x, y, hexRadius);
+                
+                // Si il y a une tuile pour cette position, la dessiner
+                if (tiles[index] && tiles[index] !== '' && !tiles[index].includes('000')) {
+                    // Dessiner la tuile par-dessus (version simplifiée)
+                    loadImageCached(tiles[index]).then(img => {
+                        const scaledWidth = img.width / 2.4;
+                        const scaledHeight = img.height / 2.4;
+                        ctx.drawImage(
+                            img,
+                            x - scaledWidth / 2,
+                            y - scaledHeight / 2,
+                            scaledWidth,
+                            scaledHeight
+                        );
+                    });
+                }
+            });
         }
-
-        // ✅ LOGS CANVAS DÉSACTIVÉS - Trop de spam 
-        // (Réactiver seulement pour debug avancé si besoin)
-
-        // ✅ METTRE À JOUR LE SIGNAL IMMÉDIATEMENT
-        setLastContentKey(tilesData.key);
-
-        // ✅ DEBOUNCE AUGMENTÉ POUR RÉDUIRE LE SCINTILLEMENT
-        if (redrawTimeout) {
-            clearTimeout(redrawTimeout);
-        }
-
-        redrawTimeout = setTimeout(() => {
-            if (!canvasRef || isDrawing) return;
-
-            isDrawing = true;
-            const ctx = canvasRef.getContext('2d');
-            if (ctx) {
-                drawHexagonalGridDifferential(ctx, canvasRef, tilesData.tiles).finally(() => {
-                    isDrawing = false;
-                });
-            } else {
-                isDrawing = false;
-            }
-        }, 50); // ✅ RÉDUIT: 100ms → 50ms car plus performant avec différentiel
     });
 
     onCleanup(() => {

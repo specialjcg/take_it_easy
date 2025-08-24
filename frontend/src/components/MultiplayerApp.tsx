@@ -1,5 +1,5 @@
 // src/components/MultiplayerApp.tsx - Version refactorisée et modulaire
-import { Component, createEffect, onMount, Show } from 'solid-js';
+import { Component, createEffect, onMount, Show, createMemo } from 'solid-js';
 import { SessionState } from '../generated/common';
 
 // Import des hooks personnalisés
@@ -168,6 +168,28 @@ const MultiplayerApp: Component = () => {
         gameActions.startGameTurn();
     };
 
+    // ✅ MEMO STABLE POUR ÉVITER RE-CRÉATION DU COMPOSANT BOARD
+    const stableBoardProps = createMemo(() => {
+        const plateauData = gameState.plateauTiles();
+        const positionsData = gameState.availablePositions();
+        const sessionData = gameState.session();
+        
+        // Hash pour stabilité
+        const hash = JSON.stringify({
+            plateaus: plateauData,
+            positions: positionsData,
+            sessionId: sessionData?.playerId
+        });
+        
+        
+        return {
+            plateauTiles: () => plateauData,
+            availablePositions: () => positionsData,
+            session: () => sessionData,
+            hash
+        };
+    });
+
     const handlePlayMove = (position: number) => {
         // ✅ FONCTION OPTIMISTE POUR RÉACTIVITÉ IMMÉDIATE
         const updatePlateauTilesOptimistic = (pos: number, tile: string | null) => {
@@ -248,12 +270,12 @@ const MultiplayerApp: Component = () => {
                             </Show>
                         </div>
 
-                        {/* 🔧 PLATEAU HEXAGONAL COMPLET - REMPLACEMENT DU CANVAS VIDE */}
+                        {/* 🔧 PLATEAU HEXAGONAL COMPLET AVEC PROPS STABLES */}
                         <HexagonalGameBoard
-                            plateauTiles={gameState.plateauTiles}
-                            availablePositions={gameState.availablePositions}
+                            plateauTiles={stableBoardProps().plateauTiles}
+                            availablePositions={stableBoardProps().availablePositions}
                             myTurn={gameState.myTurn}
-                            session={gameState.session}
+                            session={stableBoardProps().session}
                             onTileClick={handlePlayMove}
                         />
                     </div>

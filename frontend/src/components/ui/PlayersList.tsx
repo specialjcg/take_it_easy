@@ -13,6 +13,7 @@ interface PlayersListProps {
     session: () => { playerId: string; sessionCode: string } | null;
 }
 
+
 /**
  * Composant pour l'affichage de la liste des joueurs et contrôles MCTS
  * Extrait du composant principal pour une meilleure modularité

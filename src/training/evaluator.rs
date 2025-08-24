@@ -37,5 +37,5 @@ pub async fn evaluate_model(policy_net: &PolicyNet, value_net: &ValueNet, num_si
         scores.push(game_score);
     }
 
-    let avg_score: f64 = scores.iter().copied().sum::<i32>() as f64 / scores.len() as f64;    // **Stop ping task**
+    let _avg_score: f64 = scores.iter().copied().sum::<i32>() as f64 / scores.len() as f64;    // **Stop ping task**
 }

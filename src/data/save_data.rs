@@ -39,6 +39,6 @@ pub fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
     };
 
     // 🔄 Sauvegarde des tensors concaténés
-    if let Err(e) = combined_states.save(format!("{}_states.pt", file_path)) {    }
-    if let Err(e) = combined_positions.save(format!("{}_positions.pt", file_path)) {    }
-    if let Err(e) = combined_subscores.save(format!("{}_subscores.pt", file_path)) {    }}
+    if let Err(_e) = combined_states.save(format!("{}_states.pt", file_path)) {    }
+    if let Err(_e) = combined_positions.save(format!("{}_positions.pt", file_path)) {    }
+    if let Err(_e) = combined_subscores.save(format!("{}_subscores.pt", file_path)) {    }}
