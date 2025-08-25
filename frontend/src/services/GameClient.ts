@@ -358,7 +358,7 @@ export class GameClient {
                     turnCompleted: true,
                     isGameOver: success.isGameOver,
                     finalScores: "{}",
-                    newGameState: String(success.newGameState || '{}')
+                    newGameState: success.newGameState || {}
                 };
             } else if (response.result.oneofKind === "error") {
                 this.debugLog('❌ makeMove ERROR', response.result.error);

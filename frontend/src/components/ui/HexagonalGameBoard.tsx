@@ -431,26 +431,6 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
                 }}
             />
 
-            <div class="classic-instructions">
-                <Show when={props.session()?.playerId.includes('viewer')}>
-                    <p style={{ color: '#8b5cf6', 'font-weight': 'bold' }}>
-                        👁️ Mode Observateur - Plateau MCTS affiché
-                    </p>
-                </Show>
-
-                <Show when={!props.session()?.playerId.includes('viewer')}>
-                    <Show when={props.myTurn() && props.availablePositions().length > 0}>
-                        <p style={{ color: '#999', 'font-weight': 'bold' }}>
-                            🎯 À votre tour - Cliquez sur un hexagone pour placer votre tuile
-                        </p>
-                    </Show>
-                    <Show when={!props.myTurn()}>
-                        <p style={{ color: '#666', 'font-style': 'italic' }}>
-                            ⏳ En attente de votre tour
-                        </p>
-                    </Show>
-                </Show>
-            </div>
         </div>
     );
 };

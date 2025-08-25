@@ -17,6 +17,35 @@
 }
 
 /* =============================================================================
+   COMPACT TILE DISPLAY
+   ============================================================================= */
+
+.compact-tile-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 78px;
+  height: 78px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  margin-right: 12px;
+  overflow: hidden;
+}
+
+.compact-tile-display .compact-tile-image {
+  width: 74px;
+  height: 74px;
+  object-fit: fill;
+  border-radius: 6px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  overflow: clip;
+  transform: scale(5.9);
+}
+
+/* =============================================================================
    BASE STYLES
    ============================================================================= */
 

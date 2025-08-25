@@ -13,7 +13,6 @@ import { GameStateManager } from '../services/GameStateManager';
 // Import des composants UI
 import { ConnectionInterface } from './ui/ConnectionInterface';
 import { PlayersList } from './ui/PlayersList';
-import { CurrentTileDisplay } from './ui/CurrentTileDisplay';
 import { StatusMessages } from './ui/StatusMessages';
 import { MCTSInterface } from './ui/MCTSInterface';
 import { HexagonalGameBoard } from './ui/HexagonalGameBoard'; // ⚠️ IMPORT CORRIGÉ
@@ -113,7 +112,9 @@ const MultiplayerApp: Component = () => {
         const state = gameState.gameState();
         if (state && state.state === SessionState.IN_PROGRESS && !gameState.isGameStarted()) {
             console.log('🎮 Jeu commencé ! Prêt pour démarrer le premier tour...');
-            gameState.setStatusMessage('🎮 Le jeu commence ! Cliquez sur "Démarrer le tour"');
+            const currentSession = gameState.session();
+            const currentPlayerScore = state.players?.find(p => p.playerId === currentSession?.playerId)?.score || 0;
+            gameState.setStatusMessage(`🎯 Votre score actuel: ${currentPlayerScore} points`);
         }
     });
 
@@ -234,8 +235,32 @@ const MultiplayerApp: Component = () => {
                 </div>
 
                 <Show when={state.state === SessionState.WAITING}>
-                    <div class="waiting-message">
-                        <p>⏳ En attente que tous les joueurs soient prêts...</p>
+                    <div class="player-score-display">
+                        <h3>🎯 Votre Score</h3>
+                        <div class="current-score">
+                            {(() => {
+                                const currentSession = gameState.session();
+                                const currentPlayer = state.players?.find(p => p.playerId === currentSession?.playerId);
+                                return currentPlayer?.score || 0;
+                            })()} points
+                        </div>
+                        
+                        <div class="ready-section">
+                            <Show when={!gameState.isPlayerReady()}>
+                                <button
+                                    onClick={handleSetReady}
+                                    disabled={gameState.loadingManager.isAnyLoading()}
+                                    class="ready-button"
+                                >
+                                    ✅ Je suis prêt !
+                                </button>
+                            </Show>
+                            <Show when={gameState.isPlayerReady()}>
+                                <div class="ready-status">
+                                    <p>✅ Vous êtes prêt ! En attente des autres joueurs...</p>
+                                </div>
+                            </Show>
+                        </div>
                     </div>
                 </Show>
 
@@ -255,12 +280,6 @@ const MultiplayerApp: Component = () => {
                                 </div>
                             </Show>
 
-                            {/* Affichage tuile courante */}
-                            <CurrentTileDisplay
-                                currentTile={gameState.currentTile}
-                                currentTileImage={gameState.currentTileImage}
-                                imageCache={gameState.imageCache}
-                            />
 
                             {/* Message d'attente simplifié */}
                             <Show when={gameState.isGameStarted() && gameState.currentTile() && !gameState.myTurn()}>
@@ -284,16 +303,17 @@ const MultiplayerApp: Component = () => {
                 <Show when={state.state === SessionState.FINISHED}>
                     <div class="game-finished">
                         <h2>🎉 Partie terminée !</h2>
-                        <PlayersList
-                            gameState={gameState.gameState}
-                            isCurrentPlayer={gameState.isCurrentPlayer}
-                            getPlayerStatus={gameState.getPlayerStatus}
-                            isPlayerReady={gameState.isPlayerReady}
-                            loading={gameState.loadingManager.isAnyLoading}
-                            onSetReady={handleSetReady}
-                            onOpenMctsSession={handleOpenMctsSession}
-                            session={gameState.session}
-                        />
+                        <div class="final-scores">
+                            <h3>🏆 Scores finaux</h3>
+                            <Show when={gameState.gameState()?.players}>
+                                {gameState.gameState()!.players.map(player => (
+                                    <div class="score-item">
+                                        <span class="player-name">{player.name}</span>
+                                        <span class="player-score">{player.score} points</span>
+                                    </div>
+                                ))}
+                            </Show>
+                        </div>
                     </div>
                 </Show>
             </div>
@@ -349,6 +369,17 @@ const MultiplayerApp: Component = () => {
                             <p class="player-id">ID: {gameState.session()?.playerId}</p>
                         </div>
                         <div class="session-actions">
+                            {/* Tuile courante compacte */}
+                            <Show when={gameState.currentTile() && gameState.currentTileImage()}>
+                                <div class="compact-tile-display">
+                                    <img 
+                                        class="compact-tile-image" 
+                                        src={gameState.currentTileImage() || ''}
+                                        alt={`Tuile ${gameState.currentTile()}`}
+                                    />
+                                </div>
+                            </Show>
+                            
                             <button
                                 class="open-mcts-button"
                                 onClick={handleOpenMctsSession}
@@ -361,16 +392,6 @@ const MultiplayerApp: Component = () => {
                             </button>
                         </div>
                     </div>
-
-                    <PlayersList
-                        gameState={gameState.gameState}
-                        isCurrentPlayer={gameState.isCurrentPlayer}
-                        getPlayerStatus={gameState.getPlayerStatus}
-                        isPlayerReady={gameState.isPlayerReady}
-                        loading={gameState.loadingManager.isAnyLoading}
-                        onSetReady={handleSetReady}
-                        session={gameState.session}
-                    />
 
                     {renderGameBoard()}
                 </Show>
