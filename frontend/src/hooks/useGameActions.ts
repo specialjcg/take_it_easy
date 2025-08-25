@@ -109,8 +109,8 @@ export const useGameActions = (
             if (result.success) {
                 // ✅ CAS DE SUCCÈS - TRAITEMENT IMMÉDIAT
                 batch(() => {
-                    const parsedState = result.newGameState ? JSON.parse(result.newGameState) : {};
-                    updatePlateauTiles(parsedState);
+                    const gameStateData = result.newGameState || {};
+                    updatePlateauTiles(gameStateData);
 
                     setStatusMessage(`✅ Position ${position}! +${result.pointsEarned} pts`);
                     loadingManager.setLoading('play-move', false);
@@ -154,12 +154,15 @@ export const useGameActions = (
 
         } catch (error) {
             // ✅ CAS D'EXCEPTION RÉSEAU (vraie erreur technique)
+            console.error('🔥 ERREUR MAKEMOVE:', error);
+            console.error('🔥 Session courante:', currentSession);
+            console.error('🔥 Position:', position);
 
             batch(() => {
                 setMyTurn(true); // Rollback - rendre le tour
                 loadingManager.setLoading('play-move', false);
-                setError('Erreur réseau');
-                setStatusMessage('💥 Problème de connexion - Réessayez');
+                setError(`Erreur réseau: ${error}`);
+                setStatusMessage(`💥 Erreur: ${error} - Réessayez`);
             });
         }
     };

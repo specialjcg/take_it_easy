@@ -2,12 +2,8 @@
 > vite-template-solid@0.0.0 dev
 > vite
 
-Port 3000 is in use, trying another one...
-Port 3001 is in use, trying another one...
 
-  VITE v6.3.5  ready in 414 ms
+  VITE v6.3.5  ready in 417 ms
 
-  ➜  Local:   http://localhost:3002/
+  ➜  Local:   http://localhost:3000/
   ➜  Network: use --host to expose
-00:29:16 [vite] (client) hmr update /src/components/ui/HexagonalGameBoard.tsx
-00:30:25 [vite] (client) hmr update /src/components/ui/HexagonalGameBoard.tsx
