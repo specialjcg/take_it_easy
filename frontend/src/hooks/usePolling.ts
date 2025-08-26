@@ -42,14 +42,15 @@ export const usePolling = (
         lastActionTime = Date.now();
     };
 
-    // ✅ INTERVALLES FORTEMENT AUGMENTÉS - Moins de spam réseau
+    // ✅ INTERVALLES ULTRA-OPTIMISÉS POUR UX
     const getPollingInterval = (): number => {
-        if (!isGameStarted()) return 15000;          // 15s en attente (doublé)
+        if (!isGameStarted()) return 20000;          // 20s en attente - réduire le bruit
 
         const timeSinceAction = Date.now() - lastActionTime;
-        if (timeSinceAction < 3000) return 3000;     // 3s après action (plus long)
-        if (currentMyTurn) return 5000;              // 5s mon tour  
-        return 8000;                                 // 8s normal (plus long)
+        if (timeSinceAction < 1000) return 500;      // 500ms juste après action - très réactif
+        if (timeSinceAction < 5000) return 2000;     // 2s dans les 5s après action 
+        if (currentMyTurn) return 3000;              // 3s si mon tour
+        return 12000;                                // 12s sinon - réduit drastiquement le polling
     };
 
     // ✅ BACKOFF MODÉRÉ
