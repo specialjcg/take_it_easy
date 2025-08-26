@@ -1,12 +1,6 @@
 // components/ui/HexagonalGameBoard.tsx - VERSION SIMPLE ET STABLE
 import {Component, createEffect, createMemo, createSignal, onCleanup, Show, untrack} from 'solid-js';
 
-// ✅ CACHE GLOBAL PERSISTANT pour survivre aux re-créations de composant
-const GLOBAL_BOARD_CACHE = new Map<string, {
-    lastContentKey: string;
-    backgroundDrawn: boolean;
-    lastDrawnTiles: string[];
-}>();
 
 interface HexagonalGameBoardProps {
     plateauTiles: () => {[playerId: string]: string[]};
@@ -21,27 +15,12 @@ interface HexagonalGameBoardProps {
 export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) => {
     let canvasRef: HTMLCanvasElement | undefined;
 
-    // ✅ CLÉ UNIQUE POUR CE BOARD (basée sur la session)
-    const getBoardKey = () => {
-        const session = props.session();
-        return session ? `board-${session.playerId}` : 'board-no-session';
-    };
 
-    // ✅ RÉCUPÉRER OU CRÉER LE CACHE PERSISTANT
-    const getOrCreateCache = () => {
-        const key = getBoardKey();
-        if (!GLOBAL_BOARD_CACHE.has(key)) {
-            GLOBAL_BOARD_CACHE.set(key, {
-                lastContentKey: '',
-                backgroundDrawn: false,
-                lastDrawnTiles: []
-            });
-        }
-        return GLOBAL_BOARD_CACHE.get(key)!;
-    };
 
-    // ✅ ÉTAT LOCAL AVEC CACHE D'IMAGES
+    // ✅ ÉTAT LOCAL OPTIMISÉ
     const [imageCache, setImageCache] = createSignal<Map<string, HTMLImageElement>>(new Map());
+    const [isCanvasInitialized, setIsCanvasInitialized] = createSignal(false);
+    const [lastRenderedHash, setLastRenderedHash] = createSignal('');
 
     // Positions hexagonales du plateau
     const hexPositions = [
@@ -58,68 +37,41 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
     const offsetY = 0.45 * hexHeight;
 
     /**
-     * 🎯 MEMO ULTRA-STABLE AVEC COMPARAISON PROFONDE
+     * 🚀 MEMO ULTRA-OPTIMISÉ POUR PERFORMANCE UX
      */
     const stableTilesData = createMemo((prev) => {
         const currentSession = props.session();
         if (!currentSession) {
-            const result = { key: 'no-session', tiles: [], debugInfo: 'no-session' };
+            const result = { key: 'no-session', tiles: [] };
             return prev && prev.key === result.key ? prev : result;
         }
 
         const isViewerMode = currentSession.playerId.includes('viewer');
         const allPlateaus = props.plateauTiles();
-
-        // 🔍 DEBUG: Voir si allPlateaus change de référence
-        const plateauStringified = JSON.stringify(allPlateaus);
         
-        let playerTiles: string[] = [];
-        if (isViewerMode) {
-            playerTiles = allPlateaus['mcts_ai'] || [];
-        } else {
-            playerTiles = allPlateaus[currentSession.playerId] || [];
-        }
+        const playerTiles = isViewerMode ? 
+            (allPlateaus['mcts_ai'] || []) : 
+            (allPlateaus[currentSession.playerId] || []);
 
-        // ✅ CLÉ ULTRA-STABLE: Hash du contenu réel ET structure
-        const realTiles = playerTiles.filter(t => t && t !== '' && !t.includes('000'));
-        const contentKey = `${currentSession.playerId}-${realTiles.length}-${plateauStringified.length}-${realTiles.join('|')}`;
+        // ✅ HASH LÉGER - Seulement positions avec tuiles + longueur
+        const realTiles = playerTiles.map((t, i) => 
+            (t && t !== '' && !t.includes('000')) ? `${i}:${t.slice(-6)}` : ''
+        ).filter(Boolean);
+        
+        const contentKey = `${currentSession.playerId}-${playerTiles.length}-${realTiles.join('|')}`;
 
-        // 🔍 DEBUG: Traquer les changements
-        const debugInfo = {
-            playerId: currentSession.playerId,
-            tilesCount: playerTiles.length,
-            realTilesCount: realTiles.length,
-            plateauKeys: Object.keys(allPlateaus),
-            plateauSizes: Object.fromEntries(Object.entries(allPlateaus).map(([k,v]) => [k, v?.length || 0])),
-            plateauStringifiedLength: plateauStringified.length,
-            prevKey: prev?.key || 'none',
-            timestamp: Date.now()
-        };
-
-        const result = {
-            key: contentKey,
-            tiles: playerTiles,
-            realTiles: realTiles,
-            debugInfo
-        };
+        const result = { key: contentKey, tiles: playerTiles };
 
         // ✅ RETURNER LA MÊME RÉFÉRENCE SI LE CONTENU EST IDENTIQUE
-        if (prev && prev.key === contentKey) {
-            return prev;
-        }
-        
-        return result;
+        return (prev && prev.key === contentKey) ? prev : result;
     });
     /**
-     * 🚀 CACHE D'IMAGES SIMPLE
+     * 🚀 CACHE D'IMAGES ULTRA-RAPIDE
      */
     const loadImageCached = (src: string): Promise<HTMLImageElement> => {
         return new Promise((resolve) => {
             if (!src || src === '' || src.includes('000')) {
-                const emptyImg = new Image();
-                emptyImg.width = 1;
-                emptyImg.height = 1;
-                resolve(emptyImg);
+                resolve(new Image(1, 1));
                 return;
             }
 
@@ -132,187 +84,40 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
             const img = new Image();
             img.onload = () => {
                 const newCache = new Map(cache);
-                newCache.set(src, img);
-                setImageCache(newCache);
+            newCache.set(src, img);
+            setImageCache(newCache);
                 resolve(img);
             };
-            img.onerror = () => {
-                const emptyImg = new Image();
-                emptyImg.width = 1;
-                emptyImg.height = 1;
-                resolve(emptyImg);
-            };
+            img.onerror = () => resolve(new Image(1, 1));
             img.src = src;
         });
     };
 
     /**
-     * ✅ DESSINER UN HEXAGONE NEUTRE
+     * ✅ DESSINER UN HEXAGONE OPTIMISÉ
      */
-    const drawNeutralHexagon = (ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) => {
+    const drawHexagon = (ctx: CanvasRenderingContext2D, x: number, y: number, filled = true) => {
         const angleStep = Math.PI / 3;
 
         ctx.beginPath();
         for (let i = 0; i < 6; i++) {
             const angle = angleStep * i;
-            const xOffset = x + radius * Math.cos(angle);
-            const yOffset = y + radius * Math.sin(angle);
+            const xOffset = x + hexRadius * Math.cos(angle);
+            const yOffset = y + hexRadius * Math.sin(angle);
             if (i === 0) ctx.moveTo(xOffset, yOffset);
             else ctx.lineTo(xOffset, yOffset);
         }
         ctx.closePath();
 
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fill();
+        if (filled) {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fill();
+        }
         ctx.strokeStyle = '#666666';
         ctx.lineWidth = 1;
         ctx.stroke();
     };
 
-    /**
-     * 🚀 FONCTION DRAW DIFFÉRENTIELLE - SEULEMENT LES CHANGEMENTS
-     */
-    const drawBackground = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
-        console.log('🎨 DRAWING BACKGROUND - FORCE REDRAW EVERY TIME');
-        
-        // ✅ FORCER LE DESSIN À CHAQUE FOIS POUR ÉVITER L'ÉCRAN NOIR
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#1e1e1e';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        console.log('🎨 DRAWING BACKGROUND - Canvas cleared and filled');
-
-        // Calculer l'origine
-        const gridOriginX = canvas.width / 2 - hexWidth;
-        const gridOriginY = canvas.height / 2 - 2 * offsetY;
-
-        console.log('🎨 DRAWING BACKGROUND - Drawing hexagons', {
-            gridOriginX,
-            gridOriginY,
-            hexPositionsCount: hexPositions.length
-        });
-
-        // Dessiner TOUS les hexagones neutres À CHAQUE FOIS
-        hexPositions.forEach(([q, r], index) => {
-            const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 50;
-            const y = gridOriginY + r * offsetY - 50;
-            drawNeutralHexagon(ctx, x, y, hexRadius);
-        });
-
-        console.log('🎨 DRAWING BACKGROUND - All hexagons redrawn');
-    };
-
-    const drawSingleTile = async (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, index: number, tileImage: string) => {
-        console.log(`🎯 DRAW SINGLE TILE ${index}:`, { tileImage: tileImage?.slice(0, 50) || 'empty' });
-        
-        if (!tileImage || tileImage === '' || tileImage.includes('000')) {
-            console.log(`🎯 TILE ${index} SKIPPED - Empty tile`);
-            return;
-        }
-        
-        console.log(`🎯 TILE ${index} DRAWING - Valid tile`);
-        
-        // Le reste du code continue...
-
-        // Calculer position
-        const gridOriginX = canvas.width / 2 - hexWidth;
-        const gridOriginY = canvas.height / 2 - 2 * offsetY;
-        const [q, r] = hexPositions[index];
-        const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 50;
-        const y = gridOriginY + r * offsetY - 50;
-
-        try {
-            const img = await loadImageCached(tileImage);
-            const scaledWidth = img.width / 2.4;
-            const scaledHeight = img.height / 2.4;
-
-            // ✅ EFFACER SEULEMENT LA ZONE DE CET HEXAGONE
-            ctx.save();
-            ctx.beginPath();
-            const angleStep = Math.PI / 3;
-            for (let i = 0; i < 6; i++) {
-                const angle = angleStep * i;
-                const xOffset = x + hexRadius * Math.cos(angle);
-                const yOffset = y + hexRadius * Math.sin(angle);
-                if (i === 0) ctx.moveTo(xOffset, yOffset);
-                else ctx.lineTo(xOffset, yOffset);
-            }
-            ctx.closePath();
-            ctx.clip();
-
-            // Redessiner le fond hexagonal
-            drawNeutralHexagon(ctx, x, y, hexRadius);
-
-            // Dessiner l'image
-            ctx.drawImage(
-                img,
-                x - scaledWidth / 2,
-                y - scaledHeight / 2,
-                scaledWidth,
-                scaledHeight
-            );
-
-            ctx.restore();
-
-            // Redessiner le contour par-dessus
-            ctx.beginPath();
-            for (let i = 0; i < 6; i++) {
-                const angle = angleStep * i;
-                const xOffset = x + hexRadius * Math.cos(angle);
-                const yOffset = y + hexRadius * Math.sin(angle);
-                if (i === 0) ctx.moveTo(xOffset, yOffset);
-                else ctx.lineTo(xOffset, yOffset);
-            }
-            ctx.closePath();
-            ctx.strokeStyle = '#666666';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-        } catch (e) {
-            // Silencieux
-        }
-    };
-
-    /**
-     * 🎯 DESSIN DIFFÉRENTIEL - SEULEMENT LES TUILES QUI ONT CHANGÉ
-     */
-    const drawHexagonalGridDifferential = async (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, tiles: string[]) => {
-        const cache = getOrCreateCache();
-        
-        console.log('🎯 DIFFERENTIAL DRAW - Starting', {
-            tilesLength: tiles.length,
-            cacheLastDrawnTilesLength: cache.lastDrawnTiles.length
-        });
-        
-        // 1. Dessiner le fond (une seule fois)
-        drawBackground(ctx, canvas);
-
-        // 2. Identifier les changements
-        const changedIndices: number[] = [];
-        for (let i = 0; i < tiles.length; i++) {
-            if (tiles[i] !== cache.lastDrawnTiles[i]) {
-                changedIndices.push(i);
-            }
-        }
-
-        console.log('🎯 DIFFERENTIAL DRAW - Changes detected', {
-            changedIndices,
-            changedCount: changedIndices.length
-        });
-
-        // 3. Redessiner SEULEMENT les tuiles qui ont changé
-        if (changedIndices.length > 0) {
-            console.log('🎯 DIFFERENTIAL DRAW - Drawing changed tiles');
-            const drawPromises = changedIndices.map(index => 
-                drawSingleTile(ctx, canvas, index, tiles[index])
-            );
-            await Promise.all(drawPromises);
-            console.log('🎯 DIFFERENTIAL DRAW - All changed tiles drawn');
-        }
-
-        // 4. Mettre à jour le cache des tuiles
-        cache.lastDrawnTiles = [...tiles];
-        console.log('🎯 DIFFERENTIAL DRAW - Completed');
-    };
 
     /**
      * 🎯 DETECTION DE CLIC
@@ -323,11 +128,12 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
         return Math.sqrt(dx * dx + dy * dy) < radius;
     };
 
+    /**
+     * 🚀 GESTION CLIC ULTRA-RAPIDE AVEC FEEDBACK VISUEL
+     */
     const handleCanvasClick = (e: MouseEvent) => {
         const currentSession = untrack(() => props.session());
-        const isViewerMode = currentSession && currentSession.playerId.includes('viewer');
-
-        if (isViewerMode || !props.myTurn()) {
+        if (!currentSession || currentSession.playerId.includes('viewer') || !props.myTurn()) {
             return;
         }
 
@@ -348,6 +154,21 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
             if (isPointInHexagon(clickX, clickY, x, y, hexRadius)) {
                 const availablePos = untrack(() => props.availablePositions());
                 if (availablePos.includes(index)) {
+                    // 🚀 FEEDBACK VISUEL IMMÉDIAT
+                    const ctx = canvasRef.getContext('2d');
+                    if (ctx) {
+                        ctx.save();
+                        ctx.strokeStyle = '#4ade80';
+                        ctx.lineWidth = 3;
+                        drawHexagon(ctx, x, y, false);
+                        ctx.restore();
+                        
+                        // Reset après 150ms
+                        setTimeout(() => {
+                            if (ctx) drawHexagon(ctx, x, y, false);
+                        }, 150);
+                    }
+                    
                     props.onTileClick(index);
                 }
                 return;
@@ -358,62 +179,89 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
     /**
      * 🎯 CREATEEFFECT AVEC CACHE GLOBAL PERSISTANT - RÉSOUT RE-MOUNTING
      */
-    // ✅ VARIABLES PERSISTANTES HORS DU CREATEEFFECT
-    let isDrawing = false;
-    let redrawTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    /**
+     * 🚀 RENDU ULTRA-OPTIMISÉ - ÉVITE REDRAWS INUTILES
+     */
+    const renderCanvas = async (tiles: string[]) => {
+        if (!canvasRef) return;
+        
+        const ctx = canvasRef.getContext('2d');
+        if (!ctx) return;
+
+        const gridOriginX = canvasRef.width / 2 - hexWidth;
+        const gridOriginY = canvasRef.height / 2 - 2 * offsetY;
+
+        // ✅ INITIALISATION SEULEMENT UNE FOIS
+        if (!isCanvasInitialized()) {
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, canvasRef.width, canvasRef.height);
+            
+            // Dessiner tous les hexagones vides
+            hexPositions.forEach(([q, r]) => {
+                const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 50;
+                const y = gridOriginY + r * offsetY - 50;
+                drawHexagon(ctx, x, y, true);
+            });
+            
+            setIsCanvasInitialized(true);
+        }
+
+        // ✅ MISE À JOUR DIFFÉRENTIELLE DES TUILES
+        const tilePromises = tiles.map(async (tile, index) => {
+            if (!tile || tile === '' || tile.includes('000')) return;
+
+            const [q, r] = hexPositions[index];
+            const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 50;
+            const y = gridOriginY + r * offsetY - 50;
+
+            try {
+                const img = await loadImageCached(tile);
+                if (img.width > 1) {
+                    // Redessiner seulement cette zone
+                    ctx.save();
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (Math.PI / 3) * i;
+                        const xOff = x + hexRadius * Math.cos(angle);
+                        const yOff = y + hexRadius * Math.sin(angle);
+                        if (i === 0) ctx.moveTo(xOff, yOff);
+                        else ctx.lineTo(xOff, yOff);
+                    }
+                    ctx.closePath();
+                    ctx.clip();
+
+                    // Fond + image
+                    drawHexagon(ctx, x, y, true);
+                    const scaledWidth = img.width / 2.4;
+                    const scaledHeight = img.height / 2.4;
+                    ctx.drawImage(img, x - scaledWidth/2, y - scaledHeight/2, scaledWidth, scaledHeight);
+                    ctx.restore();
+                    
+                    // Contour par-dessus
+                    drawHexagon(ctx, x, y, false);
+                }
+            } catch (e) {
+                // Silent
+            }
+        });
+
+        await Promise.all(tilePromises);
+    };
 
     createEffect(() => {
         const tilesData = stableTilesData();
+        const currentHash = tilesData.key;
         
-        if (!canvasRef) return;
+        // ✅ ÉVITER REDRAWS SI RIEN N'A CHANGÉ
+        if (currentHash === lastRenderedHash()) return;
         
-        const tiles = (tilesData as any)?.tiles || [];
-        
-        // ✅ SIMPLE: Redessiner à chaque changement de données
-        const ctx = canvasRef.getContext('2d');
-        if (ctx) {
-            // Effacer le canvas
-            ctx.clearRect(0, 0, canvasRef.width, canvasRef.height);
-            
-            // Dessiner le fond
-            ctx.fillStyle = '#1e1e1e';
-            ctx.fillRect(0, 0, canvasRef.width, canvasRef.height);
-
-            // Calculer l'origine
-            const gridOriginX = canvasRef.width / 2 - hexWidth;
-            const gridOriginY = canvasRef.height / 2 - 2 * offsetY;
-
-            // Dessiner TOUS les hexagones
-            hexPositions.forEach(([q, r], index) => {
-                const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 50;
-                const y = gridOriginY + r * offsetY - 50;
-                
-                // Dessiner l'hexagone neutre
-                drawNeutralHexagon(ctx, x, y, hexRadius);
-                
-                // Si il y a une tuile pour cette position, la dessiner
-                if (tiles[index] && tiles[index] !== '' && !tiles[index].includes('000')) {
-                    // Dessiner la tuile par-dessus (version simplifiée)
-                    loadImageCached(tiles[index]).then(img => {
-                        const scaledWidth = img.width / 2.4;
-                        const scaledHeight = img.height / 2.4;
-                        ctx.drawImage(
-                            img,
-                            x - scaledWidth / 2,
-                            y - scaledHeight / 2,
-                            scaledWidth,
-                            scaledHeight
-                        );
-                    });
-                }
-            });
-        }
+        setLastRenderedHash(currentHash);
+        renderCanvas(tilesData.tiles);
     });
 
     onCleanup(() => {
-        if (redrawTimeout) {
-            clearTimeout(redrawTimeout);
-        }
+        setIsCanvasInitialized(false);
     });
 
     return (
@@ -427,7 +275,8 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
                 style={{
                     border: '2px solid #333',
                     'border-radius': '8px',
-                    cursor: (props.myTurn() && !props.session()?.playerId.includes('viewer')) ? 'pointer' : 'default'
+                    cursor: (props.myTurn() && !props.session()?.playerId.includes('viewer')) ? 'pointer' : 'default',
+                    'will-change': 'transform' // GPU acceleration
                 }}
             />
 
