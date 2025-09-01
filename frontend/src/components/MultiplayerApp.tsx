@@ -113,7 +113,7 @@ const MultiplayerApp: Component = () => {
         if (state && state.state === SessionState.IN_PROGRESS && !gameState.isGameStarted()) {
             console.log('🎮 Jeu commencé ! Prêt pour démarrer le premier tour...');
             const currentSession = gameState.session();
-            const currentPlayerScore = state.players?.find(p => p.playerId === currentSession?.playerId)?.score || 0;
+            const currentPlayerScore = state.players?.find(p => p.id === currentSession?.playerId)?.score || 0;
             gameState.setStatusMessage(`🎯 Votre score actuel: ${currentPlayerScore} points`);
         }
     });
@@ -240,7 +240,7 @@ const MultiplayerApp: Component = () => {
                         <div class="current-score">
                             {(() => {
                                 const currentSession = gameState.session();
-                                const currentPlayer = state.players?.find(p => p.playerId === currentSession?.playerId);
+                                const currentPlayer = state.players?.find(p => p.id === currentSession?.playerId);
                                 return currentPlayer?.score || 0;
                             })()} points
                         </div>
