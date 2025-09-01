@@ -197,7 +197,7 @@ export class GameStateManager {
     }
 
     /**
-     * Gestion de l'auto-connexion via paramètres URL
+     * Gestion de l'auto-connexion via paramètres URL et mode single-player
      */
     static handleAutoConnection(
         setPlayerName: (name: string) => void,
@@ -210,6 +210,7 @@ export class GameStateManager {
         const playerName = urlParams.get('playerName');
         const mode = urlParams.get('mode');
 
+        // Mode viewer spécifique
         if (sessionCode && playerId && playerName && mode === 'viewer') {
             setPlayerName(decodeURIComponent(playerName));
             setSessionCode(sessionCode);
@@ -221,6 +222,26 @@ export class GameStateManager {
                     // Silent
                 }
             }, 1000);
+            return;
+        }
+
+        // 🎮 MODE SINGLE-PLAYER AUTO-CONNEXION
+        // En mode single-player, se connecter automatiquement avec un nom par défaut
+        if (!sessionCode && !mode) {
+            // Pas de paramètres URL = probablement mode single-player
+            const defaultPlayerName = `Joueur-${Math.random().toString(36).substring(2, 6)}`;
+            setPlayerName(defaultPlayerName);
+            setSessionCode('AUTO'); // Code spécial qui sera résolu par le backend
+            
+            // Connexion automatique après un délai
+            setTimeout(async () => {
+                try {
+                    console.log('🎮 Auto-connexion en mode single-player...');
+                    await joinSession();
+                } catch (error) {
+                    console.error('❌ Échec auto-connexion:', error);
+                }
+            }, 2000); // Délai plus long pour s'assurer que le backend est prêt
         }
     }
 

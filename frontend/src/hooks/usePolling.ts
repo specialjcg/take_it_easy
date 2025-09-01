@@ -120,6 +120,33 @@ export const usePolling = (
                         try {
                             const parsedState = JSON.parse(result.gameState);
                             updatePlateauTiles(parsedState);
+                            
+                            // ✅ METTRE À JOUR LES SCORES EN TEMPS RÉEL
+                            if (parsedState.scores) {
+                                setGameState(prev => {
+                                    if (!prev) return prev;
+                                    
+                                    const updatedPlayers = prev.players.map(p => ({
+                                        ...p,
+                                        score: parsedState.scores[p.id] || p.score
+                                    }));
+                                    
+                                    // ✅ METTRE À JOUR LE MESSAGE DE STATUT AVEC LE NOUVEAU SCORE
+                                    const currentSession = session();
+                                    if (currentSession) {
+                                        const currentPlayer = updatedPlayers.find(p => p.id === currentSession.playerId);
+                                        if (currentPlayer && currentPlayer.score > 0) {
+                                            console.log('🏆 Score mis à jour frontend:', currentPlayer.score);
+                                            setStatusMessage(`🎯 Votre score actuel: ${currentPlayer.score} points`);
+                                        }
+                                    }
+                                    
+                                    return {
+                                        ...prev,
+                                        players: updatedPlayers
+                                    };
+                                });
+                            }
                         } catch (e) {
                             // Silencieux
                         }
@@ -130,7 +157,28 @@ export const usePolling = (
                 if (result.isGameFinished && result.finalScores && result.finalScores !== "{}") {
                     try {
                         const scores = JSON.parse(result.finalScores);
-                        setStatusMessage(`🏁 Partie terminée ! Scores: ${JSON.stringify(scores, null, 2)}`);
+                        
+                        // ✅ AFFICHAGE PERSONNALISÉ POUR SINGLE-PLAYER
+                        let scoreMessage = "🏁 Partie terminée ! ";
+                        const playerIds = Object.keys(scores);
+                        const mctsScore = scores["mcts_ai"];
+                        const humanPlayer = playerIds.find(id => id !== "mcts_ai");
+                        const humanScore = humanPlayer ? scores[humanPlayer] : 0;
+                        
+                        if (mctsScore !== undefined && humanPlayer) {
+                            scoreMessage += `Vous: ${humanScore} pts | MCTS: ${mctsScore} pts`;
+                            if (humanScore > mctsScore) {
+                                scoreMessage += " 🎉 Victoire !";
+                            } else if (humanScore < mctsScore) {
+                                scoreMessage += " 🤖 MCTS gagne !";
+                            } else {
+                                scoreMessage += " 🤝 Égalité !";
+                            }
+                        } else {
+                            scoreMessage += `Scores: ${JSON.stringify(scores)}`;
+                        }
+                        
+                        setStatusMessage(scoreMessage);
                         setIsGameStarted(false);
                         console.log('🏁 Partie terminée avec scores:', scores);
                     } catch (e) {
