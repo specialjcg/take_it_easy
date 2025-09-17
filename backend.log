@@ -1,345 +1,66 @@
-[1m[32m   Compiling[0m proc-macro2 v1.0.95
-[1m[32m   Compiling[0m unicode-ident v1.0.14
-[1m[32m   Compiling[0m libc v0.2.172
-[1m[32m   Compiling[0m cfg-if v1.0.0
-[1m[32m   Compiling[0m autocfg v1.4.0
-[1m[32m   Compiling[0m pin-project-lite v0.2.15
-[1m[32m   Compiling[0m bytes v1.9.0
-[1m[32m   Compiling[0m itoa v1.0.14
-[1m[32m   Compiling[0m memchr v2.7.4
-[1m[32m   Compiling[0m futures-core v0.3.31
-[1m[32m   Compiling[0m version_check v0.9.5
-[1m[32m   Compiling[0m typenum v1.17.0
-[1m[32m   Compiling[0m futures-sink v0.3.31
-[1m[32m   Compiling[0m fnv v1.0.7
-[1m[32m   Compiling[0m byteorder v1.5.0
-[1m[32m   Compiling[0m generic-array v0.14.7
-[1m[32m   Compiling[0m slab v0.4.9
-[1m[32m   Compiling[0m futures-channel v0.3.31
-[1m[32m   Compiling[0m once_cell v1.20.2
-[1m[32m   Compiling[0m futures-io v0.3.31
-[1m[32m   Compiling[0m futures-task v0.3.31
-[1m[32m   Compiling[0m quote v1.0.40
-[1m[32m   Compiling[0m shlex v1.3.0
-[1m[32m   Compiling[0m pin-utils v0.1.0
-[1m[32m   Compiling[0m subtle v2.6.1
-[1m[32m   Compiling[0m anyhow v1.0.95
-[1m[32m   Compiling[0m syn v2.0.101
-[1m[32m   Compiling[0m pkg-config v0.3.31
-[1m[32m   Compiling[0m log v0.4.22
-[1m[32m   Compiling[0m cpufeatures v0.2.16
-[1m[32m   Compiling[0m tower-service v0.3.3
-[1m[32m   Compiling[0m tracing-core v0.1.33
-[1m[32m   Compiling[0m hashbrown v0.15.3
-[1m[32m   Compiling[0m jobserver v0.1.32
-[1m[32m   Compiling[0m mio v1.0.3
-[1m[32m   Compiling[0m socket2 v0.5.10
-[1m[32m   Compiling[0m cc v1.2.24
-[1m[32m   Compiling[0m getrandom v0.2.15
-[1m[32m   Compiling[0m equivalent v1.0.2
-[1m[32m   Compiling[0m rustversion v1.0.21
-[1m[32m   Compiling[0m httparse v1.9.5
-[1m[32m   Compiling[0m rand_core v0.6.4
-[1m[32m   Compiling[0m crypto-common v0.1.6
-[1m[32m   Compiling[0m block-buffer v0.10.4
-[1m[32m   Compiling[0m either v1.13.0
-[1m[32m   Compiling[0m indexmap v2.9.0
-[1m[32m   Compiling[0m digest v0.10.7
-[1m[32m   Compiling[0m base64ct v1.6.0
-[1m[32m   Compiling[0m serde v1.0.215
-[1m[32m   Compiling[0m itertools v0.12.1
-[1m[32m   Compiling[0m tower-layer v0.3.3
-[1m[32m   Compiling[0m zstd-safe v5.0.2+zstd.1.5.2
-[1m[32m   Compiling[0m hmac v0.12.1
-[1m[32m   Compiling[0m sha1 v0.10.6
-[1m[32m   Compiling[0m sha2 v0.10.8
-[1m[32m   Compiling[0m inout v0.1.3
-[1m[32m   Compiling[0m http v1.2.0
-[1m[32m   Compiling[0m http v0.2.12
-[1m[32m   Compiling[0m powerfmt v0.2.0
-[1m[32m   Compiling[0m httpdate v1.0.3
-[1m[32m   Compiling[0m adler2 v2.0.0
-[1m[32m   Compiling[0m deranged v0.3.11
-[1m[32m   Compiling[0m miniz_oxide v0.8.0
-[1m[32m   Compiling[0m cipher v0.4.4
-[1m[32m   Compiling[0m num-traits v0.2.19
-[1m[32m   Compiling[0m zstd-sys v2.0.13+zstd.1.5.6
-[1m[32m   Compiling[0m bzip2-sys v0.1.11+1.0.8
-[1m[32m   Compiling[0m crc32fast v1.4.2
-[1m[32m   Compiling[0m num-conv v0.1.0
-[1m[32m   Compiling[0m mime v0.3.17
-[1m[32m   Compiling[0m time-core v0.1.2
-[1m[32m   Compiling[0m flate2 v1.0.35
-[1m[32m   Compiling[0m password-hash v0.4.2
-[1m[32m   Compiling[0m time v0.3.37
-[1m[32m   Compiling[0m http-body v0.4.6
-[1m[32m   Compiling[0m aes v0.8.4
-[1m[32m   Compiling[0m constant_time_eq v0.1.5
-[1m[32m   Compiling[0m rustix v1.0.7
-[1m[32m   Compiling[0m getrandom v0.3.1
-[1m[32m   Compiling[0m percent-encoding v2.3.1
-[1m[32m   Compiling[0m pbkdf2 v0.11.0
-[1m[32m   Compiling[0m http-body v1.0.1
-[1m[32m   Compiling[0m indexmap v1.9.3
-[1m[32m   Compiling[0m regex-syntax v0.8.5
-[1m[32m   Compiling[0m try-lock v0.2.5
-[1m[32m   Compiling[0m heck v0.5.0
-[1m[32m   Compiling[0m prettyplease v0.2.32
-[1m[32m   Compiling[0m crossbeam-utils v0.8.21
-[1m[32m   Compiling[0m linux-raw-sys v0.9.4
-[1m[32m   Compiling[0m bzip2 v0.4.4
-[1m[32m   Compiling[0m bitflags v2.6.0
-[1m[32m   Compiling[0m want v0.3.1
-[1m[32m   Compiling[0m axum-core v0.3.4
-[1m[32m   Compiling[0m fixedbitset v0.4.2
-[1m[32m   Compiling[0m serde_json v1.0.133
-[1m[32m   Compiling[0m ryu v1.0.18
-[1m[32m   Compiling[0m fastrand v2.3.0
-[1m[32m   Compiling[0m thiserror v1.0.69
-[1m[32m   Compiling[0m hashbrown v0.12.3
-[1m[32m   Compiling[0m zerocopy v0.8.11
-[1m[32m   Compiling[0m petgraph v0.6.5
-[1m[32m   Compiling[0m regex-automata v0.4.9
-[1m[32m   Compiling[0m futures-macro v0.3.31
-[1m[32m   Compiling[0m tokio-macros v2.5.0
-[1m[32m   Compiling[0m zerocopy-derive v0.7.35
-[1m[32m   Compiling[0m tracing-attributes v0.1.28
-[1m[32m   Compiling[0m serde_derive v1.0.215
-[1m[32m   Compiling[0m tokio v1.45.1
-[1m[32m   Compiling[0m futures-util v0.3.31
-[1m[32m   Compiling[0m prost-derive v0.12.6
-[1m[32m   Compiling[0m zerocopy v0.7.35
-[1m[32m   Compiling[0m pin-project-internal v1.1.10
-[1m[32m   Compiling[0m ppv-lite86 v0.2.20
-[1m[32m   Compiling[0m tracing v0.1.41
-[1m[32m   Compiling[0m regex v1.11.1
-[1m[32m   Compiling[0m rand_chacha v0.3.1
-[1m[32m   Compiling[0m rand v0.8.5
-[1m[32m   Compiling[0m prost v0.12.6
-[1m[32m   Compiling[0m tempfile v3.20.0
-[1m[32m   Compiling[0m prost-types v0.12.6
-[1m[32m   Compiling[0m pin-project v1.1.10
-[1m[32m   Compiling[0m thiserror-impl v1.0.69
-[1m[32m   Compiling[0m async-trait v0.1.88
-[1m[32m   Compiling[0m axum v0.6.20
-[1m[32m   Compiling[0m matrixmultiply v0.3.9
-[1m[32m   Compiling[0m unicase v2.8.1
-[1m[32m   Compiling[0m multimap v0.10.1
-[1m[32m   Compiling[0m tokio-util v0.7.15
-[1m[32m   Compiling[0m utf8parse v0.2.2
-[1m[32m   Compiling[0m anstyle-parse v0.2.6
-[1m[32m   Compiling[0m prost-build v0.12.6
-[1m[32m   Compiling[0m mime_guess v2.0.5
-[1m[32m   Compiling[0m h2 v0.3.26
-[1m[32m   Compiling[0m tower v0.4.13
-[1m[32m   Compiling[0m tokio-io-timeout v1.2.0
-[1m[32m   Compiling[0m crossbeam-epoch v0.9.18
-[1m[32m   Compiling[0m async-stream-impl v0.3.6
-[1m[32m   Compiling[0m http-body-util v0.1.3
-[1m[32m   Compiling[0m aho-corasick v1.1.3
-[1m[32m   Compiling[0m smallvec v1.15.0
-[1m[32m   Compiling[0m matchit v0.7.3
-[1m[32m   Compiling[0m colorchoice v1.0.3
-[1m[32m   Compiling[0m thiserror v2.0.12
-[1m[32m   Compiling[0m sync_wrapper v0.1.2
-[1m[32m   Compiling[0m anstyle-query v1.1.2
-[1m[32m   Compiling[0m rayon-core v1.12.1
-[1m[32m   Compiling[0m bitflags v1.3.2
-[1m[32m   Compiling[0m is_terminal_polyfill v1.70.1
-[1m[32m   Compiling[0m rawpointer v0.2.1
-[1m[32m   Compiling[0m sync_wrapper v1.0.2
-[1m[32m   Compiling[0m anstyle v1.0.10
-[1m[32m   Compiling[0m anstream v0.6.18
-[1m[32m   Compiling[0m hyper v1.6.0
-[1m[32m   Compiling[0m rand_core v0.9.0
-[1m[32m   Compiling[0m async-stream v0.3.6
-[1m[32m   Compiling[0m crossbeam-deque v0.8.6
-[1m[32m   Compiling[0m tonic-build v0.10.2
-[1m[32m   Compiling[0m tokio-stream v0.1.17
-[1m[32m   Compiling[0m thiserror-impl v2.0.12
-[1m[32m   Compiling[0m hyper v0.14.32
-[1m[32m   Compiling[0m num-integer v0.1.46
-[1m[32m   Compiling[0m num-complex v0.4.6
-[1m[32m   Compiling[0m form_urlencoded v1.2.1
-[1m[32m   Compiling[0m tch v0.19.0
-[1m[32m   Compiling[0m utf-8 v0.7.6
-[1m[32m   Compiling[0m iana-time-zone v0.1.61
-[1m[32m   Compiling[0m http-range-header v0.3.1
-[1m[32m   Compiling[0m data-encoding v2.6.0
-[1m[32m   Compiling[0m base64 v0.21.7
-[1m[32m   Compiling[0m clap_lex v0.7.4
-[1m[32m   Compiling[0m strsim v0.11.1
-[1m[32m   Compiling[0m tungstenite v0.24.0
-[1m[32m   Compiling[0m tower-http v0.4.4
-[1m[32m   Compiling[0m clap_builder v4.5.23
-[1m[32m   Compiling[0m chrono v0.4.39
-[1m[32m   Compiling[0m ndarray v0.16.1
-[1m[32m   Compiling[0m serde_urlencoded v0.7.1
-[1m[32m   Compiling[0m take_it_easy v0.1.0 (/home/jcgouleau/IdeaProjects/RustProject/take_it_easy)
-[1m[32m   Compiling[0m hyper-util v0.1.13
-[1m[32m   Compiling[0m hyper-timeout v0.4.1
-[1m[32m   Compiling[0m rand_chacha v0.9.0
-[1m[32m   Compiling[0m safetensors v0.3.3
-[1m[32m   Compiling[0m tower v0.5.2
-[1m[32m   Compiling[0m axum-core v0.5.2
-[1m[32m   Compiling[0m serde_path_to_error v0.1.17
-[1m[32m   Compiling[0m futures-executor v0.3.31
-[1m[32m   Compiling[0m clap_derive v4.5.18
-[1m[32m   Compiling[0m half v2.6.0
-[1m[32m   Compiling[0m zstd v0.11.2+zstd.1.5.2
-[1m[32m   Compiling[0m lazy_static v1.5.0
-[1m[32m   Compiling[0m matchit v0.8.4
-[1m[32m   Compiling[0m nu-ansi-term v0.50.1
-[1m[32m   Compiling[0m zip v0.6.6
-[1m[32m   Compiling[0m http-range-header v0.4.2
-[1m[32m   Compiling[0m flexi_logger v0.29.8
-[1m[32m   Compiling[0m tower-http v0.6.4
-[1m[32m   Compiling[0m axum v0.8.4
-[1m[32m   Compiling[0m futures v0.3.31
-[1m[32m   Compiling[0m rand v0.9.0
-[1m[32m   Compiling[0m torch-sys v0.19.0
-[1m[32m   Compiling[0m rayon v1.10.0
-[1m[32m   Compiling[0m tokio-tungstenite v0.24.0
-[1m[32m   Compiling[0m uuid v1.17.0
-[1m[32m   Compiling[0m tonic v0.10.2
-[1m[32m   Compiling[0m clap v4.5.23
-[1m[32m   Compiling[0m tonic-web v0.10.2
-[0m[1m[33mwarning[0m[0m[1m: struct `GameState` is never constructed[0m
-[0m [0m[0m[1m[38;5;12m--> [0m[0msrc/game/game_state.rs:5:12[0m
-[0m  [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m5[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct GameState {[0m
-[0m  [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^^^^^^[0m
-[0m  [0m[0m[1m[38;5;12m|[0m
-[0m  [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(dead_code)]` on by default[0m
+warning: unused import: `mcts_integration::process_mcts_move_only`
+  --> src/services/game_service/mod.rs:22:9
+   |
+22 | pub use mcts_integration::process_mcts_move_only;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
 
-[0m[1m[33mwarning[0m[0m[1m: struct `MCTSNode` is never constructed[0m
-[0m [0m[0m[1m[38;5;12m--> [0m[0msrc/mcts/mcts_node.rs:4:12[0m
-[0m  [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m4[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct MCTSNode {[0m
-[0m  [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^^^^^[0m
+warning: function `calculate_final_scores` is never used
+   --> src/services/game_manager.rs:308:8
+    |
+308 | pub fn calculate_final_scores(game_state: &TakeItEasyGameState) -> HashMap<String, i32> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
 
-[0m[1m[33mwarning[0m[0m[1m: associated function `new` is never used[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_service.rs:22:12[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m21[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl SessionServiceImpl {[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m-----------------------[0m[0m [0m[0m[1m[38;5;12massociated function in this implementation[0m
-[0m[1m[38;5;12m22[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn new() -> Self {[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: fields `game_mode` and `created_at` are never read[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:21:9[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m14[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct GameSession {[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;12m-----------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
-[0m[1m[38;5;12m...[0m
-[0m[1m[38;5;12m21[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub game_mode: String,[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[33m^^^^^^^^^[0m
-[0m[1m[38;5;12m22[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub created_at: std::time::Instant,[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[33m^^^^^^^^^^[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `GameSession` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis[0m
-
-[0m[1m[33mwarning[0m[0m[1m: variant `RemoveSession` is never constructed[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:31:5[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub enum SessionAction {[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;12m-------------[0m[0m [0m[0m[1m[38;5;12mvariant in this enum[0m
-[0m[1m[38;5;12m...[0m
-[0m[1m[38;5;12m31[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    RemoveSession { session_id: String },[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `SessionAction` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `count_sessions` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:110:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m110[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn count_sessions(state: &SessionStoreState) -> usize {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `get_all_session_codes` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:114:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m114[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn get_all_session_codes(state: &SessionStoreState) -> Vec<String> {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `remove_player_from_session` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:205:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m205[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn remove_player_from_session([0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `advance_turn` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:220:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m220[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn advance_turn(session: GameSession) -> GameSession {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `query_store` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:358:14[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m358[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub async fn query_store<F, T>([0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[33m^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `create_session_with_manager` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:373:14[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m373[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub async fn create_session_with_manager([0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `transform_session_with_manager` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:411:14[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m411[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub async fn transform_session_with_manager<F>([0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `with_session_state_from_manager` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:424:14[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m424[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub async fn with_session_state_from_manager<F, T>([0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: associated function `new` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/session_manager.rs:440:12[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m438[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl SessionManager {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m-------------------[0m[0m [0m[0m[1m[38;5;12massociated function in this implementation[0m
-[0m[1m[38;5;12m439[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    // Seule fonction dans l'impl - construction[0m
-[0m[1m[38;5;12m440[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn new() -> Self {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `get_available_tiles_from_deck` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:141:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m141[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn get_available_tiles_from_deck(deck: &Deck) -> Vec<Tile> {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `count_remaining_tiles` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:150:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m150[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn count_remaining_tiles(deck: &Deck) -> usize {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `is_deck_empty` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:155:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m155[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn is_deck_empty(deck: &Deck) -> bool {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: function `debug_game_state` is never used[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:280:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m280[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn debug_game_state(game_state: &TakeItEasyGameState) {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[33m^^^^^^^^^^^^^^^^[0m
-
-[0m[1m[33mwarning[0m[0m[1m: field `tile` is never read[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/services/game_manager.rs:426:9[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m424[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    struct MoveData {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;12m--------[0m[0m [0m[0m[1m[38;5;12mfield in this struct[0m
-[0m[1m[38;5;12m425[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        position: usize,[0m
-[0m[1m[38;5;12m426[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        tile: Option<(i32, i32, i32)>, // Optionnel car défini par le serveur[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[33m^^^^[0m
-
-[1m[33mwarning[0m[1m:[0m `take_it_easy` (bin "take_it_easy") generated 19 warnings
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 1m 27s
-[1m[32m     Running[0m `target/debug/take_it_easy --mode multiplayer -p 50051`
+warning: `take_it_easy` (bin "take_it_easy") generated 2 warnings (run `cargo fix --bin "take_it_easy"` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.17s
+     Running `target/release/take_it_easy --single-player --num-simulations 300`
+[2025-09-17 09:09:14.201410 +02:00] INFO [src/main.rs:209] 🎮 Création session automatique single-player...
+[2025-09-17 09:09:14.201500 +02:00] INFO [src/main.rs:215] ✅ Session single-player créée: GWBYUX
+[2025-09-17 09:09:14.201529 +02:00] INFO [src/main.rs:234] 🤖 MCTS ajouté à la session single-player GWBYUX
+[2025-09-17 09:09:14.201540 +02:00] INFO [src/main.rs:254] 🤖 Mode SINGLE-PLAYER démarré : 1 joueur vs MCTS (300 simulations)
+[2025-09-17 09:09:14.201548 +02:00] INFO [src/main.rs:255] 🎯 Interface web : http://localhost:51051
+[2025-09-17 09:09:14.201556 +02:00] INFO [src/main.rs:256] 🔗 gRPC : localhost:50051
+[2025-09-17 09:09:26.245809 +02:00] INFO [src/services/session_service.rs:400] 🔄 Tentative JOIN_SESSION: code='AUTO', joueur='🔍 MCTS Viewer'
+[2025-09-17 09:09:26.246112 +02:00] INFO [src/services/session_service.rs:195] 🔄 AUTO: connexion à la session single-player GWBYUX
+[2025-09-17 09:09:26.246159 +02:00] INFO [src/services/session_service.rs:222] 👁️ Viewer 🔍 MCTS Viewer rejoint session AUTO
+[2025-09-17 09:10:08.656581 +02:00] INFO [src/services/session_service.rs:400] 🔄 Tentative JOIN_SESSION: code='AUTO', joueur='Joueur-k5k0'
+[2025-09-17 09:10:08.656705 +02:00] INFO [src/services/session_service.rs:195] 🔄 AUTO: connexion à la session single-player GWBYUX
+[2025-09-17 09:10:08.656744 +02:00] INFO [src/services/session_service.rs:258] 🎯 Joueur Joueur-k5k0 automatiquement prêt en mode single-player
+[2025-09-17 09:10:08.656783 +02:00] INFO [src/services/game_manager.rs:130] 🎲 Tuile tirée: Tile(5, 7, 8) (tour 0)
+[2025-09-17 09:10:08.656827 +02:00] INFO [src/services/session_service.rs:280] 🎮 Jeu ET premier tour automatiquement démarrés pour session GWBYUX
+[2025-09-17 09:10:08.656854 +02:00] INFO [src/services/session_service.rs:281] 🎲 Tuile proposée: Some(Tile(5, 7, 8))
+[2025-09-17 09:10:18.627593 +02:00] INFO [src/services/game_manager.rs:287] 🔍 Tour 1/19, plateaux pleins: false
+[2025-09-17 09:10:18.627627 +02:00] INFO [src/services/game_manager.rs:130] 🎲 Tuile tirée: Tile(1, 2, 8) (tour 1)
+[2025-09-17 09:10:18.627653 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: mcts_ai = 0 points
+[2025-09-17 09:10:18.627658 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: 4e189e0e-63fb-46f2-a8c4-6216d1e872cb = 0 points
+[2025-09-17 09:10:28.362781 +02:00] INFO [src/services/game_manager.rs:287] 🔍 Tour 2/19, plateaux pleins: false
+[2025-09-17 09:10:28.362936 +02:00] INFO [src/services/game_manager.rs:130] 🎲 Tuile tirée: Tile(5, 6, 4) (tour 2)
+[2025-09-17 09:10:28.363032 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: 4e189e0e-63fb-46f2-a8c4-6216d1e872cb = 0 points
+[2025-09-17 09:10:28.363073 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: mcts_ai = 0 points
+[2025-09-17 09:10:48.291123 +02:00] INFO [src/services/game_manager.rs:287] 🔍 Tour 3/19, plateaux pleins: false
+[2025-09-17 09:10:48.291298 +02:00] INFO [src/services/game_manager.rs:130] 🎲 Tuile tirée: Tile(9, 6, 4) (tour 3)
+[2025-09-17 09:10:48.291402 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: mcts_ai = 0 points
+[2025-09-17 09:10:48.291487 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: 4e189e0e-63fb-46f2-a8c4-6216d1e872cb = 0 points
+[2025-09-17 09:10:55.575426 +02:00] INFO [src/services/game_manager.rs:287] 🔍 Tour 4/19, plateaux pleins: false
+[2025-09-17 09:10:55.575491 +02:00] INFO [src/services/game_manager.rs:130] 🎲 Tuile tirée: Tile(1, 6, 8) (tour 4)
+[2025-09-17 09:10:55.575531 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: mcts_ai = 0 points
+[2025-09-17 09:10:55.575545 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: 4e189e0e-63fb-46f2-a8c4-6216d1e872cb = 0 points
+[2025-09-17 09:11:05.794947 +02:00] INFO [src/services/game_manager.rs:287] 🔍 Tour 5/19, plateaux pleins: false
+[2025-09-17 09:11:05.795239 +02:00] INFO [src/services/game_manager.rs:130] 🎲 Tuile tirée: Tile(5, 7, 3) (tour 5)
+[2025-09-17 09:11:05.795353 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: 4e189e0e-63fb-46f2-a8c4-6216d1e872cb = 0 points
+[2025-09-17 09:11:05.795406 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: mcts_ai = 0 points
+[2025-09-17 09:11:13.643793 +02:00] INFO [src/services/game_manager.rs:287] 🔍 Tour 6/19, plateaux pleins: false
+[2025-09-17 09:11:13.643951 +02:00] INFO [src/services/game_manager.rs:130] 🎲 Tuile tirée: Tile(1, 7, 3) (tour 6)
+[2025-09-17 09:11:13.644052 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: 4e189e0e-63fb-46f2-a8c4-6216d1e872cb = 0 points
+[2025-09-17 09:11:13.644093 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: mcts_ai = 0 points
+[2025-09-17 09:11:19.317951 +02:00] INFO [src/services/game_manager.rs:287] 🔍 Tour 7/19, plateaux pleins: false
+[2025-09-17 09:11:19.318004 +02:00] INFO [src/services/game_manager.rs:130] 🎲 Tuile tirée: Tile(9, 6, 8) (tour 7)
+[2025-09-17 09:11:19.318028 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: mcts_ai = 3 points
+[2025-09-17 09:11:19.318036 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: 4e189e0e-63fb-46f2-a8c4-6216d1e872cb = 3 points
+[2025-09-17 09:11:28.747942 +02:00] INFO [src/services/game_manager.rs:287] 🔍 Tour 8/19, plateaux pleins: false
+[2025-09-17 09:11:28.748106 +02:00] INFO [src/services/game_manager.rs:130] 🎲 Tuile tirée: Tile(5, 2, 3) (tour 8)
+[2025-09-17 09:11:28.748198 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: 4e189e0e-63fb-46f2-a8c4-6216d1e872cb = 3 points
+[2025-09-17 09:11:28.748240 +02:00] INFO [src/services/game_service/move_handler.rs:110] 🏆 Score mis à jour: mcts_ai = 27 points

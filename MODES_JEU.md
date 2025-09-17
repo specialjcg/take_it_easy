@@ -1,26 +1,21 @@
-# Modes de Jeu - Take It Easy
+# Modes de Jeu - Take It Easy (Simplifié)
 
 ## 🎯 Modes Disponibles
 
-### 1. **MCTS vs Humain** (1v1)
+### 1. **Multiplayer** (Défaut)
 ```bash
-cargo run -- --mode mcts-vs-human -s 150
-```
-- **Port WebSocket** : 9001
-- **Un seul joueur** contre MCTS
-- **Interface** : WebSocket direct
-- **Simulations MCTS** : configurable avec `-s`
-
-### 2. **Multiplayer** (Plusieurs joueurs + MCTS) - **ACTUEL**
-```bash
+# Mode multijoueur normal
 cargo run -- --mode multiplayer -p 50051
+
+# Mode UN SEUL joueur contre MCTS ⭐ NOUVEAU
+cargo run -- --mode multiplayer --single-player -s 200
 ```
 - **Ports** : gRPC 50051, Web 51051
-- **Plusieurs joueurs humains** + MCTS automatique
-- **Interface** : gRPC + Frontend web
-- **Flow indépendant** : Comme implémenté
+- **Interface** : gRPC + Frontend web (même pour single-player)
+- **Avec `--single-player`** : 1 joueur humain + MCTS
+- **Sans `--single-player`** : Plusieurs joueurs + MCTS
 
-### 3. **Training** (Entraînement)
+### 2. **Training** (Entraînement)
 ```bash
 cargo run -- --mode training -g 200
 ```
@@ -35,52 +30,59 @@ cargo run -- --mode training -g 200
 | `-g, --num-games` | Nombre de parties (training) | 200 |
 | `-s, --num-simulations` | Simulations MCTS par coup | 150 |
 | `-p, --port` | Port gRPC (multiplayer) | 50051 |
-| `--mode` | Mode de jeu | `mcts-vs-human` |
+| `--mode` | Mode de jeu | `multiplayer` |
+| `--single-player` | **NOUVEAU** : 1 joueur vs MCTS | `false` |
 
-## 🚀 Comment Changer de Mode
+## 🚀 Comment Lancer
 
-### Arrêter le Backend Actuel
+### 🤖 Un Joueur vs MCTS  
 ```bash
-# Tuer le processus actuel (multiplayer)
+# Arrêter le backend actuel
 kill 2794857
+
+# Lancer single-player contre MCTS
+cargo run -- --single-player --num-simulations 300
 ```
 
-### Lancer MCTS vs Humain
+### 👥 Multijoueur Normal
+```bash  
+# Relancer multijoueur normal (défaut actuel)
+cargo run -- --mode multiplayer --port 50051
+```
+
+### 🎯 MCTS Plus Fort
 ```bash
-cargo run -- --mode mcts-vs-human --num-simulations 200
+# Single-player avec MCTS très fort
+cargo run -- --single-player --num-simulations 1000
 ```
 
-### Lancer Multiplayer avec Plus de Simulations  
-```bash
-cargo run -- --mode multiplayer --port 50051 --num-simulations 300
-```
+## 🎮 Interface Unifiée
 
-## 🎮 Interfaces
-
-### Mode MCTS vs Humain
-- **Connexion** : WebSocket sur port 9001
-- **Client** : Interface WebSocket custom
-- **Format** : Messages JSON directs
-
-### Mode Multiplayer
+**Tous les modes multiplayer** (single-player et multijoueur) utilisent la **même interface** :
 - **Connexion** : gRPC sur port 50051
-- **Interface Web** : http://localhost:51051
-- **Client** : Frontend React/TypeScript
+- **Interface Web** : http://localhost:51051  
+- **Client** : Votre frontend React/TypeScript existant
 - **Format** : Protobuf via gRPC-Web
+- **Avantage** : Aucun changement de code frontend nécessaire
 
 ## ⚙️ Configuration Recommandée
 
-### Pour Jouer Contre MCTS Fort
+### 🥊 Défier MCTS Fort
 ```bash
-cargo run -- --mode mcts-vs-human --num-simulations 500
+cargo run -- --single-player --num-simulations 500
 ```
 
-### Pour Développement/Test
+### 🎯 MCTS Expert
+```bash
+cargo run -- --single-player --num-simulations 1000
+```
+
+### 👥 Multijoueur avec MCTS Fort
 ```bash  
-cargo run -- --mode multiplayer --port 50051 --num-simulations 100
+cargo run -- --mode multiplayer --num-simulations 300
 ```
 
-### Pour Analyse Poussée
+### ⚡ Mode Rapide pour Tests
 ```bash
-cargo run -- --mode mcts-vs-human --num-simulations 1000
+cargo run -- --single-player --num-simulations 50
 ```

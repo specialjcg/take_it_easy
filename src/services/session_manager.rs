@@ -18,7 +18,9 @@ pub struct GameSession {
     pub current_player_id: Option<String>,
     pub state: i32,
     pub max_players: i32,
+    #[allow(dead_code)]
     pub game_mode: String,
+    #[allow(dead_code)]
     pub created_at: std::time::Instant,
     pub board_state: String,
     pub turn_number: i32,
@@ -28,7 +30,6 @@ pub struct GameSession {
 pub enum SessionAction {
     CreateSession { session: GameSession },
     UpdateSession { session: GameSession },
-    RemoveSession { session_id: String },
 }
 
 #[derive(Debug, Clone)]
@@ -72,25 +73,14 @@ pub fn get_store_from_manager(manager: &SessionManager) -> &Arc<RwLock<SessionSt
 
 pub fn apply_session_action(state: SessionStoreState, action: SessionAction) -> SessionStoreState {
     match action {
-        SessionAction::CreateSession { session } => {
+        SessionAction::CreateSession { session } | SessionAction::UpdateSession { session } => {
             let mut new_state = state;
-            new_state.sessions.insert(session.id.clone(), session.clone());
-            new_state.sessions_by_code.insert(session.code.clone(), session.id.clone());
+            let session_id = session.id.clone();
+            let session_code = session.code.clone();
+            new_state.sessions.insert(session_id.clone(), session);
+            new_state.sessions_by_code.insert(session_code, session_id);
             new_state
         },
-        SessionAction::UpdateSession { session } => {
-            let mut new_state = state;
-            new_state.sessions.insert(session.id.clone(), session.clone());
-            new_state.sessions_by_code.insert(session.code.clone(), session.id.clone());
-            new_state
-        },
-        SessionAction::RemoveSession { session_id } => {
-            let mut new_state = state;
-            if let Some(session) = new_state.sessions.remove(&session_id) {
-                new_state.sessions_by_code.remove(&session.code);
-            }
-            new_state
-        }
     }
 }
 
@@ -107,13 +97,6 @@ pub fn find_session_by_id<'a>(state: &'a SessionStoreState, session_id: &str) ->
     state.sessions.get(session_id)
 }
 
-pub fn count_sessions(state: &SessionStoreState) -> usize {
-    state.sessions.len()
-}
-
-pub fn get_all_session_codes(state: &SessionStoreState) -> Vec<String> {
-    state.sessions_by_code.keys().cloned().collect()
-}
 
 // ============================================================================
 // FONCTIONS PURES - CRÉATION D'OBJETS
@@ -178,10 +161,12 @@ pub fn add_player_to_session(
     Ok((new_session, player_id))
 }
 
-pub fn set_player_ready_in_session(
+
+pub fn set_player_ready_in_session_with_min(
     session: GameSession,
     player_id: &str,
-    ready: bool
+    ready: bool,
+    min_players: usize
 ) -> Result<(GameSession, bool), String> {
     let mut new_session = session;
 
@@ -189,7 +174,7 @@ pub fn set_player_ready_in_session(
         Some(player) => {
             player.is_ready = ready;
 
-            let game_started = if all_players_ready(&new_session) && new_session.players.len() >= 2 {
+            let game_started = if all_players_ready(&new_session) && new_session.players.len() >= min_players {
                 new_session = start_game(new_session);
                 true
             } else {
@@ -202,36 +187,6 @@ pub fn set_player_ready_in_session(
     }
 }
 
-pub fn remove_player_from_session(
-    session: GameSession,
-    player_id: &str
-) -> (GameSession, bool) {
-    let mut new_session = session;
-    let was_removed = new_session.players.remove(player_id).is_some();
-
-    // If it was the current player's turn, advance to next player
-    if new_session.current_player_id.as_ref() == Some(&player_id.to_string()) {
-        new_session = advance_turn(new_session);
-    }
-
-    (new_session, was_removed)
-}
-
-pub fn advance_turn(session: GameSession) -> GameSession {
-    let mut new_session = session;
-
-    if let Some(current_id) = &new_session.current_player_id {
-        let player_ids: Vec<String> = new_session.players.keys().cloned().collect();
-
-        if let Some(current_index) = player_ids.iter().position(|id| id == current_id) {
-            let next_index = (current_index + 1) % player_ids.len();
-            new_session.current_player_id = Some(player_ids[next_index].clone());
-            new_session.turn_number += 1;
-        }
-    }
-
-    new_session
-}
 
 // ============================================================================
 // FONCTIONS PURES - UTILITAIRES
@@ -265,6 +220,7 @@ pub fn session_to_game_state(session: &GameSession) -> GameState {
         state: session.state,
         board_state: session.board_state.clone(),
         turn_number: session.turn_number,
+        game_mode: session.game_mode.clone(),
     }
 }
 
@@ -355,29 +311,11 @@ where
     }
 }
 
-pub async fn query_store<F, T>(
-    store: &Arc<RwLock<SessionStoreState>>,
-    query: F
-) -> T
-where
-    F: FnOnce(&SessionStoreState) -> T,
-{
-    let state = store.read().await;
-    query(&*state)
-}
 
 // ============================================================================
 // FONCTIONS DE NIVEAU SUPÉRIEUR - COMPOSITION AVEC SESSIONMANAGER
 // ============================================================================
 
-pub async fn create_session_with_manager(
-    manager: &SessionManager,
-    max_players: i32,
-    game_mode: String
-) -> String {
-    create_session_in_store(get_store_from_manager(manager), max_players, game_mode, |code| Ok(code)).await
-        .unwrap_or_else(|_| "ERROR".to_string())
-}
 
 pub async fn get_session_by_code_with_manager(
     manager: &SessionManager,
@@ -408,40 +346,13 @@ pub async fn create_session_functional_with_manager(
     create_session_in_store(get_store_from_manager(manager), max_players, game_mode, |code| Ok(code)).await
 }
 
-pub async fn transform_session_with_manager<F>(
-    manager: &SessionManager,
-    session_id: &str,
-    f: F
-) -> Result<Option<GameSession>, String>
-where
-    F: FnOnce(GameSession) -> Result<GameSession, String>,
-{
-    transform_session_in_store(get_store_from_manager(manager), session_id, |session| {
-        f(session).map(|updated_session| (updated_session.clone(), updated_session))
-    }).await
-}
-
-pub async fn with_session_state_from_manager<F, T>(
-    manager: &SessionManager,
-    f: F
-) -> T
-where
-    F: FnOnce(&SessionStoreState) -> T,
-{
-    query_store(get_store_from_manager(manager), f).await
-}
 
 // ============================================================================
 // IMPLÉMENTATION VIDE - SESSIONMANAGER DEVIENT JUSTE UNE STRUCTURE
 // ============================================================================
 
 impl SessionManager {
-    // Seule fonction dans l'impl - construction
-    pub fn new() -> Self {
-        new_session_manager()
-    }
-
-    // Toutes les autres fonctions sont maintenant externes !
+    // Toutes les fonctions sont maintenant externes !
     // Utilisez les fonctions *_with_manager() à la place
 }
 

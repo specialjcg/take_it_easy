@@ -18,6 +18,7 @@ message GameState {
   SessionState state = 4;
   string board_state = 5; // JSON serialized board
   int32 turn_number = 6;
+  string game_mode = 7; // Mode de jeu: "single-player", "multiplayer", etc.
 }
 
 enum SessionState {

@@ -1,22 +1,60 @@
-# Reinforcement Learning for Tile Placement Game
+# Take It Easy - Multiplayer Game with MCTS AI
 
-This project implements a reinforcement learning agent for a tile-placement strategy game. The game involves placing tiles on a hexagonal grid, with scoring based on specific patterns.
+A tile-placement strategy game with real-time multiplayer support and advanced MCTS AI powered by neural networks.
 
 ## Features
 
-- **Monte Carlo Tree Search (MCTS):** Combines MCTS with a neural network to simulate and find optimal moves.
-- **Neural Networks:** Separate policy and value networks for guidance.
-- **Dynamic Visualization:** Visualizes the game's progress and learning metrics through a web-based interface.
-- **Scoring Logic:** Custom scoring rules based on the game's patterns and mechanics.
-- **Test Coverage:** Comprehensive unit tests for core functionalities.
+- **Real-time Multiplayer:** gRPC-based multiplayer sessions with automatic session management
+- **MCTS AI Integration:** Advanced Monte Carlo Tree Search with neural network guidance  
+- **Single-player Mode:** Play against AI with automatic session creation and flow
+- **Independent Gameplay:** Players can move at their own pace, no turn-based waiting
+- **Auto-progression:** Automatic tile drawing and turn advancement when all players finish
+- **Web Interface:** Modern SolidJS frontend with real-time game state updates
+- **Performance Optimized:** Async architecture with optimized session lookups and caching
 
-## Getting Started
+## Quick Start
 
-### Prerequisites
+### Single-player vs AI
+```bash
+cargo run -- --single-player --num-simulations 300
+```
+- Access at: http://localhost:51051
+- Auto-connects to game session
+- MCTS plays automatically when tiles are drawn
 
-- **Rust Toolchain:** Install Rust from [rust-lang.org](https://www.rust-lang.org/).
-- **Python (Optional):** Required if extending with scripts for analysis.
-- **WebSocket Library:** `tokio` and `tokio-tungstenite` are used for WebSocket support.
-- **Machine Learning Framework:** `tch` for neural network functionalities.
+### Multiplayer 
+```bash
+cargo run -- --mode multiplayer --port 50051
+```
+- Players join with session codes
+- MCTS participates as additional player
+- Independent player progression
+
+### Training Mode
+```bash  
+cargo run -- --mode training --num-games 500
+```
+- Neural network training via self-play
+- WebSocket monitoring on port 9000
+
+## Architecture
+
+### Core Services
+- **SessionManager:** Functional session state management with immutable operations
+- **GameService:** gRPC service handling gameplay, moves, and state queries
+- **GameManager:** Pure functions for game logic, MCTS integration, and state transitions
+- **MCTS Algorithm:** Neural network-guided tree search for optimal moves
+
+### Key Optimizations
+- **Async Mutex:** tokio::sync::Mutex for better async performance
+- **Session Lookup Cache:** Optimized UUID vs code detection
+- **Image Generation Cache:** Static caching for tile image names  
+- **JSON Optimization:** Reduced recreation in hot paths
+
+## Prerequisites
+
+- **Rust 1.70+:** Install from [rust-lang.org](https://www.rust-lang.org/)
+- **PyTorch C++ (libtorch):** Required for neural networks via `tch` crate
+- **Node.js 18+:** For frontend development and building
 
 

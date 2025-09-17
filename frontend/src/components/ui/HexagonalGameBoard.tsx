@@ -39,10 +39,11 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
     /**
      * 🚀 MEMO ULTRA-OPTIMISÉ POUR PERFORMANCE UX
      */
-    const stableTilesData = createMemo((prev) => {
+    type TilesData = { key: string, tiles: string[] };
+    const stableTilesData = createMemo<TilesData | undefined>((prev?: TilesData) => {
         const currentSession = props.session();
         if (!currentSession) {
-            const result = { key: 'no-session', tiles: [] };
+            const result: TilesData = { key: 'no-session', tiles: [] };
             return prev && prev.key === result.key ? prev : result;
         }
 
@@ -60,7 +61,7 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
         
         const contentKey = `${currentSession.playerId}-${playerTiles.length}-${realTiles.join('|')}`;
 
-        const result = { key: contentKey, tiles: playerTiles };
+        const result: TilesData = { key: contentKey, tiles: playerTiles };
 
         // ✅ RETURNER LA MÊME RÉFÉRENCE SI LE CONTENU EST IDENTIQUE
         return (prev && prev.key === contentKey) ? prev : result;
@@ -251,11 +252,10 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
 
     createEffect(() => {
         const tilesData = stableTilesData();
+        if (!tilesData) return;
         const currentHash = tilesData.key;
-        
         // ✅ ÉVITER REDRAWS SI RIEN N'A CHANGÉ
         if (currentHash === lastRenderedHash()) return;
-        
         setLastRenderedHash(currentHash);
         renderCanvas(tilesData.tiles);
     });

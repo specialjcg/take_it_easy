@@ -1,14 +1,12 @@
 // main.rs - Version corrigée avec les bonnes compatibilités
 use clap::Parser;
-use futures_util::StreamExt;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tch::nn::{self, OptimizerConfig};
 use tch::Device;
 use tokio::fs;
 use tokio::net::TcpListener;
-use tokio_tungstenite::accept_async;
 use tonic::transport::Server;
 use tonic_web::GrpcWebLayer;
 use http::{header, Method, StatusCode};
@@ -29,7 +27,6 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 
 use crate::logging::setup_logging;
-use crate::mcts_vs_human::play_mcts_vs_human;
 use neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::training::session::train_and_evaluate;
 
@@ -46,7 +43,6 @@ mod test;
 mod game;
 mod logging;
 mod mcts;
-mod mcts_vs_human;
 mod neural;
 mod utils;
 mod strategy;
@@ -70,21 +66,23 @@ struct Config {
     num_simulations: usize,
 
     /// Mode de jeu
-    #[arg(long, value_enum, default_value = "mcts-vs-human")]
+    #[arg(long, value_enum, default_value = "multiplayer")]
     mode: GameMode,
 
     /// Port pour le serveur gRPC Multiplayer
     #[arg(short = 'p', long, default_value_t = 50051)]
     port: u16,
+
+    /// Mode un seul joueur contre MCTS (pour mode multiplayer)
+    #[arg(long, default_value_t = false)]
+    single_player: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum GameMode {
     /// Mode entraînement normal
     Training,
-    /// MCTS vs un seul humain
-    MctsVsHuman,
-    /// MCTS vs plusieurs humains (style Kahoot)
+    /// Mode multiplayer (supporte --single-player pour 1v1 contre MCTS)
     Multiplayer,
 }
 
@@ -195,6 +193,7 @@ async fn start_multiplayer_server(
     value_net: ValueNet,
     num_simulations: usize,
     port: u16,
+    single_player: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
 
@@ -202,17 +201,64 @@ async fn start_multiplayer_server(
     let session_manager = Arc::new(crate::services::session_manager::new_session_manager());
 
     // Wrapper les réseaux de neurones pour le partage
-    let policy_net_arc = Arc::new(Mutex::new(policy_net));
-    let value_net_arc = Arc::new(Mutex::new(value_net));
+    let policy_net_arc = Arc::new(tokio::sync::Mutex::new(policy_net));
+    let value_net_arc = Arc::new(tokio::sync::Mutex::new(value_net));
+
+    // En mode single-player, créer automatiquement une session par défaut
+    if single_player {
+        log::info!("🎮 Création session automatique single-player...");
+        use crate::services::session_manager::{create_session_functional_with_manager, get_session_by_code_with_manager, update_session_with_manager};
+        use crate::generated::takeiteasygame::v1::Player;
+        
+        match create_session_functional_with_manager(&session_manager, 4, "single-player".to_string()).await {
+            Ok(session_code) => {
+                log::info!("✅ Session single-player créée: {}", session_code);
+                
+                // Ajouter MCTS à cette session par défaut
+                if let Some(session) = get_session_by_code_with_manager(&session_manager, &session_code).await {
+                    let mcts_player = Player {
+                        id: "mcts_ai".to_string(),
+                        name: "🤖 MCTS IA".to_string(),
+                        score: 0,
+                        is_ready: true,
+                        is_connected: true,
+                        joined_at: chrono::Utc::now().timestamp(),
+                    };
+                    
+                    let mut updated_session = session;
+                    updated_session.players.insert("mcts_ai".to_string(), mcts_player);
+                    
+                    if let Err(e) = update_session_with_manager(&session_manager, updated_session).await {
+                        log::error!("❌ Erreur ajout MCTS: {}", e);
+                    } else {
+                        log::info!("🤖 MCTS ajouté à la session single-player {}", session_code);
+                    }
+                }
+            },
+            Err(e) => {
+                log::error!("❌ Échec création session single-player: {}", e);
+            }
+        }
+    }
 
     // Créer les services gRPC (avec les nouvelles méthodes gameplay)
-    let session_service = SessionServiceImpl::new_with_manager(session_manager.clone()); // ← Modifié
+    let session_service = SessionServiceImpl::new_with_manager_and_mode(session_manager.clone(), single_player);
     let game_service = GameServiceImpl::new(
         session_manager.clone(),
         policy_net_arc.clone(),
         value_net_arc.clone(),
         num_simulations
     );
+
+    if single_player {
+        log::info!("🤖 Mode SINGLE-PLAYER démarré : 1 joueur vs MCTS ({} simulations)", num_simulations);
+        log::info!("🎯 Interface web : http://localhost:{}", port + 1000);
+        log::info!("🔗 gRPC : localhost:{}", port);
+    } else {
+        log::info!("👥 Mode MULTIJOUEUR démarré : Plusieurs joueurs + MCTS ({} simulations)", num_simulations);
+        log::info!("🎯 Interface web : http://localhost:{}", port + 1000);
+        log::info!("🔗 gRPC : localhost:{}", port);
+    }
 
     // Serveur gRPC UNIQUEMENT - plus de REST
     Server::builder()
@@ -281,24 +327,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await;
         }
 
-        GameMode::MctsVsHuman => {            let listener = TcpListener::bind("127.0.0.1:9001")
-                .await
-                .expect("Unable to bind WebSocket on port 9001 for MCTS vs Human");
-
-            let (stream, _) = listener.accept().await.unwrap();
-            let ws_stream = accept_async(stream).await.unwrap();
-            let (mut write, mut read) = ws_stream.split();
-
-            play_mcts_vs_human(
-                &policy_net,
-                &value_net,
-                config.num_simulations,
-                &mut write,
-                &mut read,
-                (&listener).into(),
-            )
-                .await;
-        }
 
         GameMode::Multiplayer => {
             // Lancer le serveur web en arrière-plan
@@ -318,6 +346,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 value_net,
                 config.num_simulations,
                 config.port,
+                config.single_player,
             )
                 .await?;
         }

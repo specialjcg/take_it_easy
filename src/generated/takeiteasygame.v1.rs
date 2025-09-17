@@ -32,6 +32,9 @@ pub struct GameState {
     pub board_state: ::prost::alloc::string::String,
     #[prost(int32, tag = "6")]
     pub turn_number: i32,
+    /// Mode de jeu: "single-player", "multiplayer", etc.
+    #[prost(string, tag = "7")]
+    pub game_mode: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

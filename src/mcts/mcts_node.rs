@@ -1,6 +1,7 @@
 use crate::game::game_state::GameState;
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub struct MCTSNode {
     pub state: GameState,             // Current game state
     pub visits: usize,                // Number of visits
