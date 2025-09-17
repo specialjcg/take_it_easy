@@ -19,6 +19,7 @@ export interface GameState {
     players: Player[];
     boardState: string;
     currentTurn?: string;
+    gameMode?: string; // Ajout du gameMode manquant !
 }
 
 export interface Session {

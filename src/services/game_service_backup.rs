@@ -1,14 +1,14 @@
 // src/services/game_service.rs - GameService étendu avec gameplay MCTS - VERSION CORRIGÉE
 
 use tonic::{Request, Response, Status};
-use std::sync::{Arc, Mutex};
-use tokio::sync::RwLock;
+use std::sync::Arc;
+use tokio::sync::{RwLock, Mutex};
 // Import des types générés par tonic
 use crate::generated::takeiteasygame::v1::*;
 use crate::generated::takeiteasygame::v1::game_service_server::GameService;
 use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
-use crate::services::game_manager::{TakeItEasyGameState, MoveResult, create_take_it_easy_game, start_new_turn, process_player_move_with_mcts, get_available_positions, take_it_easy_state_to_protobuf, player_move_from_json, mcts_move_to_json, is_game_finished, ensure_current_tile, apply_player_move, MctsMove, PlayerMove, check_turn_completion};
-use crate::services::session_manager::{get_store_from_manager, SessionManager, get_session_by_id_from_store, update_session_in_store, SessionStoreState, GameSession, get_session_by_code_from_store};
+use crate::services::game_manager::{TakeItEasyGameState, MoveResult, create_take_it_easy_game, start_new_turn, process_player_move_with_mcts, get_available_positions, take_it_easy_state_to_protobuf, player_move_from_json, mcts_move_to_json, is_game_finished, ensure_current_tile, apply_player_move, MctsMove, PlayerMove, check_turn_completion, get_all_players_status};
+use crate::services::session_manager::{get_store_from_manager, SessionManager, get_session_by_id_from_store, update_session_in_store, SessionStoreState, GameSession};
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::utils::image::generate_tile_image_names;
 use crate::game::get_legal_moves::get_legal_moves;
@@ -45,7 +45,7 @@ impl GameServiceImpl {
 // FONCTIONS PURES - CRÉATION DE RÉPONSES (existantes + nouvelles)
 // ============================================================================
 
-fn make_move_success_response(move_result: MoveResult) -> MakeMoveResponse {
+fn make_move_success_response(move_result: MoveResult, game_mode: &str) -> MakeMoveResponse {
     let mcts_response_json = move_result.mcts_response
         .as_ref()
         .and_then(|mcts| mcts_move_to_json(mcts).ok())
@@ -54,7 +54,7 @@ fn make_move_success_response(move_result: MoveResult) -> MakeMoveResponse {
     MakeMoveResponse {
         result: Some(make_move_response::Result::Success(
             MakeMoveSuccess {
-                new_game_state: Some(take_it_easy_state_to_protobuf(&move_result.new_game_state)),
+                new_game_state: Some(take_it_easy_state_to_protobuf(&move_result.new_game_state, game_mode)),
                 mcts_response: mcts_response_json,
                 points_earned: move_result.points_earned,
                 is_game_over: move_result.is_game_over,
@@ -179,7 +179,7 @@ fn game_state_error_response(message: String) -> GetGameStateResponse {
 // FONCTION AUXILIAIRE : process_mcts_move_only
 // ============================================================================
 
-pub fn process_mcts_move_only(
+pub async fn process_mcts_move_only(
     game_state: TakeItEasyGameState,
     policy_net: &Mutex<PolicyNet>,
     value_net: &Mutex<ValueNet>,
@@ -208,8 +208,8 @@ pub fn process_mcts_move_only(
     let mut deck_clone = game_state.deck.clone();
 
     // Verrouiller les réseaux
-    let policy_locked = policy_net.lock().map_err(|_| "Failed to lock policy net")?;
-    let value_locked = value_net.lock().map_err(|_| "Failed to lock value net")?;
+    let policy_locked = policy_net.lock().await;
+    let value_locked = value_net.lock().await;
 
     // ✅ EXÉCUTION MCTS
     let mut mcts_plateau_mut = mcts_plateau.clone();
@@ -261,13 +261,23 @@ pub async fn get_session_by_code_or_id_from_store(
     store: &Arc<RwLock<SessionStoreState>>,
     identifier: &str
 ) -> Option<GameSession> {
-    // Essayer d'abord par ID (UUID)
-    if let Some(session) = get_session_by_id_from_store(store, identifier).await {
-        return Some(session);
+    let state = store.read().await;
+    
+    // Optimized single-pass lookup
+    if identifier.len() == 36 && identifier.chars().nth(8) == Some('-') {
+        // Likely UUID format - check sessions directly
+        if let Some(session) = state.sessions.get(identifier) {
+            return Some(session.clone());
+        }
     }
-
-    // Ensuite essayer par code (ex: "GTHG7Q")
-    get_session_by_code_from_store(store, identifier).await
+    
+    // Check by code
+    if let Some(session_id) = state.sessions_by_code.get(identifier) {
+        return state.sessions.get(session_id).cloned();
+    }
+    
+    // Fallback: check if identifier is actually a session ID
+    state.sessions.get(identifier).cloned()
 }
 
 // ============================================================================
@@ -344,25 +354,27 @@ async fn make_move_logic(
         &*service.policy_net,
         &*service.value_net,
         service.num_simulations
-    ) {
+    ).await {
         Ok(move_result) => {
             let final_state = move_result.new_game_state.clone();
+            let game_mode = session.game_mode.clone();
 
             // Sauvegarder l'état final
             let mut updated_session = session;
             updated_session.board_state = serde_json::to_string(&final_state).unwrap_or_default();
 
-            // Mettre à jour les scores
+            // ✅ CRITICAL: Synchroniser les scores entre TakeItEasyGameState et Session.players
             for (player_id, score) in &final_state.scores {
                 if let Some(player) = updated_session.players.get_mut(player_id) {
                     player.score = *score;
+                    log::info!("🏆 Score mis à jour: {} = {} points", player_id, score);
                 }
             }
 
             update_session_in_store(store, updated_session).await
                 .map_err(|e| Status::internal(e))?;
 
-            let response = make_move_success_response(move_result);
+            let response = make_move_success_response(move_result, &game_mode);
             Ok(Response::new(response))
         },
         Err(error_code) => {
@@ -479,7 +491,7 @@ async fn start_turn_logic(
             &*service.policy_net,
             &*service.value_net,
             service.num_simulations
-        ) {
+        ).await {
             Ok((updated_state, _mcts_move)) => {
                 let update_state_clone = updated_state.clone();
                 // Vérifier si le tour est terminé après que MCTS ait joué
@@ -531,120 +543,96 @@ async fn start_turn_logic(
     Ok(Response::new(response))
 }
 fn enhance_game_state_with_images(board_state: &str) -> String {
-    // Parser le JSON existant
-    let mut game_data = serde_json::from_str::<serde_json::Value>(board_state).unwrap_or_else(|_| {
-        // Si parsing échoue, créer structure minimale
-        log::warn!("Parsing board_state échoué, création structure par défaut");
-        serde_json::json!({
-                "player_plateaus": {}
-            })
+    use std::sync::OnceLock;
+    use std::collections::HashMap as StdHashMap;
+    
+    static EMPTY_TILE_CACHE: OnceLock<StdHashMap<usize, (Vec<String>, Vec<i32>)>> = OnceLock::new();
+    
+    let cache = EMPTY_TILE_CACHE.get_or_init(|| {
+        let mut cache = StdHashMap::new();
+        for size in [19, 20, 25] {
+            let empty_tiles = vec![Tile(0, 0, 0); size];
+            let empty_images = generate_tile_image_names(&empty_tiles);
+            let all_positions: Vec<i32> = (0..size as i32).collect();
+            cache.insert(size, (empty_images, all_positions));
+        }
+        cache
     });
 
-    // 🛡️ GARANTIR que player_plateaus existe
+    let mut game_data = serde_json::from_str::<serde_json::Value>(board_state).unwrap_or_else(|_| {
+        log::warn!("Parsing board_state échoué, création structure par défaut");
+        serde_json::json!({"player_plateaus": {}})
+    });
+
     if !game_data.get("player_plateaus").is_some() {
         game_data["player_plateaus"] = serde_json::json!({});
     }
 
-    // 🛡️ GARANTIR que chaque plateau a tile_images et available_positions
     if let Some(player_plateaus) = game_data.get_mut("player_plateaus") {
         if let Some(plateaus_obj) = player_plateaus.as_object_mut() {
-
             for (player_id, plateau_data) in plateaus_obj.iter_mut() {
-
-                // 🛡️ GARANTIR que tiles existe, sinon créer plateau vide
                 let tiles_array = match plateau_data.get("tiles") {
                     Some(tiles) => tiles.clone(),
                     None => {
                         log::warn!("Plateau manquant pour {}, création plateau vide", player_id);
-                        serde_json::json!(vec![[0, 0, 0]; 19]) // 19 positions vides
+                        if let Some((_, default_positions)) = cache.get(&19) {
+                            *plateau_data = serde_json::json!({
+                                "tiles": vec![[0, 0, 0]; 19],
+                                "tile_images": vec!["../image/000.png"; 19],
+                                "available_positions": default_positions
+                            });
+                        }
+                        continue;
                     }
                 };
 
                 if let Some(tiles) = tiles_array.as_array() {
-                    // Convertir JSON tiles vers Rust Tiles
-                    let rust_tiles: Vec<Tile> = tiles
-                        .iter()
-                        .map(|tile_json| {
-                            if let Some(tile_array) = tile_json.as_array() {
-                                if tile_array.len() == 3 {
-                                    Tile(
-                                        tile_array[0].as_i64().unwrap_or(0) as i32,
-                                        tile_array[1].as_i64().unwrap_or(0) as i32,
-                                        tile_array[2].as_i64().unwrap_or(0) as i32,
-                                    )
-                                } else {
-                                    log::warn!("Tuile malformée pour {}, utilisation (0,0,0)", player_id);
-                                    Tile(0, 0, 0)
-                                }
+                    let tiles_len = tiles.len();
+                    let mut tile_images = Vec::with_capacity(tiles_len);
+                    let mut available_positions = Vec::new();
+
+                    for (index, tile_json) in tiles.iter().enumerate() {
+                        let tile = if let Some(tile_array) = tile_json.as_array() {
+                            if tile_array.len() == 3 {
+                                Tile(
+                                    tile_array[0].as_i64().unwrap_or(0) as i32,
+                                    tile_array[1].as_i64().unwrap_or(0) as i32,
+                                    tile_array[2].as_i64().unwrap_or(0) as i32,
+                                )
                             } else {
-                                log::warn!("Format tuile invalide pour {}, utilisation (0,0,0)", player_id);
                                 Tile(0, 0, 0)
                             }
-                        })
-                        .collect();
+                        } else {
+                            Tile(0, 0, 0)
+                        };
 
-                    // 🚀 TOUJOURS GÉNÉRER tile_images (garantie 100%)
-                    let tile_images = generate_tile_image_names(&rust_tiles);
-
-                    // 🚀 TOUJOURS CALCULER available_positions (garantie 100%)
-                    let available_positions: Vec<i32> = rust_tiles
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, tile)| {
-                            if *tile == Tile(0, 0, 0) {
-                                Some(index as i32)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-
-                    // 🛡️ GARANTIR l'ajout au JSON (même si plateau_data est malformé)
-                    if let Some(plateau_obj) = plateau_data.as_object_mut() {
-                        // Mettre à jour les données existantes
-                        plateau_obj.insert("tiles".to_string(), tiles_array);
-                        plateau_obj.insert(
-                            "tile_images".to_string(),
-                            serde_json::Value::Array(
-                                tile_images.into_iter()
-                                    .map(serde_json::Value::String)
-                                    .collect()
-                            )
-                        );
-                        plateau_obj.insert(
-                            "available_positions".to_string(),
-                            serde_json::Value::Array(
-                                available_positions.into_iter()
-                                    .map(|pos| serde_json::Value::Number(pos.into()))
-                                    .collect()
-                            )
-                        );
-                    } else {
-                        // Si plateau_data n'est pas un objet, le recréer
-                        *plateau_data = serde_json::json!({
-                            "tiles": tiles_array,
-                            "tile_images": tile_images,
-                            "available_positions": available_positions
-                        });
+                        if tile == Tile(0, 0, 0) {
+                            tile_images.push("../image/000.png".to_string());
+                            available_positions.push(index as i32);
+                        } else {
+                            let tile_image = generate_tile_image_names(&[tile])[0].clone();
+                            tile_images.push(tile_image);
+                        }
                     }
-                } else {
-                    // Si tiles n'est pas un array, créer plateau vide par défaut
-                    log::warn!("tiles n'est pas un array pour {}, création plateau vide", player_id);
-                    let empty_tiles = vec![Tile(0, 0, 0); 19];
-                    let empty_images = generate_tile_image_names(&empty_tiles);
-                    let all_positions: Vec<i32> = (0..19).collect();
 
+                    if let Some(plateau_obj) = plateau_data.as_object_mut() {
+                        plateau_obj.insert("tiles".to_string(), tiles_array);
+                        plateau_obj.insert("tile_images".to_string(), 
+                            serde_json::Value::Array(tile_images.into_iter().map(serde_json::Value::String).collect()));
+                        plateau_obj.insert("available_positions".to_string(),
+                            serde_json::Value::Array(available_positions.into_iter().map(|pos| serde_json::Value::Number(pos.into())).collect()));
+                    }
+                } else if let Some((cached_images, cached_positions)) = cache.get(&19) {
                     *plateau_data = serde_json::json!({
                         "tiles": vec![[0, 0, 0]; 19],
-                        "tile_images": empty_images,
-                        "available_positions": all_positions
+                        "tile_images": cached_images,
+                        "available_positions": cached_positions
                     });
                 }
             }
         }
     }
 
-    // Retourner le JSON enrichi (garantie que tile_images existe)
     game_data.to_string()
 }
 // Dans game_service.rs - Ajouter ces lignes dans get_game_state_logic
@@ -691,13 +679,34 @@ async fn get_game_state_logic(
         "{}".to_string()
     };
 
+    // ✅ CRITICAL: Synchroniser les scores avec la session avant réponse
+    let mut updated_session = session.clone();
+    for (player_id, score) in &game_state.scores {
+        if let Some(player) = updated_session.players.get_mut(player_id) {
+            player.score = *score;
+        }
+    }
+    if updated_session.players != session.players {
+        if let Err(e) = update_session_in_store(store, updated_session.clone()).await {
+            log::error!("Failed to sync scores in GetGameState: {}", e);
+        }
+    }
+
     let current_turn = game_state.current_turn as i32;
     let waiting_for_players = game_state.waiting_for_players.clone();
     let is_finished = is_game_finished(&game_state);
     let game_state_json = serde_json::to_string(&game_state).unwrap_or_default();
 
-    // ✅ Enrichir avec les images
-    let enhanced_game_state_json = enhance_game_state_with_images(&game_state_json);
+    // ✅ Enrichir avec les images et statuts des joueurs  
+    let mut enhanced_game_state_json = enhance_game_state_with_images(&game_state_json);
+    
+    // Ajouter les statuts des joueurs pour le flow indépendant
+    let players_status = get_all_players_status(&game_state);
+    let mut enhanced_data: serde_json::Value = serde_json::from_str(&enhanced_game_state_json)
+        .unwrap_or_else(|_| serde_json::json!({}));
+    
+    enhanced_data["players_status"] = serde_json::to_value(&players_status).unwrap_or_default();
+    enhanced_game_state_json = enhanced_data.to_string();
 
     let response = game_state_success_response(
         enhanced_game_state_json,
@@ -771,7 +780,6 @@ impl GameService for GameServiceImpl {
 mod image_enhancement_tests {
     use super::*;
     use crate::game::create_deck::create_deck;
-    use crate::game::tile::Tile;
 
     // ========================================================================
     // TESTS TDD POUR enhance_game_state_with_images (fonction core)
@@ -831,8 +839,8 @@ mod image_enhancement_tests {
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
 
         let plateau = &parsed["player_plateaus"]["player1"];
-        let images = plateau["tile_images"].as_array().unwrap();
-        let positions = plateau["available_positions"].as_array().unwrap();
+        let images = plateau.get("tile_images").and_then(|v| v.as_array()).expect("tile_images should exist");
+        let positions = plateau.get("available_positions").and_then(|v| v.as_array()).expect("available_positions should exist");
 
         // Toutes les images devraient être vides
         assert_eq!(images.len(), 5);
@@ -1021,7 +1029,7 @@ mod image_enhancement_tests {
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
 
         let plateau = &parsed["player_plateaus"]["player1"];
-        let images = plateau["tile_images"].as_array().unwrap();
+        let images = plateau.get("tile_images").and_then(|v| v.as_array()).expect("tile_images should exist");
 
         // Devrait gérer les tuiles malformées en les remplaçant par (0,0,0)
         assert_eq!(images.len(), 3);

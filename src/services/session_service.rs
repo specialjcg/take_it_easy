@@ -11,22 +11,19 @@ use crate::generated::takeiteasygame::v1::{
 use crate::generated::takeiteasygame::v1::*;
 use crate::generated::takeiteasygame::v1::session_service_server::SessionService;
 
-use crate::services::session_manager::{SessionManager, new_session_manager, get_store_from_manager, add_player_to_session, set_player_ready_in_session, session_to_game_state, transform_session_in_store, get_session_by_code_with_manager, update_session_with_manager, create_session_functional_with_manager, get_session_by_id_with_manager};
+use crate::services::session_manager::{SessionManager, get_store_from_manager, add_player_to_session, set_player_ready_in_session_with_min, session_to_game_state, transform_session_in_store, get_session_by_code_with_manager, update_session_with_manager, create_session_functional_with_manager, get_session_by_id_with_manager};
 
 #[derive(Clone)]
 pub struct SessionServiceImpl {
     session_manager: Arc<SessionManager>,
+    single_player_mode: bool,
 }
 
 impl SessionServiceImpl {
-    pub fn new() -> Self {
-        Self {
-            session_manager: Arc::new(new_session_manager()), // Fonction extraite !
-        }
-    }
-    pub fn new_with_manager(session_manager: Arc<SessionManager>) -> Self {
+    pub fn new_with_manager_and_mode(session_manager: Arc<SessionManager>, single_player: bool) -> Self {
         Self {
             session_manager,
+            single_player_mode: single_player,
         }
     }
     
@@ -116,11 +113,12 @@ fn set_ready_error_response(code: String, message: String) -> SetReadyResponse {
 
 // session_service.rs - dans create_session_logic_with_manager
 async fn create_session_logic_with_manager(
-    manager: &SessionManager,
+    service: &SessionServiceImpl,
     player_name: String,
     max_players: i32,
     game_mode: String
 ) -> Result<Response<CreateSessionResponse>, Status> {
+    let manager = &service.session_manager;
     match create_session_functional_with_manager(manager, max_players, game_mode).await {
         Ok(session_code) => {
             if let Some(session) = get_session_by_code_with_manager(manager, &session_code).await {
@@ -128,17 +126,20 @@ async fn create_session_logic_with_manager(
                 match add_player_to_session(session.clone(), player_name.clone()) {
                     Ok((mut updated_session, player_id)) => {
 
-                        // 🤖 AJOUTER AUTOMATIQUEMENT MCTS À CHAQUE SESSION
-                        let mcts_player = Player {
-                            id: "mcts_ai".to_string(),
-                            name: "🤖 MCTS IA".to_string(),
-                            score: 0,
-                            is_ready: true,  // MCTS toujours prêt
-                            is_connected: true,
-                            joined_at: chrono::Utc::now().timestamp(),
-                        };
+                        // 🤖 AJOUTER MCTS SEULEMENT EN MODE SINGLE-PLAYER
+                        if service.single_player_mode {
+                            let mcts_player = Player {
+                                id: "mcts_ai".to_string(),
+                                name: "🤖 MCTS IA".to_string(),
+                                score: 0,
+                                is_ready: true,  // MCTS toujours prêt
+                                is_connected: true,
+                                joined_at: chrono::Utc::now().timestamp(),
+                            };
 
-                        updated_session.players.insert("mcts_ai".to_string(), mcts_player);
+                            updated_session.players.insert("mcts_ai".to_string(), mcts_player);
+                            log::info!("🤖 MCTS automatiquement ajouté à la session {}", updated_session.code);
+                        }
                         let player = updated_session.players.get(&player_id).cloned()
                             .ok_or_else(|| Status::internal("Player not found after creation"))?;
 
@@ -175,57 +176,118 @@ async fn create_session_logic_with_manager(
 
 // session_service.rs - dans join_session_logic
 async fn join_session_logic(
-    manager: &SessionManager,
+    service: &SessionServiceImpl,
     session_code: String,
     player_name: String
 ) -> Result<Response<JoinSessionResponse>, Status> {
-    let session = match get_session_by_code_with_manager(manager, &session_code).await {
-        Some(session) => {            session
-        },
-        None => {
-            log::error!("❌ Session introuvable avec code: {}", session_code);
+    let manager = &service.session_manager;
+    
+    // 🎮 GESTION SPÉCIALE DU CODE 'AUTO' EN MODE SINGLE-PLAYER
+    let session = if session_code == "AUTO" && service.single_player_mode {
+        // Utiliser la première session disponible
+        let store = get_store_from_manager(manager);
+        let state = store.read().await;
+        
+        if let Some((_session_id, session)) = state.sessions.iter().next() {
+            let session_clone = session.clone();
+            let session_code_found = session.code.clone();
+            drop(state);
+            log::info!("🔄 AUTO: connexion à la session single-player {}", session_code_found);
+            session_clone
+        } else {
+            drop(state);
+            log::error!("❌ Aucune session disponible pour AUTO");
             return Ok(Response::new(join_error_response(
-                "SESSION_NOT_FOUND".to_string(),
-                format!("Session with code {} not found", session_code)
+                "NO_SESSION_AVAILABLE".to_string(),
+                "No session available for auto-connection".to_string()
             )));
+        }
+    } else {
+        // Logique normale par code
+        match get_session_by_code_with_manager(manager, &session_code).await {
+            Some(session) => {                session
+            },
+            None => {
+                log::error!("❌ Session introuvable avec code: {}", session_code);
+                return Ok(Response::new(join_error_response(
+                    "SESSION_NOT_FOUND".to_string(),
+                    format!("Session with code {} not found", session_code)
+                )));
+            }
         }
     };
 
-    // 🔧 NOUVEAU: Gestion spéciale pour les viewers
+    // 🔧 GESTION SPÉCIALE DES VIEWERS - mode lecture seule
     if player_name.contains("Viewer") || player_name.contains("Observer") {
-        // Créer un joueur viewer (read-only)
-        let viewer_id = format!("viewer_{}", uuid::Uuid::new_v4().to_string()[0..8].to_string());
-        let _viewer_player = Player {
-            id: viewer_id.clone(),
-            name: player_name.clone(),
-            score: 0,
-            is_ready: true,  // Toujours prêt (n'affecte pas le jeu)
-            is_connected: true,
-            joined_at: chrono::Utc::now().timestamp(),
-        };
+        log::info!("👁️ Viewer {} rejoint session {}", player_name, session_code);
+        
+        // En mode single-player, permettre les viewers
+        if service.single_player_mode {
+            let viewer_id = format!("viewer_{}", uuid::Uuid::new_v4().to_string()[0..8].to_string());
+            let _viewer_player = Player {
+                id: viewer_id.clone(),
+                name: player_name.clone(),
+                score: 0,
+                is_ready: true,
+                is_connected: true,
+                joined_at: chrono::Utc::now().timestamp(),
+            };
 
-        // 🔧 NE PAS ajouter le viewer à la session (juste retourner l'état)
-        let session_id = session.id.clone();
-        let game_state = session_to_game_state(&session);
-        let response = join_success_response(session_id, viewer_id, game_state);
-        return Ok(Response::new(response));
+            let session_id = session.id.clone();
+            let game_state = session_to_game_state(&session);
+            let response = join_success_response(session_id, viewer_id, game_state);
+            return Ok(Response::new(response));
+        } else {
+            // Mode multijoueur - rejeter les viewers
+            let response = join_error_response(
+                "VIEWER_NOT_ALLOWED".to_string(),
+                "Viewers not allowed in multiplayer mode".to_string()
+            );
+            return Ok(Response::new(response));
+        }
     }
 
     match add_player_to_session(session, player_name.clone()) {
         Ok((mut updated_session, player_id)) => {
 
-            // 🤖 VÉRIFIER SI MCTS EST DÉJÀ PRÉSENT, SINON L'AJOUTER
-            if !updated_session.players.contains_key("mcts_ai") {
-                let mcts_player = Player {
-                    id: "mcts_ai".to_string(),
-                    name: "🤖 MCTS IA".to_string(),
-                    score: 0,
-                    is_ready: true,
-                    is_connected: true,
-                    joined_at: chrono::Utc::now().timestamp(),
-                };
 
-                updated_session.players.insert("mcts_ai".to_string(), mcts_player);            } else {            }
+            // 🎮 EN MODE SINGLE-PLAYER: joueur humain automatiquement prêt + démarrage auto
+            if service.single_player_mode {
+                if let Some(player) = updated_session.players.get_mut(&player_id) {
+                    player.is_ready = true;
+                    log::info!("🎯 Joueur {} automatiquement prêt en mode single-player", player_name);
+                    
+                    // Vérifier si tous les joueurs sont prêts pour démarrer automatiquement
+                    let all_ready = updated_session.players.values().all(|p| p.is_ready && p.is_connected);
+                    let enough_players = updated_session.players.len() >= 2; // Humain + MCTS
+                    
+                    if all_ready && enough_players && updated_session.state == 0 {
+                        updated_session.state = 1; // IN_PROGRESS
+                        if let Some(first_player_id) = updated_session.players.keys().next() {
+                            updated_session.current_player_id = Some(first_player_id.clone());
+                        }
+                        updated_session.turn_number = 1;
+                        
+                        // ✅ CRÉER ET DÉMARRER LE PREMIER TOUR AUTOMATIQUEMENT
+                        use crate::services::game_manager::{create_take_it_easy_game, start_new_turn};
+                        let player_ids: Vec<String> = updated_session.players.keys().cloned().collect();
+                        let game_state = create_take_it_easy_game(updated_session.id.clone(), player_ids);
+                        
+                        // Démarrer immédiatement le premier tour avec une tuile
+                        match start_new_turn(game_state) {
+                            Ok(started_game) => {
+                                updated_session.board_state = serde_json::to_string(&started_game).unwrap_or_default();
+                                log::info!("🎮 Jeu ET premier tour automatiquement démarrés pour session {}", updated_session.code);
+                                log::info!("🎲 Tuile proposée: {:?}", started_game.current_tile);
+                            },
+                            Err(e) => {
+                                log::error!("❌ Échec démarrage premier tour: {}", e);
+                                updated_session.board_state = r#"{"tiles": [], "available_positions": []}"#.to_string();
+                            }
+                        }
+                    }
+                }
+            }
 
             let session_id = updated_session.id.clone();
             let game_state = session_to_game_state(&updated_session);
@@ -245,11 +307,12 @@ async fn join_session_logic(
 
 // 🔧 FONCTION SET_READY AVEC DEBUG ULTRA-DÉTAILLÉ
 async fn set_ready_logic(
-    manager: &SessionManager,
+    service: &SessionServiceImpl,
     session_id: String,
     player_id: String,
     ready: bool
 ) -> Result<Response<SetReadyResponse>, Status> {
+    let manager = &service.session_manager;
     // 🔍 Étape 1: Vérifier l'existence de la session AVANT transform
     match get_session_by_id_with_manager(manager, &session_id).await {
         Some(session) => {
@@ -285,7 +348,9 @@ async fn set_ready_logic(
     let store = get_store_from_manager(manager);
 
     // Utilisation directe de transform_session_in_store pour récupérer game_started
-    let result = transform_session_in_store(store, &session_id, |session| {        set_player_ready_in_session(session, &player_id, ready)
+    let result = transform_session_in_store(store, &session_id, |session| {
+        // En mode single-player, démarrer dès qu'il y a 1 humain + MCTS (fonction standard)
+        set_player_ready_in_session_with_min(session, &player_id, ready, 2)
     }).await;
 
     match result {
@@ -320,7 +385,7 @@ impl SessionService for SessionServiceImpl {
     ) -> Result<Response<CreateSessionResponse>, Status> {
         let req = request.into_inner();
         create_session_logic_with_manager(
-            &self.session_manager,
+            self,
             req.player_name,
             req.max_players,
             req.game_mode
@@ -332,8 +397,9 @@ impl SessionService for SessionServiceImpl {
         request: Request<JoinSessionRequest>,
     ) -> Result<Response<JoinSessionResponse>, Status> {
         let req = request.into_inner();
+        log::info!("🔄 Tentative JOIN_SESSION: code='{}', joueur='{}'", req.session_code, req.player_name);
         join_session_logic(
-            &self.session_manager,
+            self,
             req.session_code,
             req.player_name
         ).await
@@ -345,7 +411,7 @@ impl SessionService for SessionServiceImpl {
     ) -> Result<Response<SetReadyResponse>, Status> {
         let req = request.into_inner();
         set_ready_logic(
-            &self.session_manager,
+            self,
             req.session_id,
             req.player_id,
             req.ready
@@ -386,6 +452,7 @@ impl SessionService for SessionServiceImpl {
                     },
                     board_state: session.board_state.clone(),
                     turn_number: session.turn_number,
+                    game_mode: session.game_mode.clone(),
                 };
 
                 Ok(Response::new(GetSessionStateResponse {
@@ -396,14 +463,31 @@ impl SessionService for SessionServiceImpl {
             None => {
                 log::error!("❌ GET_SESSION_STATE: Session {} introuvable", req.session_id);
 
-                // 🔍 Debug: Lister toutes les sessions existantes
-                let store = get_store_from_manager(&self.session_manager);
-                let state = store.read().await;
-                log::error!("🔍 Sessions existantes ({} total):", state.sessions.len());
-                for (sid, session) in &state.sessions {
-                    log::error!("  - id={}, code={}", sid, session.code);
+                // 🎮 EN MODE SINGLE-PLAYER: utiliser la première session disponible
+                if self.single_player_mode {
+                    let store = get_store_from_manager(&self.session_manager);
+                    let state = store.read().await;
+                    
+                    if let Some((session_id, session)) = state.sessions.iter().next() {
+                        let session_id_clone = session_id.clone();
+                        let session_code = session.code.clone();
+                        drop(state);
+                        
+                        log::info!("🔄 Mode single-player: redirection vers session {}", session_code);
+                        
+                        // Récursion avec la bonne session
+                        let new_request = GetSessionStateRequest {
+                            session_id: session_id_clone,
+                        };
+                        return self.get_session_state(Request::new(new_request)).await;
+                    }
+                    
+                    log::error!("🔍 Sessions existantes ({} total):", state.sessions.len());
+                    for (sid, session) in &state.sessions {
+                        log::error!("  - id={}, code={}", sid, session.code);
+                    }
+                    drop(state);
                 }
-                drop(state);
 
                 // Session non trouvée
                 Ok(Response::new(GetSessionStateResponse {

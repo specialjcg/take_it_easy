@@ -1,7 +1,7 @@
 // src/services/game_manager.rs - Intégration avec votre système existant
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 use serde::{Serialize, Deserialize};
 use crate::generated::takeiteasygame::v1::*;
 
@@ -100,8 +100,10 @@ pub fn create_take_it_easy_game(
     }
 }
 
-// game_manager.rs - dans start_new_turn
-// Dans game_manager.rs - CORRIGER start_new_turn
+// ============================================================================
+// NOUVELLE LOGIQUE : Proposer une tuile seulement si tous ont fini le tour précédent
+// ============================================================================
+
 pub fn start_new_turn(
     mut game_state: TakeItEasyGameState
 ) -> Result<TakeItEasyGameState, String> {
@@ -124,38 +126,23 @@ pub fn start_new_turn(
     // 🎲 Piocher une tuile aléatoire SEULEMENT parmi les tuiles valides
     let _tile_index = rand::rng().random_range(0..valid_tiles.len());
     let chosen_tile = valid_tiles[_tile_index];
-
+    
+    log::info!("🎲 Tuile tirée: {:?} (tour {})", chosen_tile, game_state.current_turn);
 
     // 🔧 UTILISER VOTRE FONCTION : Remplacer la tuile dans le deck
     game_state.deck = replace_tile_in_deck(&game_state.deck, &chosen_tile);
     game_state.current_tile = Some(chosen_tile);
 
-    // 🔧 TOUS LES JOUEURS (humains + MCTS) doivent jouer
+    // 🔧 TOUS LES JOUEURS (humains + MCTS) peuvent jouer immédiatement
     game_state.waiting_for_players = game_state.player_plateaus.keys().cloned().collect();
-
-
 
     Ok(game_state)
 }
+
+// Fonction utilitaire pour vérifier si on peut proposer une nouvelle tuile
 // Dans game_manager.rs - NOUVELLE fonction utilisant vos concepts
-pub fn get_available_tiles_from_deck(deck: &Deck) -> Vec<Tile> {
-    // 🔧 UTILISE LA MÊME LOGIQUE que simulate_game.rs
-    deck.tiles
-        .iter()
-        .cloned()
-        .filter(|tile| *tile != Tile(0, 0, 0))
-        .collect()
-}
 
-pub fn count_remaining_tiles(deck: &Deck) -> usize {
-    // 🔧 UTILISE VOS FONCTIONS pour compter les tuiles restantes
-    get_available_tiles_from_deck(deck).len()
-}
 
-pub fn is_deck_empty(deck: &Deck) -> bool {
-    // 🔧 UTILISE VOS FONCTIONS pour vérifier si le deck est vide
-    get_available_tiles_from_deck(deck).is_empty()
-}
 
 
 // Dans game_manager.rs - AMÉLIORER ensure_current_tile
@@ -214,7 +201,7 @@ pub fn apply_player_move(
 }
 
 // Dans game_manager.rs - AMÉLIORER process_mcts_turn avec vos fonctions
-pub fn process_mcts_turn(
+pub async fn process_mcts_turn(
     mut game_state: TakeItEasyGameState,
     policy_net: &Mutex<PolicyNet>,
     value_net: &Mutex<ValueNet>,
@@ -239,8 +226,8 @@ pub fn process_mcts_turn(
     let mut deck_clone = game_state.deck.clone();
 
     // Utiliser MCTS pour choisir la position
-    let policy_locked = policy_net.lock().map_err(|_| "Failed to lock policy net")?;
-    let value_locked = value_net.lock().map_err(|_| "Failed to lock value net")?;
+    let policy_locked = policy_net.lock().await;
+    let value_locked = value_net.lock().await;
 
     let mcts_result = mcts_find_best_position_for_tile_with_nn(
         mcts_plateau,
@@ -277,18 +264,10 @@ pub fn process_mcts_turn(
 }
 
 // Dans game_manager.rs - NOUVELLE fonction de debug complète
-pub fn debug_game_state(game_state: &TakeItEasyGameState) {
-    // 🔧 UTILISER VOS FONCTIONS pour le debug
-    let _remaining_tiles = count_remaining_tiles(&game_state.deck);
-    let _available_tiles = get_available_tiles_from_deck(&game_state.deck);
-    // Debug plateaux
-    for (_player_id, plateau) in &game_state.player_plateaus {
-        let _legal_moves = get_legal_moves(plateau.clone());
-        let _filled_positions = plateau.tiles.iter()
-            .enumerate()
-            .filter(|(_, tile)| **tile != Tile(0, 0, 0))
-            .count();    }}
-// game_manager.rs - check_turn_completion démarre automatiquement le tour suivant
+// ============================================================================
+// NOUVELLE LOGIQUE : Séparer fin de tour et proposition de tuile
+// ============================================================================
+
 pub fn check_turn_completion(
     mut game_state: TakeItEasyGameState
 ) -> Result<TakeItEasyGameState, String> {
@@ -297,16 +276,34 @@ pub fn check_turn_completion(
         let _completed_turn = game_state.current_turn;
         game_state.current_turn += 1;
         game_state.current_tile = None;
+        
+        // Mettre à jour les scores après chaque tour
+        for (player_id, plateau) in &game_state.player_plateaus {
+            let current_score = result(plateau);
+            game_state.scores.insert(player_id.clone(), current_score);
+        }
+        
         // Vérifier si le jeu est terminé
+        log::info!("🔍 Tour {}/{}, plateaux pleins: {}", 
+                  game_state.current_turn, 
+                  game_state.total_turns,
+                  game_state.player_plateaus.values().all(|p| is_plateau_full(p)));
+        
         if game_state.current_turn >= game_state.total_turns {
             game_state.game_status = GameStatus::Finished;
-            game_state.scores = calculate_final_scores(&game_state);        } else {
-            // 🎲 DÉMARRAGE AUTOMATIQUE DU TOUR SUIVANT 
-                      game_state = start_new_turn(game_state)?;        }
-    } else {    }
+            log::info!("🏁 Jeu terminé par tours! Scores finaux: {:?}", game_state.scores);
+        } else if game_state.player_plateaus.values().all(|plateau| is_plateau_full(plateau)) {
+            game_state.game_status = GameStatus::Finished;
+            log::info!("🏁 Jeu terminé par plateaux pleins! Scores finaux: {:?}", game_state.scores);
+        } else {
+            // ✅ RETOUR À L'AUTOMATISME : Démarrer immédiatement le tour suivant
+            game_state = start_new_turn(game_state)?;
+        }
+    }
 
     Ok(game_state)
 }
+
 
 pub fn calculate_final_scores(game_state: &TakeItEasyGameState) -> HashMap<String, i32> {
     let mut scores = HashMap::new();
@@ -339,11 +336,52 @@ pub fn get_available_positions(game_state: &TakeItEasyGameState, player_id: &str
 }
 
 // ============================================================================
+// FONCTIONS D'ÉTAT DES JOUEURS - POUR FLOW INDÉPENDANT
+// ============================================================================
+
+pub fn get_player_status(game_state: &TakeItEasyGameState, player_id: &str) -> PlayerStatus {
+    if is_game_finished(game_state) {
+        PlayerStatus::GameFinished
+    } else if game_state.current_tile.is_none() {
+        // Pas de tuile = en attente d'une nouvelle tuile
+        PlayerStatus::WaitingForNewTile
+    } else if game_state.waiting_for_players.contains(&player_id.to_string()) {
+        // Ce joueur peut jouer la tuile actuelle
+        PlayerStatus::CanPlay
+    } else {
+        // Ce joueur a déjà joué, attend les autres
+        PlayerStatus::WaitingForOthers
+    }
+}
+
+pub fn get_all_players_status(game_state: &TakeItEasyGameState) -> HashMap<String, PlayerStatus> {
+    let mut status_map = HashMap::new();
+    
+    for player_id in game_state.player_plateaus.keys() {
+        status_map.insert(player_id.clone(), get_player_status(game_state, player_id));
+    }
+    
+    status_map
+}
+
+
+
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PlayerStatus {
+    CanPlay,              // Joueur peut jouer (tuile disponible, à son tour)
+    WaitingForOthers,     // Joueur a joué, attend que les autres finissent
+    WaitingForNewTile,    // Pas de tuile courante, attend le prochain tour
+    GameFinished,         // Jeu terminé
+}
+
+// ============================================================================
 // FONCTIONS DE COMPOSITION - LOGIQUE MÉTIER COMPLÈTE
 // ============================================================================
 
 // game_manager.rs - votre fonction reste la même, mais on change la logique
-pub fn process_player_move_with_mcts(
+pub async fn process_player_move_with_mcts(
     game_state: TakeItEasyGameState,
     player_move: PlayerMove,
     policy_net: &Mutex<PolicyNet>,
@@ -357,7 +395,7 @@ pub fn process_player_move_with_mcts(
     let mcts_response = if player_move.player_id != "mcts_ai"
         && new_state.waiting_for_players.contains(&"mcts_ai".to_string()) {
         // MCTS joue automatiquement UNE SEULE FOIS
-        match process_mcts_turn(new_state.clone(), policy_net, value_net, num_simulations) {
+        match process_mcts_turn(new_state.clone(), policy_net, value_net, num_simulations).await {
             Ok((updated_state, mcts_move)) => {
                 new_state = updated_state;                Some(mcts_move)
             },
@@ -373,7 +411,12 @@ pub fn process_player_move_with_mcts(
     // 3. Vérifier la fin du tour (démarre automatiquement le tour suivant)
     new_state = check_turn_completion(new_state)?;
 
-    // 4. Calculer les points
+    // 4. Calculer et mettre à jour les scores en temps réel
+    for (player_id, plateau) in &new_state.player_plateaus {
+        let current_score = result(plateau);
+        new_state.scores.insert(player_id.clone(), current_score);
+    }
+    
     let initial_score = new_state.scores.get(&player_move.player_id).unwrap_or(&0).clone();
     let points_earned = if let Some(plateau) = new_state.player_plateaus.get(&player_move.player_id) {
         result(plateau) - initial_score
@@ -393,7 +436,7 @@ pub fn process_player_move_with_mcts(
 // CONVERSION VERS PROTOBUF (COMPATIBLE AVEC VOS TYPES)
 // ============================================================================
 
-pub fn take_it_easy_state_to_protobuf(state: &TakeItEasyGameState) -> GameState {
+pub fn take_it_easy_state_to_protobuf(state: &TakeItEasyGameState, game_mode: &str) -> GameState {
     let players: Vec<crate::generated::takeiteasygame::v1::Player> = state.scores.iter().map(|(player_id, score)| {
         crate::generated::takeiteasygame::v1::Player {
             id: player_id.clone(),
@@ -416,6 +459,7 @@ pub fn take_it_easy_state_to_protobuf(state: &TakeItEasyGameState) -> GameState 
         },
         board_state: serde_json::to_string(state).unwrap_or_default(),
         turn_number: state.current_turn as i32,
+        game_mode: game_mode.to_string(),
     }
 }
 
@@ -423,6 +467,7 @@ pub fn player_move_from_json(move_data: &str, player_id: &str) -> Result<PlayerM
     #[derive(Deserialize)]
     struct MoveData {
         position: usize,
+        #[allow(dead_code)]
         tile: Option<(i32, i32, i32)>, // Optionnel car défini par le serveur
     }
 

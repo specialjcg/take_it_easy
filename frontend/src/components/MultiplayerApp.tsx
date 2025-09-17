@@ -169,6 +169,34 @@ const MultiplayerApp: Component = () => {
         gameActions.startGameTurn();
     };
 
+    // ✅ CALCULER LE TITRE EN FONCTION DU MODE DE JEU
+    const gameTitle = createMemo(() => {
+        const state = gameState.gameState();
+        console.log('🔍 DEBUG gameTitle - state:', state);
+        console.log('🔍 DEBUG gameTitle - gameMode:', state?.gameMode);
+
+        if (!state || !state.gameMode) {
+            console.log('🔍 DEBUG gameTitle - pas de state ou gameMode, titre par défaut');
+            return "🎮 Take It Easy - Multiplayer vs MCTS"; // Titre par défaut
+        }
+
+        console.log('🔍 DEBUG gameTitle - switch sur gameMode:', state.gameMode);
+        switch (state.gameMode) {
+            case "single-player":
+                console.log('🔍 DEBUG gameTitle - mode single-player détecté');
+                return "🎮 Take It Easy - Single vs MCTS";
+            case "multiplayer":
+                console.log('🔍 DEBUG gameTitle - mode multiplayer détecté');
+                return "🎮 Take It Easy - Multiplayer vs MCTS";
+            case "training":
+                console.log('🔍 DEBUG gameTitle - mode training détecté');
+                return "🎮 Take It Easy - Training Mode";
+            default:
+                console.log('🔍 DEBUG gameTitle - mode par défaut:', state.gameMode);
+                return "🎮 Take It Easy - Multiplayer vs MCTS";
+        }
+    });
+
     // ✅ MEMO STABLE POUR ÉVITER RE-CRÉATION DU COMPOSANT BOARD
     const stableBoardProps = createMemo(() => {
         const plateauData = gameState.plateauTiles();
@@ -304,14 +332,18 @@ const MultiplayerApp: Component = () => {
                     <div class="game-finished">
                         <h2>🎉 Partie terminée !</h2>
                         <div class="final-scores">
-                            <h3>🏆 Scores finaux</h3>
+                            <h3>🏆 Votre score final</h3>
                             <Show when={gameState.gameState()?.players}>
-                                {gameState.gameState()!.players.map(player => (
-                                    <div class="score-item">
-                                        <span class="player-name">{player.name}</span>
-                                        <span class="player-score">{player.score} points</span>
-                                    </div>
-                                ))}
+                                {(() => {
+                                    const currentSession = gameState.session();
+                                    const currentPlayer = gameState.gameState()?.players?.find(p => p.id === currentSession?.playerId);
+                                    return currentPlayer ? (
+                                        <div class="score-item">
+                                            <span class="player-name">{currentPlayer.name}</span>
+                                            <span class="player-score">{currentPlayer.score} points</span>
+                                        </div>
+                                    ) : null;
+                                })()}
                             </Show>
                         </div>
                     </div>
@@ -337,7 +369,7 @@ const MultiplayerApp: Component = () => {
 
             {/* Interface normale pour les joueurs humains */}
             <Show when={!gameState.session() || gameState.session()?.playerId !== 'mcts_ai'}>
-                <h1>🎮 Take It Easy - Multiplayer vs MCTS</h1>
+                <h1>{gameTitle()}</h1>
 
 
 
@@ -379,17 +411,18 @@ const MultiplayerApp: Component = () => {
                                     />
                                 </div>
                             </Show>
-                            
-                            <button
-                                class="open-mcts-button"
-                                onClick={handleOpenMctsSession}
-                                disabled={!gameState.session()}
-                            >
-                                🤖 Voir session MCTS
-                            </button>
-                            <button onClick={handleLeaveSession} class="leave-button">
-                                Quitter la session
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                    class="open-mcts-button"
+                                    onClick={handleOpenMctsSession}
+                                    disabled={!gameState.session()}
+                                >
+                                    🤖 Voir session MCTS
+                                </button>
+                                <button onClick={handleLeaveSession} class="leave-button">
+                                    Quitter la session
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -401,3 +434,4 @@ const MultiplayerApp: Component = () => {
 };
 
 export default MultiplayerApp;
+

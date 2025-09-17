@@ -69,6 +69,10 @@ export interface GameState {
      * @generated from protobuf field: int32 turn_number = 6
      */
     turnNumber: number;
+    /**
+     * @generated from protobuf field: string game_mode = 7
+     */
+    gameMode: string; // Mode de jeu: "single-player", "multiplayer", etc.
 }
 /**
  * @generated from protobuf message takeiteasygame.v1.Error
@@ -206,7 +210,8 @@ class GameState$Type extends MessageType<GameState> {
             { no: 3, name: "current_player_id", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
             { no: 4, name: "state", kind: "enum", T: () => ["takeiteasygame.v1.SessionState", SessionState] },
             { no: 5, name: "board_state", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 6, name: "turn_number", kind: "scalar", T: 5 /*ScalarType.INT32*/ }
+            { no: 6, name: "turn_number", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
+            { no: 7, name: "game_mode", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
         ]);
     }
     create(value?: PartialMessage<GameState>): GameState {
@@ -217,6 +222,7 @@ class GameState$Type extends MessageType<GameState> {
         message.state = 0;
         message.boardState = "";
         message.turnNumber = 0;
+        message.gameMode = "";
         if (value !== undefined)
             reflectionMergePartial<GameState>(this, message, value);
         return message;
@@ -243,6 +249,9 @@ class GameState$Type extends MessageType<GameState> {
                     break;
                 case /* int32 turn_number */ 6:
                     message.turnNumber = reader.int32();
+                    break;
+                case /* string game_mode */ 7:
+                    message.gameMode = reader.string();
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -274,6 +283,9 @@ class GameState$Type extends MessageType<GameState> {
         /* int32 turn_number = 6; */
         if (message.turnNumber !== 0)
             writer.tag(6, WireType.Varint).int32(message.turnNumber);
+        /* string game_mode = 7; */
+        if (message.gameMode !== "")
+            writer.tag(7, WireType.LengthDelimited).string(message.gameMode);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);

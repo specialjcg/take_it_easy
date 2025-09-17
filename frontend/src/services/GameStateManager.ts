@@ -16,6 +16,9 @@ export class GameStateManager {
      * Convertir l'état de session reçu du backend vers le format local
      */
     static convertSessionState(sessionState: ProtoGameState): GameState {
+        console.log('🔍 DEBUG convertSessionState - sessionState:', sessionState);
+        console.log('🔍 DEBUG convertSessionState - gameMode depuis proto:', sessionState.gameMode);
+
         const gameState = {
             sessionCode: sessionState.sessionId || '',
             state: sessionState.state,
@@ -28,9 +31,11 @@ export class GameStateManager {
                 joinedAt: p.joinedAt.toString()
             })),
             boardState: sessionState.boardState || '{}',
-            currentTurn: sessionState.currentPlayerId
+            currentTurn: sessionState.currentPlayerId,
+            gameMode: sessionState.gameMode || 'multiplayer' // 🔥 AJOUT DU GAMEMMODE !
         };
 
+        console.log('🔍 DEBUG convertSessionState - gameState converti:', gameState);
         return gameState;
     }
 
