@@ -287,7 +287,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut vs_value = nn::VarStore::new(Device::Cpu);
     let input_dim = (5, 47, 1);
     let mut policy_net = PolicyNet::new(&vs_policy, input_dim);
-    let mut value_net = ValueNet::new(&mut vs_value, input_dim);
+    let mut value_net = ValueNet::new(&vs_value, input_dim);
 
     // Load weights if the model directory exists
     if Path::new(model_path).exists() {

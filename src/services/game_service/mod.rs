@@ -65,10 +65,12 @@ impl GameService for GameServiceImpl {
             &self.policy_net,
             &self.value_net,
             self.num_simulations,
-            req.session_id,
-            req.player_id,
-            req.move_data,
-            req.timestamp
+            move_handler::MoveRequest {
+                session_id: req.session_id,
+                player_id: req.player_id,
+                move_data: req.move_data,
+                timestamp: req.timestamp,
+            },
         ).await
     }
 
