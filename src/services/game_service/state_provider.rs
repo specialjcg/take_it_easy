@@ -54,7 +54,7 @@ pub async fn get_game_state_logic(
             let tile_images = generate_tile_image_names(&[tile]);
             tile_images[0].clone()
         })
-        .unwrap_or_else(|| String::new()); // ✅ Chaîne vide au lieu de "000.png"
+        .unwrap_or_default(); // ✅ Chaîne vide au lieu de "000.png"
 
     let final_scores_json = if is_game_finished(&game_state) {
         serde_json::to_string(&game_state.scores).unwrap_or_default()
@@ -108,14 +108,15 @@ pub async fn get_game_state_logic(
 // UTILITAIRE D'AMÉLIORATION D'ÉTAT AVEC IMAGES
 // ============================================================================
 
+type TileCache = std::collections::HashMap<usize, (Vec<String>, Vec<i32>)>;
+
 fn enhance_game_state_with_images(board_state: &str) -> String {
     use std::sync::OnceLock;
-    use std::collections::HashMap as StdHashMap;
-    
-    static EMPTY_TILE_CACHE: OnceLock<StdHashMap<usize, (Vec<String>, Vec<i32>)>> = OnceLock::new();
+
+    static EMPTY_TILE_CACHE: OnceLock<TileCache> = OnceLock::new();
     
     let cache = EMPTY_TILE_CACHE.get_or_init(|| {
-        let mut cache = StdHashMap::new();
+        let mut cache = TileCache::new();
         for size in [19, 20, 25] {
             let empty_tiles = vec![Tile(0, 0, 0); size];
             let empty_images = generate_tile_image_names(&empty_tiles);
@@ -130,7 +131,7 @@ fn enhance_game_state_with_images(board_state: &str) -> String {
         serde_json::json!({"player_plateaus": {}})
     });
 
-    if !game_data.get("player_plateaus").is_some() {
+    if game_data.get("player_plateaus").is_none() {
         game_data["player_plateaus"] = serde_json::json!({});
     }
 

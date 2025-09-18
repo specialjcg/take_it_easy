@@ -21,19 +21,23 @@ use super::session_utils::get_session_by_code_or_id_from_store;
 // LOGIQUE DE GESTION DES MOUVEMENTS
 // ============================================================================
 
+pub struct MoveRequest {
+    pub session_id: String,
+    pub player_id: String,
+    pub move_data: String,
+    pub timestamp: i64,
+}
+
 pub async fn make_move_logic(
     session_manager: &Arc<SessionManager>,
     policy_net: &Arc<Mutex<PolicyNet>>,
     value_net: &Arc<Mutex<ValueNet>>,
     num_simulations: usize,
-    session_id: String,
-    player_id: String,
-    move_data: String,
-    timestamp: i64
+    request: MoveRequest,
 ) -> Result<Response<MakeMoveResponse>, Status> {
     let store = get_store_from_manager(session_manager);
 
-    let session = match get_session_by_code_or_id_from_store(store, &session_id).await {
+    let session = match get_session_by_code_or_id_from_store(store, &request.session_id).await {
         Some(session) => session,
         None => {
             let response = make_move_error_response(
@@ -69,10 +73,10 @@ pub async fn make_move_logic(
     };
 
     // Parser le mouvement du joueur
-    let player_move = match player_move_from_json(&move_data, &player_id) {
+    let player_move = match player_move_from_json(&request.move_data, &request.player_id) {
         Ok(mv) => {
             let mut mv = mv;
-            mv.timestamp = timestamp;
+            mv.timestamp = request.timestamp;
             if let Some(current_tile) = game_state.current_tile {
                 mv.tile = current_tile;
             }
@@ -112,7 +116,7 @@ pub async fn make_move_logic(
             }
 
             update_session_in_store(store, updated_session).await
-                .map_err(|e| Status::internal(e))?;
+                .map_err(Status::internal)?;
 
             let response = make_move_success_response(move_result, &game_mode);
             Ok(Response::new(response))

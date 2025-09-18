@@ -320,7 +320,7 @@ pub fn calculate_final_scores(game_state: &TakeItEasyGameState) -> HashMap<Strin
 pub fn is_game_finished(game_state: &TakeItEasyGameState) -> bool {
     matches!(game_state.game_status, GameStatus::Finished) ||
         game_state.current_turn >= game_state.total_turns ||
-        game_state.player_plateaus.values().all(|plateau| is_plateau_full(plateau))
+        game_state.player_plateaus.values().all(is_plateau_full)
 }
 
 pub fn get_available_positions(game_state: &TakeItEasyGameState, player_id: &str) -> Vec<usize> {
@@ -417,7 +417,7 @@ pub async fn process_player_move_with_mcts(
         new_state.scores.insert(player_id.clone(), current_score);
     }
     
-    let initial_score = new_state.scores.get(&player_move.player_id).unwrap_or(&0).clone();
+    let initial_score = *new_state.scores.get(&player_move.player_id).unwrap_or(&0);
     let points_earned = if let Some(plateau) = new_state.player_plateaus.get(&player_move.player_id) {
         result(plateau) - initial_score
     } else {
