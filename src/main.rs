@@ -1,10 +1,5 @@
 // main.rs - Version corrigée avec les bonnes compatibilités
 use clap::Parser;
-use std::net::SocketAddr;
-use std::path::Path;
-use std::sync::Arc;
-use tch::nn::{self, OptimizerConfig};
-use tch::Device;
 use tokio::net::TcpListener;
 use http::{header, Method, StatusCode};
 use tonic::body::BoxBody;
@@ -15,7 +10,7 @@ use std::pin::Pin;
 use std::future::Future;
 
 use crate::logging::setup_logging;
-use neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::neural::{NeuralManager, NeuralConfig};
 use crate::training::session::train_and_evaluate;
 
 #[cfg(test)]
@@ -159,8 +154,7 @@ impl<S> Layer<S> for SimpleCorsLayer {
 // ============================================================================
 
 async fn start_multiplayer_server(
-    policy_net: PolicyNet,
-    value_net: ValueNet,
+    neural_manager: NeuralManager,
     num_simulations: usize,
     port: u16,
     single_player: bool,
@@ -174,10 +168,13 @@ async fn start_multiplayer_server(
         enable_cors: true,
     };
 
+    // Extract components from neural manager
+    let components = neural_manager.into_components();
+
     let grpc_server = servers::GrpcServer::new(
         grpc_config,
-        policy_net,
-        value_net,
+        components.policy_net,
+        components.value_net,
         num_simulations,
         single_player,
     );
@@ -192,45 +189,36 @@ async fn start_multiplayer_server(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::parse();
-    let model_path = "model_weights";
     setup_logging();
-    // Initialize VarStore (votre système existant)
-    let mut vs_policy = nn::VarStore::new(Device::Cpu);
-    let mut vs_value = nn::VarStore::new(Device::Cpu);
-    let input_dim = (5, 47, 1);
-    let mut policy_net = PolicyNet::new(&vs_policy, input_dim);
-    let mut value_net = ValueNet::new(&vs_value, input_dim);
 
-    // Load weights if the model directory exists
-    if Path::new(model_path).exists() {
-        if let Err(e) = policy_net.load_model(&mut vs_policy, "model_weights/policy/policy.params")
-        {
-            log::error!("⚠️ Error loading PolicyNet: {:?}", e);        }
-
-        if let Err(e) = value_net.load_model(&mut vs_value, "model_weights/value/value.params") {
-            log::error!("⚠️ Error loading ValueNet: {:?}", e);        }
-    } else {    }
-
-    let mut optimizer_policy = nn::Adam::default().build(&vs_policy, 1e-3).unwrap();
-    let mut optimizer_value = nn::Adam {
-        wd: 1e-6,
+    // Initialize neural network manager with configuration
+    let neural_config = NeuralConfig {
+        input_dim: (5, 47, 1),
+        model_path: "model_weights".to_string(),
+        policy_lr: 1e-3,
+        value_lr: 2e-4,
+        value_wd: 1e-6,
         ..Default::default()
-    }
-        .build(&vs_value, 2e-4)
-        .unwrap();
+    };
+
+    let neural_manager = NeuralManager::with_config(neural_config)?;
 
     // Match sur les modes
     match config.mode {
-        GameMode::Training => {            let listener = TcpListener::bind("127.0.0.1:9000")
+        GameMode::Training => {
+            let listener = TcpListener::bind("127.0.0.1:9000")
                 .await
                 .expect("Unable to bind WebSocket on port 9000 for training");
+
+            // For training, extract all components since we need mutable access
+            let mut components = neural_manager.into_components();
             train_and_evaluate(
-                &vs_policy,
-                &vs_value,
-                &mut policy_net,
-                &mut value_net,
-                &mut optimizer_policy,
-                &mut optimizer_value,
+                &components.vs_policy,
+                &components.vs_value,
+                &mut components.policy_net,
+                &mut components.value_net,
+                &mut components.optimizer_policy,
+                &mut components.optimizer_value,
                 config.num_games,
                 config.num_simulations,
                 50,
@@ -238,7 +226,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
                 .await;
         }
-
 
         GameMode::Multiplayer => {
             // Lancer le serveur web en arrière-plan
@@ -254,8 +241,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Lancer le serveur gRPC (bloquant)
             start_multiplayer_server(
-                policy_net,
-                value_net,
+                neural_manager,
                 config.num_simulations,
                 config.port,
                 config.single_player,
