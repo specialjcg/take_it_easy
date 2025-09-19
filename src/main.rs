@@ -5,10 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tch::nn::{self, OptimizerConfig};
 use tch::Device;
-use tokio::fs;
 use tokio::net::TcpListener;
-use tonic::transport::Server;
-use tonic_web::GrpcWebLayer;
 use http::{header, Method, StatusCode};
 use tonic::body::BoxBody;
 use tonic::transport::Body;
@@ -17,24 +14,9 @@ use std::task::{Context, Poll};
 use std::pin::Pin;
 use std::future::Future;
 
-// Imports Axum pour le serveur web
-use axum::{
-    response::Html,
-    routing::get,
-    Router,
-};
-use tower_http::cors::{Any, CorsLayer};
-use tower_http::services::ServeDir;
-
 use crate::logging::setup_logging;
 use neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::training::session::train_and_evaluate;
-
-// Services gRPC
-use crate::services::session_service::SessionServiceImpl;
-use crate::services::game_service::GameServiceImpl;
-use crate::generated::takeiteasygame::v1::session_service_server::SessionServiceServer;
-use crate::generated::takeiteasygame::v1::game_service_server::GameServiceServer;
 
 #[cfg(test)]
 mod test;
@@ -53,6 +35,7 @@ mod training;
 // Nouveaux modules avec paradigme fonctionnel
 mod generated;
 mod services;
+mod servers;
 
 #[derive(Parser, Debug)]
 #[command(name = "take_it_easy")]
@@ -91,32 +74,19 @@ enum GameMode {
 // ============================================================================
 
 async fn start_web_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let app = Router::new()
-        .route("/", get(|| async {
-            Html(fs::read_to_string("web/index.html").await.unwrap_or_else(|_|
-                r#"<!DOCTYPE html>
-<html><head><title>Take It Easy</title></head>
-<body>
-<h1>🎮 Take It Easy - Multiplayer</h1>
-<p>Place your frontend files in ./web/ directory</p>
-<p>gRPC server is running on port 50051</p>
-</body></html>"#.to_string()
-            ))
-        }))
-        .nest_service("/static", ServeDir::new("web"))
-        .fallback_service(ServeDir::new("web"))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any)
-        );
+    let config = servers::WebUiConfig {
+        port: port + 1000,
+        host: "0.0.0.0".to_string(),
+    };
 
-    let addr: SocketAddr = format!("0.0.0.0:{}", port + 1000).parse()?;
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-    Ok(())
+    let web_ui_server = servers::WebUiServer::new(config);
+    web_ui_server.start().await
 }
+
+
+// ============================================================================
+// SIMPLE CORS LAYER FOR WEB SERVICES
+// ============================================================================
 #[derive(Clone)]
 pub struct SimpleCors<S> {
     inner: S,
@@ -195,82 +165,24 @@ async fn start_multiplayer_server(
     port: u16,
     single_player: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
+    log::info!("🎯 Interface web : http://localhost:{}", port + 1000);
 
-    // Créer le session manager partagé
-    let session_manager = Arc::new(crate::services::session_manager::new_session_manager());
+    let grpc_config = servers::GrpcConfig {
+        port,
+        host: "0.0.0.0".to_string(),
+        enable_web_layer: true,
+        enable_cors: true,
+    };
 
-    // Wrapper les réseaux de neurones pour le partage
-    let policy_net_arc = Arc::new(tokio::sync::Mutex::new(policy_net));
-    let value_net_arc = Arc::new(tokio::sync::Mutex::new(value_net));
-
-    // En mode single-player, créer automatiquement une session par défaut
-    if single_player {
-        log::info!("🎮 Création session automatique single-player...");
-        use crate::services::session_manager::{create_session_functional_with_manager, get_session_by_code_with_manager, update_session_with_manager};
-        use crate::generated::takeiteasygame::v1::Player;
-        
-        match create_session_functional_with_manager(&session_manager, 4, "single-player".to_string()).await {
-            Ok(session_code) => {
-                log::info!("✅ Session single-player créée: {}", session_code);
-                
-                // Ajouter MCTS à cette session par défaut
-                if let Some(session) = get_session_by_code_with_manager(&session_manager, &session_code).await {
-                    let mcts_player = Player {
-                        id: "mcts_ai".to_string(),
-                        name: "🤖 MCTS IA".to_string(),
-                        score: 0,
-                        is_ready: true,
-                        is_connected: true,
-                        joined_at: chrono::Utc::now().timestamp(),
-                    };
-                    
-                    let mut updated_session = session;
-                    updated_session.players.insert("mcts_ai".to_string(), mcts_player);
-                    
-                    if let Err(e) = update_session_with_manager(&session_manager, updated_session).await {
-                        log::error!("❌ Erreur ajout MCTS: {}", e);
-                    } else {
-                        log::info!("🤖 MCTS ajouté à la session single-player {}", session_code);
-                    }
-                }
-            },
-            Err(e) => {
-                log::error!("❌ Échec création session single-player: {}", e);
-            }
-        }
-    }
-
-    // Créer les services gRPC (avec les nouvelles méthodes gameplay)
-    let session_service = SessionServiceImpl::new_with_manager_and_mode(session_manager.clone(), single_player);
-    let game_service = GameServiceImpl::new(
-        session_manager.clone(),
-        policy_net_arc.clone(),
-        value_net_arc.clone(),
-        num_simulations
+    let grpc_server = servers::GrpcServer::new(
+        grpc_config,
+        policy_net,
+        value_net,
+        num_simulations,
+        single_player,
     );
 
-    if single_player {
-        log::info!("🤖 Mode SINGLE-PLAYER démarré : 1 joueur vs MCTS ({} simulations)", num_simulations);
-        log::info!("🎯 Interface web : http://localhost:{}", port + 1000);
-        log::info!("🔗 gRPC : localhost:{}", port);
-    } else {
-        log::info!("👥 Mode MULTIJOUEUR démarré : Plusieurs joueurs + MCTS ({} simulations)", num_simulations);
-        log::info!("🎯 Interface web : http://localhost:{}", port + 1000);
-        log::info!("🔗 gRPC : localhost:{}", port);
-    }
-
-    // Serveur gRPC UNIQUEMENT - plus de REST
-    Server::builder()
-        .accept_http1(true)
-        .layer(SimpleCorsLayer)
-        .layer(GrpcWebLayer::new())
-        .add_service(SessionServiceServer::new(session_service))
-        .add_service(GameServiceServer::new(game_service)) // ← Maintenant avec StartTurn et GetGameState
-        .serve(addr)
-        .await?;
-
-    Ok(())
+    grpc_server.start().await
 }
 
 // ============================================================================
