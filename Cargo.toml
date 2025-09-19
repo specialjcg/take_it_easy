@@ -2,6 +2,7 @@
 name = "take_it_easy"
 version = "0.1.0"
 edition = "2021"
+description = "A comprehensive Take It Easy board game implementation with AI capabilities, MCTS engine, and multiplayer support"
 
 [dependencies]
 rand = "0.9.0-beta.1"
@@ -26,6 +27,8 @@ tower-http = { version = "0.6.4", features = ["fs", "cors"] }
 http = "0.2.12"
 tower = "0.4.13"
 futures = "0.3.31"
+thiserror = "1.0"
+
 [build-dependencies]
 tonic-build = "0.10"
 
@@ -41,3 +44,4 @@ codegen-units = 1
 [profile.dev]
 debug = true
 opt-level = 0
+
