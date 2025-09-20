@@ -5,6 +5,7 @@ use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::training::gradient_clipping::enhanced_gradient_clipping;
 use crate::neural::training::normalization::robust_state_normalization;
 
+#[allow(clippy::too_many_arguments)]
 pub fn train_network_with_game_data(
     vs_policy: &nn::VarStore,
     vs_value: &nn::VarStore,
@@ -23,13 +24,13 @@ pub fn train_network_with_game_data(
     // Initialize accumulators
     let mut predictions = Vec::new();
     let mut targets = Vec::new();
-    let mut total_policy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
-    let mut total_value_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
-    let mut total_entropy_loss = Tensor::zeros(&[], tch::kind::FLOAT_CPU);
+    let mut total_policy_loss = Tensor::zeros([], tch::kind::FLOAT_CPU);
+    let mut total_value_loss = Tensor::zeros([], tch::kind::FLOAT_CPU);
+    let mut total_entropy_loss = Tensor::zeros([], tch::kind::FLOAT_CPU);
 
     // Initialize trajectory rewards and discounted sum
     let mut trajectory_rewards = Vec::new();
-    let mut discounted_sum = Tensor::zeros(&[], (tch::Kind::Float, tch::Device::Cpu));
+    let mut discounted_sum = Tensor::zeros([], (tch::Kind::Float, tch::Device::Cpu));
 
     // === Training Loop ===
     for (step, result) in game_data.iter().rev().enumerate() {
@@ -78,7 +79,7 @@ pub fn train_network_with_game_data(
         // === Compute Losses ===
         // Policy loss
         let best_position = result.best_position as i64;
-        let target_policy = Tensor::zeros(&[1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
+        let target_policy = Tensor::zeros([1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
         let _ = target_policy.i((0, best_position)).fill_(1.0);
         let log_policy = pred_policy.log();
         let policy_loss = -(target_policy * log_policy.shallow_clone()).sum(tch::Kind::Float);

@@ -2,8 +2,9 @@
 > vite-template-solid@0.0.0 dev
 > vite
 
+Port 3000 is in use, trying another one...
 
-  VITE v6.3.5  ready in 724 ms
+  VITE v6.3.5  ready in 410 ms
 
-  ➜  Local:   http://localhost:3000/
+  ➜  Local:   http://localhost:3001/
   ➜  Network: use --host to expose

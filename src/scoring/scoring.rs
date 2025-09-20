@@ -1,5 +1,8 @@
+// Type alias for pattern tuple
+type AlignmentPattern = (&'static [usize], Box<dyn Fn(&Tile) -> i32>);
+
 pub fn compute_alignment_score(plateau: &Plateau, position: usize, _tile: &Tile) -> f64 {
-    let patterns: Vec<(&[usize], Box<dyn Fn(&Tile) -> i32>)> = vec![
+    let patterns: Vec<AlignmentPattern> = vec![
         (&[0, 1, 2], Box::new(|t: &Tile| t.0)),
         (&[3, 4, 5, 6], Box::new(|t: &Tile| t.0)),
         (&[7, 8, 9, 10, 11], Box::new(|t: &Tile| t.0)),
@@ -39,11 +42,14 @@ pub fn compute_alignment_score(plateau: &Plateau, position: usize, _tile: &Tile)
 use crate::game::plateau::Plateau;
 use crate::game::tile::Tile;
 
+// Type alias for scoring pattern tuple
+type ScoringPattern = (&'static [usize], i32, Box<dyn Fn(&Tile) -> i32>);
+
 pub fn result(plateau: &Plateau) -> i32 {
     let mut result = 0;
 
     // Inline the logic of calculate_score
-    let patterns: Vec<(&[usize], i32, Box<dyn Fn(&Tile) -> i32>)> = vec![
+    let patterns: Vec<ScoringPattern> = vec![
         (&[0, 1, 2][..], 3, Box::new(|tile: &Tile| tile.0)),
         (&[3, 4, 5, 6][..], 4, Box::new(|tile: &Tile| tile.0)),
         (&[7, 8, 9, 10, 11][..], 5, Box::new(|tile: &Tile| tile.0)),

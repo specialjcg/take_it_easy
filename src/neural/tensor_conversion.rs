@@ -35,10 +35,13 @@ pub fn convert_plateau_to_tensor(
 
     Tensor::from_slice(&features).view([1, 5, 47, 1])
 }
+// Type alias for complex pattern type
+type PatternTuple = (&'static [usize], i32, Box<dyn Fn(&Tile) -> i32>);
+
 fn compute_potential_scores(plateau: &Plateau) -> Vec<f32> {
     let mut scores = vec![0.0; 19]; // Potential score for each position
 
-    let patterns: Vec<(&[usize], i32, Box<dyn Fn(&Tile) -> i32>)> = vec![
+    let patterns: Vec<PatternTuple> = vec![
         (&[0, 1, 2], 3, Box::new(|tile: &Tile| tile.0)),
         (&[3, 4, 5, 6], 4, Box::new(|tile: &Tile| tile.0)),
         (&[7, 8, 9, 10, 11], 5, Box::new(|tile: &Tile| tile.0)),

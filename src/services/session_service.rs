@@ -147,7 +147,7 @@ async fn create_session_logic_with_manager(
 
                         // Sauvegarder avec MCTS
                         update_session_with_manager(manager, updated_session).await
-                            .map_err(|e| Status::internal(e))?;
+                            .map_err(Status::internal)?;
 
                         let response = create_success_response(session_code, session_id, player_id, player);
                         Ok(Response::new(response))
@@ -223,7 +223,7 @@ async fn join_session_logic(
         
         // En mode single-player, permettre les viewers
         if service.single_player_mode {
-            let viewer_id = format!("viewer_{}", uuid::Uuid::new_v4().to_string()[0..8].to_string());
+            let viewer_id = format!("viewer_{}", &uuid::Uuid::new_v4().to_string()[0..8]);
             let _viewer_player = Player {
                 id: viewer_id.clone(),
                 name: player_name.clone(),
@@ -292,7 +292,7 @@ async fn join_session_logic(
             let session_id = updated_session.id.clone();
             let game_state = session_to_game_state(&updated_session);
             update_session_with_manager(manager, updated_session).await
-                .map_err(|e| Status::internal(e))?;
+                .map_err(Status::internal)?;
 
             let response = join_success_response(session_id, player_id, game_state);
             Ok(Response::new(response))

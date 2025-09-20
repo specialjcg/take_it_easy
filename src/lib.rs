@@ -71,8 +71,6 @@ pub use servers::{WebUiServer, WebUiConfig, GrpcServer, GrpcConfig};
 /// Neural network components
 pub use neural::*;
 
-/// Scoring system
-pub use scoring::*;
 
 /// Training capabilities
 pub use training::*;

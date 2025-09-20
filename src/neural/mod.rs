@@ -5,4 +5,4 @@ pub mod training;
 pub mod manager;
 
 // Re-export key components for convenience
-pub use manager::{NeuralManager, NeuralConfig, NeuralComponents, NeuralSummary};
+pub use manager::{NeuralManager, NeuralConfig};

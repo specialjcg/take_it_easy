@@ -49,6 +49,7 @@ pub struct NeuralManager {
     optimizer_value: nn::Optimizer,
 }
 
+#[allow(dead_code)]
 impl NeuralManager {
     /// Create a new neural network manager with default configuration
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
@@ -65,8 +66,8 @@ impl NeuralManager {
         let mut vs_value = nn::VarStore::new(config.device);
 
         // Create networks
-        let mut policy_net = PolicyNet::new(&vs_policy, config.input_dim);
-        let mut value_net = ValueNet::new(&vs_value, config.input_dim);
+        let policy_net = PolicyNet::new(&vs_policy, config.input_dim);
+        let value_net = ValueNet::new(&vs_value, config.input_dim);
 
         // Load weights if model directory exists
         if Path::new(&config.model_path).exists() {
@@ -227,7 +228,9 @@ impl NeuralManager {
 }
 
 /// Components extracted from NeuralManager for ownership transfer
+#[allow(dead_code)]
 pub struct NeuralComponents {
+    #[allow(dead_code)]
     pub config: NeuralConfig,
     pub vs_policy: nn::VarStore,
     pub vs_value: nn::VarStore,
@@ -239,6 +242,7 @@ pub struct NeuralComponents {
 
 /// Summary information about neural networks
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct NeuralSummary {
     pub input_dim: (i64, i64, i64),
     pub device: String,

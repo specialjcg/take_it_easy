@@ -9,7 +9,7 @@ pub struct ResNetBlock {
     downsample: Option<nn::Conv2D>, // Optional downsampling for skip connections
 }
 
-impl<'a> ResNetBlock {
+impl ResNetBlock {
     pub fn new(vs: &nn::VarStore, channels_in: i64, channels_out: i64) -> Self {
         let p = vs.root();
         let conv1 = nn::conv2d(
