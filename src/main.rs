@@ -9,7 +9,6 @@ use std::task::{Context, Poll};
 use std::pin::Pin;
 use std::future::Future;
 
-use crate::logging::setup_logging;
 use crate::neural::{NeuralManager, NeuralConfig};
 use crate::training::session::train_and_evaluate;
 
@@ -189,7 +188,6 @@ async fn start_multiplayer_server(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::parse();
-    setup_logging();
 
     // Initialize neural network manager with configuration
     let neural_config = NeuralConfig {

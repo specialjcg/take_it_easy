@@ -33,7 +33,7 @@ pub fn calculate_line_completion_bonus(_plateau: &Plateau, position: usize, tile
     // Bonus central légèrement plus complexe
     let row = position / 3;
     let col = position % 3;
-    if row >= 1 && row <= 4 && col >= 1 && col <= 1 {
+    if (1..=4).contains(&row) && col >= 1 && col <= 1 {
         bonus += 2.0; // Zone centrale du plateau
     }
 
@@ -58,7 +58,7 @@ pub fn enhanced_position_evaluation(
     // Bonus pour positions centrales stratégiques en début de partie
     let position_bonus = if current_turn < 8 {
         match position {
-            7 | 8 | 9 | 10 | 11 => 5.0,           // Ligne centrale - critique
+            7..=11 => 5.0,           // Ligne centrale - critique
             4 | 5 | 6 | 12 | 13 | 14 | 15 => 3.0, // Positions stratégiques
             _ => 0.0,
         }

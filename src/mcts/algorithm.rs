@@ -14,6 +14,7 @@ use crate::scoring::scoring::result;
 use crate::strategy::position_evaluation::enhanced_position_evaluation;
 use crate::utils::random_index::random_index;
 
+#[allow(clippy::too_many_arguments)]
 pub fn mcts_find_best_position_for_tile_with_nn(
     plateau: &mut Plateau,
     deck: &mut Deck,
@@ -177,7 +178,7 @@ pub fn mcts_find_best_position_for_tile_with_nn(
             total_visits += 1;
 
             let total_score = total_scores.entry(position).or_insert(0.0);
-            *total_score += simulated_score as f64;
+            *total_score += simulated_score;
 
             let exploration_param = c_puct * (total_visits as f64).ln() / (1.0 + *visits as f64);
             let prior_prob = policy.i((0, position as i64)).double_value(&[]);

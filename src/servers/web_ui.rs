@@ -57,10 +57,6 @@ impl WebUiServer {
         Self { config }
     }
 
-    /// Get a reference to the server configuration
-    pub fn config(&self) -> &WebUiConfig {
-        &self.config
-    }
 
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         let app = self.create_router();

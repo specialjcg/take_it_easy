@@ -19,7 +19,6 @@ pub mod turn_manager;
 pub mod state_provider;
 
 // Réexports publics pour compatibilité
-pub use mcts_integration::process_mcts_move_only;
 
 // ============================================================================
 // STRUCTURE PRINCIPALE DU SERVICE

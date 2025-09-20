@@ -233,8 +233,8 @@ pub async fn process_mcts_turn(
         mcts_plateau,
         &mut deck_clone,
         current_tile,
-        &*policy_locked,
-        &*value_locked,
+        &policy_locked,
+        &value_locked,
         num_simulations,
         game_state.current_turn,
         game_state.total_turns,
@@ -287,12 +287,12 @@ pub fn check_turn_completion(
         log::info!("🔍 Tour {}/{}, plateaux pleins: {}", 
                   game_state.current_turn, 
                   game_state.total_turns,
-                  game_state.player_plateaus.values().all(|p| is_plateau_full(p)));
+                  game_state.player_plateaus.values().all(is_plateau_full));
         
         if game_state.current_turn >= game_state.total_turns {
             game_state.game_status = GameStatus::Finished;
             log::info!("🏁 Jeu terminé par tours! Scores finaux: {:?}", game_state.scores);
-        } else if game_state.player_plateaus.values().all(|plateau| is_plateau_full(plateau)) {
+        } else if game_state.player_plateaus.values().all(is_plateau_full) {
             game_state.game_status = GameStatus::Finished;
             log::info!("🏁 Jeu terminé par plateaux pleins! Scores finaux: {:?}", game_state.scores);
         } else {
@@ -304,18 +304,6 @@ pub fn check_turn_completion(
     Ok(game_state)
 }
 
-
-pub fn calculate_final_scores(game_state: &TakeItEasyGameState) -> HashMap<String, i32> {
-    let mut scores = HashMap::new();
-
-    // Utiliser votre fonction de scoring existante
-    for (player_id, plateau) in &game_state.player_plateaus {
-        let score = result(plateau);
-        scores.insert(player_id.clone(), score);
-    }
-
-    scores
-}
 
 pub fn is_game_finished(game_state: &TakeItEasyGameState) -> bool {
     matches!(game_state.game_status, GameStatus::Finished) ||

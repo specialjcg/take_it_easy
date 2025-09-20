@@ -24,6 +24,7 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 
 /// Lance une session MCTS vs Humain - Version refactorisée avec send_websocket_message
+#[allow(clippy::too_many_arguments)]
 pub async fn train_and_evaluate(
     vs_policy: &nn::VarStore,
     vs_value: &nn::VarStore,
@@ -40,6 +41,7 @@ pub async fn train_and_evaluate(
     let mut games_played = 0;
     let results_file = "results.csv";
 
+    #[allow(clippy::never_loop)]
     while let Ok((stream, _)) = listener.accept().await {
         let ws_stream = accept_async(stream)
             .await
@@ -146,7 +148,7 @@ pub async fn train_and_evaluate(
                 if let Some((position, _)) = first_move {
                     scores_by_position
                         .entry(position)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(final_score);
                 }
 
@@ -179,8 +181,8 @@ pub async fn train_and_evaluate(
                 let batch_size = 10;
                 for batch in batch_game_data.chunks(batch_size) {
                     train_network_with_game_data(
-                        &vs_policy,
-                        &vs_value,
+                        vs_policy,
+                        vs_value,
                         batch, // Use each batch directly
                         final_score.into(),
                         policy_net,

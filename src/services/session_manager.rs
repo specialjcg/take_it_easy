@@ -262,7 +262,7 @@ pub async fn get_session_by_code_from_store(
     code: &str
 ) -> Option<GameSession> {
     let state = store.read().await;
-    find_session_by_code(&*state, code).cloned()
+    find_session_by_code(&state, code).cloned()
 }
 
 pub async fn get_session_by_id_from_store(
@@ -270,7 +270,7 @@ pub async fn get_session_by_id_from_store(
     session_id: &str
 ) -> Option<GameSession> {
     let state = store.read().await;
-    find_session_by_id(&*state, session_id).cloned()
+    find_session_by_id(&state, session_id).cloned()
 }
 
 pub async fn update_session_in_store(
@@ -343,7 +343,7 @@ pub async fn create_session_functional_with_manager(
     max_players: i32,
     game_mode: String
 ) -> Result<String, String> {
-    create_session_in_store(get_store_from_manager(manager), max_players, game_mode, |code| Ok(code)).await
+    create_session_in_store(get_store_from_manager(manager), max_players, game_mode, Ok).await
 }
 
 

@@ -136,6 +136,7 @@ impl GrpcServer {
     }
 
     /// Get a reference to the server configuration
+    #[allow(dead_code)]
     pub fn config(&self) -> &GrpcConfig {
         &self.config
     }

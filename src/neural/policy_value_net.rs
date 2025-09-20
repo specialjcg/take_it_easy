@@ -19,7 +19,7 @@ const INITIAL_CONV_CHANNELS: i64 = 128;
 
 const NUM_RES_BLOCKS_VALUE: usize = 4; // Or adjust as needed
 const INITIAL_CONV_CHANNELS_VALUE: i64 = 128;
-impl<'a> PolicyNet {
+impl PolicyNet {
     // policy_value_net.rs (PolicyNet and ValueNet)
     pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64)) -> Self {
         let p = vs.root(); // p is a Path
@@ -33,7 +33,7 @@ impl<'a> PolicyNet {
 
         for _ in 0..NUM_RES_BLOCKS {
             let out_channels = 32; // Or adjust as needed (e.g., increase in stages)
-            res_blocks.push(ResNetBlock::new(&vs, in_channels, out_channels)); // Use &vs here!
+            res_blocks.push(ResNetBlock::new(vs, in_channels, out_channels)); // Use &vs here!
             in_channels = out_channels;
         }
 
@@ -43,7 +43,7 @@ impl<'a> PolicyNet {
         let fc1 = nn::linear(&p / "policy_fc1", 2048, 512, Default::default());
         let policy_head = nn::linear(&p / "policy_head", 512, 19, nn::LinearConfig::default());
 
-        initialize_weights(&vs); // Use &vs here!
+        initialize_weights(vs); // Use &vs here!
 
         Self {
             conv1,
@@ -157,7 +157,7 @@ impl ValueNet {
 
         for _ in 0..NUM_RES_BLOCKS_VALUE {
             let out_channels = 128; // Or adjust as needed
-            res_blocks.push(ResNetBlock::new(&vs, in_channels, out_channels)); // Use &vs here!
+            res_blocks.push(ResNetBlock::new(vs, in_channels, out_channels)); // Use &vs here!
             in_channels = out_channels;
         }
 
@@ -166,7 +166,7 @@ impl ValueNet {
         let fc1 = nn::linear(&p / "value_fc1", 2048, 512, Default::default()); // Added FC layer
         let value_head = nn::linear(&p / "value_head", 512, 1, nn::LinearConfig::default());
 
-        initialize_weights(&vs); // Use &vs here!
+        initialize_weights(vs); // Use &vs here!
 
         Self {
             conv1,
@@ -194,7 +194,7 @@ impl ValueNet {
         // Input validation and normalization
         if x.isnan().any().double_value(&[]) > 0.0 || x.isinf().any().double_value(&[]) > 0.0 {
             log::error!("⚠️ Invalid input to ValueNet");
-            return Tensor::zeros(&[1, 1], (tch::Kind::Float, tch::Device::Cpu));
+            return Tensor::zeros([1, 1], (tch::Kind::Float, tch::Device::Cpu));
         }
 
         // More robust normalization
@@ -215,7 +215,7 @@ impl ValueNet {
             // Check for NaN/Inf after each block
             if h.isnan().any().double_value(&[]) > 0.0 || h.isinf().any().double_value(&[]) > 0.0 {
                 log::error!("⚠️ Invalid values detected in ResNet block");
-                return Tensor::zeros(&[1, 1], (tch::Kind::Float, tch::Device::Cpu));
+                return Tensor::zeros([1, 1], (tch::Kind::Float, tch::Device::Cpu));
             }
         }
 
@@ -244,7 +244,7 @@ impl ValueNet {
         // Final validation
         if output.isnan().any().double_value(&[]) > 0.0 || output.isinf().any().double_value(&[]) > 0.0 {
             log::error!("⚠️ Invalid output from ValueNet");
-            return Tensor::zeros(&[1, 1], (tch::Kind::Float, tch::Device::Cpu));
+            return Tensor::zeros([1, 1], (tch::Kind::Float, tch::Device::Cpu));
         }
 
         output
