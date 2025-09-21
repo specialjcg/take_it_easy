@@ -50,7 +50,7 @@ pub mod utils;
 // ============================================================================
 
 mod generated;
-mod services;
+pub mod services;
 mod data;
 mod strategy;
 mod logging;
