@@ -208,6 +208,7 @@ async fn api_launch_mode(Json(request): Json<LaunchRequest>) -> Result<ResponseJ
     }
 }
 
+#[cfg(not(test))]
 async fn api_stop_all() -> ResponseJson<ApiResponse> {
     log::info!("🛑 Stop all requested");
 
@@ -226,6 +227,17 @@ async fn api_stop_all() -> ResponseJson<ApiResponse> {
         .args(["-c", "rm -f .rust_game_pid .frontend_pid .rust_pid || true"])
         .output();
 
+    ResponseJson(ApiResponse {
+        status: "stopped".to_string(),
+        message: "All processes stopped".to_string(),
+    })
+}
+
+#[cfg(test)]
+async fn api_stop_all() -> ResponseJson<ApiResponse> {
+    log::info!("🛑 Stop all requested (test mode - mocked)");
+
+    // In test mode, just return success without actually stopping processes
     ResponseJson(ApiResponse {
         status: "stopped".to_string(),
         message: "All processes stopped".to_string(),
