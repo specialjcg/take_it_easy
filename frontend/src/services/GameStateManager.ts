@@ -16,8 +16,9 @@ export class GameStateManager {
      * Convertir l'état de session reçu du backend vers le format local
      */
     static convertSessionState(sessionState: ProtoGameState): GameState {
-        console.log('🔍 DEBUG convertSessionState - sessionState:', sessionState);
-        console.log('🔍 DEBUG convertSessionState - gameMode depuis proto:', sessionState.gameMode);
+        // ✅ SUPPRESSION DES LOGS POUR ÉVITER POLLUTION CONSOLE PENDANT POLLING
+        // console.log('🔍 DEBUG convertSessionState - sessionState:', sessionState);
+        // console.log('🔍 DEBUG convertSessionState - gameMode depuis proto:', sessionState.gameMode);
 
         const gameState = {
             sessionCode: sessionState.sessionId || '',
@@ -35,7 +36,7 @@ export class GameStateManager {
             gameMode: sessionState.gameMode || 'multiplayer' // 🔥 AJOUT DU GAMEMMODE !
         };
 
-        console.log('🔍 DEBUG convertSessionState - gameState converti:', gameState);
+        // console.log('🔍 DEBUG convertSessionState - gameState converti:', gameState);
         return gameState;
     }
 
@@ -84,8 +85,6 @@ export class GameStateManager {
                 const newPositionsHash = this.generateHash(newPositions);
 
                 if (newPositionsHash !== this.lastAvailablePositionsHash) {
-                    // ✅ LOGS DÉSACTIVÉS - Évite spam console  
-                    // console.log('🎯 Available positions updated:', newPositions.length);
                     this.lastAvailablePositionsHash = newPositionsHash;
                     setAvailablePositions(newPositions);
                 }

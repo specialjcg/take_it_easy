@@ -286,6 +286,9 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
     });
 
     const handlePlayMove = (position: number) => {
+        const timestamp = performance.now();
+        console.log(`🎯 [${timestamp.toFixed(0)}ms] handlePlayMove DÉBUT - position: ${position}`);
+
         // ✅ FONCTION OPTIMISTE POUR RÉACTIVITÉ IMMÉDIATE
         const updatePlateauTilesOptimistic = (pos: number, tile: string | null) => {
             if (tile) {
@@ -300,13 +303,19 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
             }
         };
 
+        console.log(`🚀 [${timestamp.toFixed(0)}ms] Appel gameActions.playMove...`);
+
+        const startPlayMove = performance.now();
         gameActions.playMove(
-            position, 
-            gameState.myTurn, 
+            position,
+            gameState.myTurn,
             polling.markActionPerformed,
             updatePlateauTilesOptimistic,
             gameState.currentTile
         );
+        const endPlayMove = performance.now();
+
+        console.log(`⏱️ [${endPlayMove.toFixed(0)}ms] gameActions.playMove terminé - durée: ${(endPlayMove - startPlayMove).toFixed(1)}ms`);
     };
 
     // ============================================================================

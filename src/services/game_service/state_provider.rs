@@ -110,7 +110,7 @@ pub async fn get_game_state_logic(
 
 type TileCache = std::collections::HashMap<usize, (Vec<String>, Vec<i32>)>;
 
-fn enhance_game_state_with_images(board_state: &str) -> String {
+pub fn enhance_game_state_with_images(board_state: &str) -> String {
     use std::sync::OnceLock;
 
     static EMPTY_TILE_CACHE: OnceLock<TileCache> = OnceLock::new();
