@@ -109,19 +109,27 @@ export class GameStateManager {
         setAvailablePositions: (positions: number[]) => void,
         session: () => { playerId: string } | null,
     ) {
+        console.log('👁️ VIEWER DEBUG: Fonction appelée', { gameState, session: session() });
+
         if (gameState.player_plateaus) {
+            console.log('👁️ VIEWER DEBUG: player_plateaus trouvé', gameState.player_plateaus);
+
             const currentSession = session();
             if (currentSession && currentSession.playerId.includes('viewer')) {
+                console.log('👁️ VIEWER DEBUG: Session viewer confirmée', currentSession.playerId);
+
                 const mctsPlateau = gameState.player_plateaus?.['mcts_ai'];
+                console.log('👁️ VIEWER DEBUG: Plateau MCTS', mctsPlateau);
+
                 if (mctsPlateau) {
                     const newPlateauTiles = { 'mcts_ai': mctsPlateau.tile_images || [] };
+                    console.log('👁️ VIEWER DEBUG: Nouveau plateau MCTS', newPlateauTiles);
 
                     // ✅ COMPARAISON POUR VIEWER AUSSI
                     const newPlateauHash = this.generateHash(newPlateauTiles);
 
                     if (newPlateauHash !== this.lastPlateauTilesHash) {
-                        // ✅ LOGS DÉSACTIVÉS - Même pour le viewer
-                        // console.log('👀 VIEWER: plateau changed');
+                        console.log('👀 VIEWER: plateau MCTS mis à jour!', newPlateauTiles);
                         this.lastPlateauTilesHash = newPlateauHash;
                         setPlateauTiles(newPlateauTiles);
                     }
@@ -192,11 +200,12 @@ export class GameStateManager {
         const currentSession = session();
         if (!currentSession) return;
 
+        // Créer un viewer spécialisé pour voir le plateau MCTS
         const mctsUrl = `${window.location.origin}${window.location.pathname}?` +
             `sessionCode=${currentSession.sessionCode}&` +
             `playerId=mcts_viewer&` +
             `playerName=${encodeURIComponent('🔍 MCTS Viewer')}&` +
-            `mode=viewer`;
+            `mode=mcts_view`;
 
         window.open(mctsUrl, '_blank', 'width=1200,height=800');
     }
@@ -215,38 +224,26 @@ export class GameStateManager {
         const playerName = urlParams.get('playerName');
         const mode = urlParams.get('mode');
 
-        // Mode viewer spécifique
-        if (sessionCode && playerId && playerName && mode === 'viewer') {
+        // Mode viewer spécifique (viewer normal et mcts_view)
+        if (sessionCode && playerId && playerName && (mode === 'viewer' || mode === 'mcts_view')) {
             setPlayerName(decodeURIComponent(playerName));
             setSessionCode(sessionCode);
 
             setTimeout(async () => {
                 try {
                     await joinSession();
+                    console.log(`🔍 ${mode === 'mcts_view' ? 'MCTS Viewer' : 'Viewer'} connecté à la session ${sessionCode}`);
                 } catch (error) {
-                    // Silent
+                    console.error(`❌ Erreur connexion ${mode}:`, error);
                 }
             }, 1000);
             return;
         }
 
-        // 🎮 MODE SINGLE-PLAYER AUTO-CONNEXION
-        // En mode single-player, se connecter automatiquement avec un nom par défaut
+        // 🎮 AUTO-CONNEXION DÉSACTIVÉE - Utiliser le sélecteur de mode
+        // La sélection de mode se fait maintenant via l'interface GameModeSelector
         if (!sessionCode && !mode) {
-            // Pas de paramètres URL = probablement mode single-player
-            const defaultPlayerName = `Joueur-${Math.random().toString(36).substring(2, 6)}`;
-            setPlayerName(defaultPlayerName);
-            setSessionCode('AUTO'); // Code spécial qui sera résolu par le backend
-            
-            // Connexion automatique après un délai
-            setTimeout(async () => {
-                try {
-                    console.log('🎮 Auto-connexion en mode single-player...');
-                    await joinSession();
-                } catch (error) {
-                    console.error('❌ Échec auto-connexion:', error);
-                }
-            }, 2000); // Délai plus long pour s'assurer que le backend est prêt
+            console.log('🎮 Sélection de mode activée - pas d\'auto-connexion');
         }
     }
 

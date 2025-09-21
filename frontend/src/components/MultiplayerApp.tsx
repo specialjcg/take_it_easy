@@ -1,6 +1,7 @@
 // src/components/MultiplayerApp.tsx - Version refactorisée et modulaire
-import { Component, createEffect, onMount, Show, createMemo } from 'solid-js';
+import { Component, createEffect, onMount, Show, createMemo, createSignal } from 'solid-js';
 import { SessionState } from '../generated/common';
+import { GameMode } from './GameModeSelector';
 
 // Import des hooks personnalisés
 import { useGameState } from '../hooks/useGameState';
@@ -20,20 +21,47 @@ import { HexagonalGameBoard } from './ui/HexagonalGameBoard'; // ⚠️ IMPORT C
 // Import du CSS externe
 import '../styles/multiplayer.css';
 
+interface MultiplayerAppProps {
+  gameMode: GameMode;
+  autoConnectSolo: boolean;
+  onBackToModeSelection: () => void;
+}
+
 /**
  * Composant principal refactorisé - Orchestrateur principal
  * Réduit de 2208 → ~150 lignes grâce à la modularisation
  */
-const MultiplayerApp: Component = () => {
+const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
     // ============================================================================
     // HOOKS PERSONNALISÉS
     // ============================================================================
 
     const gameState = useGameState();
+
+    // Détecter le mode MCTS viewer depuis l'URL
+    const [isMctsViewer, setIsMctsViewer] = createSignal(false);
+
     const updatePlateauFunction = () => {
         const currentSession = gameState.session();
-        if (currentSession && currentSession.playerId.includes('viewer')) {
-            // Mode viewer : afficher tous les plateaux
+        const isViewer = currentSession && currentSession.playerId.includes('viewer');
+        const isMctsMode = isMctsViewer();
+
+        // FORCE: Détecter le mode mcts_view depuis l'URL directement
+        const urlParams = new URLSearchParams(window.location.search);
+        const isUrlMctsView = urlParams.get('mode') === 'mcts_view';
+
+        console.log('🔍 DEBUG updatePlateauFunction:', {
+            currentSession: currentSession?.playerId,
+            isViewer,
+            isMctsMode,
+            isUrlMctsView,
+            willUseViewer: isViewer || isMctsMode || isUrlMctsView
+        });
+
+        // Mode viewer : inclure les viewers normaux ET le mode mcts_view
+        if (isViewer || isMctsMode || isUrlMctsView) {
+            console.log('👁️ UTILISATION FONCTION VIEWER');
+            // Mode viewer : afficher le plateau MCTS
             return (state: any) => GameStateManager.updatePlateauTilesForViewer(
                 state,
                 gameState.setPlateauTiles,
@@ -41,6 +69,7 @@ const MultiplayerApp: Component = () => {
                 gameState.session,
             );
         } else {
+            console.log('🎮 UTILISATION FONCTION NORMALE');
             // Mode normal : afficher le plateau du joueur
             return (state: any) => GameStateManager.updatePlateauTiles(
                 state,
@@ -82,8 +111,23 @@ const MultiplayerApp: Component = () => {
     // EFFETS ET LIFECYCLE
     // ============================================================================
 
-    // Auto-connexion via URL
+    // Auto-connexion via URL pour mode viewer seulement
     onMount(() => {
+        // Détecter si on est en mode mcts_view
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode');
+        if (mode === 'mcts_view') {
+            setIsMctsViewer(true);
+            console.log('🔍 Mode MCTS Viewer détecté depuis URL');
+        }
+
+        // DEBUG: Log de la session du viewer
+        console.log('🔍 DEBUG onMount:', {
+            urlParams: Object.fromEntries(urlParams),
+            isMctsViewer: mode === 'mcts_view'
+        });
+
+        // Seule l'auto-connexion via paramètres URL est conservée (mode viewer)
         GameStateManager.handleAutoConnection(
             gameState.setPlayerName,
             gameState.setSessionCode,
@@ -97,10 +141,54 @@ const MultiplayerApp: Component = () => {
         );
     });
 
+    // Auto-connexion en mode solo
+    createEffect(() => {
+        if (props.autoConnectSolo && !gameState.session()) {
+            console.log('🤖 Auto-connexion mode solo déclenchée');
+
+            // Générer un nom de joueur par défaut
+            const defaultPlayerName = `Joueur-${Math.random().toString(36).substring(2, 6)}`;
+            gameState.setPlayerName(defaultPlayerName);
+
+            // Créer automatiquement une session avec le mode sélectionné
+            setTimeout(() => {
+                console.log('🎮 Création automatique session solo...');
+                handleCreateSession();
+            }, 500); // Petit délai pour s'assurer que les états sont bien initialisés
+        }
+    });
+
+    // Auto-démarrage du premier tour en mode solo
+    createEffect(() => {
+        const state = gameState.gameState();
+        const currentSession = gameState.session();
+
+        // En mode solo, démarrer automatiquement le premier tour
+        if (props.autoConnectSolo &&
+            currentSession &&
+            state &&
+            state.state === SessionState.IN_PROGRESS &&
+            gameState.currentTurnNumber() === 0 &&
+            !gameState.currentTile()) {
+
+            console.log('🎲 Auto-démarrage du premier tour en mode solo...');
+            setTimeout(() => {
+                handleStartGameTurn();
+            }, 1000); // Délai pour laisser le temps au backend de s'initialiser
+        }
+    });
+
+
     // Démarrer le polling quand on rejoint une session
     createEffect(() => {
         const currentSession = gameState.session();
         if (currentSession) {
+            console.log('🔍 DEBUG session connectée:', {
+                sessionId: currentSession.sessionId,
+                playerId: currentSession.playerId,
+                isViewer: currentSession.playerId.includes('viewer'),
+                isMctsMode: isMctsViewer()
+            });
             polling.startPolling(currentSession.sessionId);
         } else {
             polling.stopPolling();
@@ -138,7 +226,8 @@ const MultiplayerApp: Component = () => {
             gameState.playerName,
             gameState.setSession,
             gameState.setGameState,
-            GameStateManager.convertSessionState
+            GameStateManager.convertSessionState,
+            props.gameMode.id
         );
     };
 
@@ -169,32 +258,9 @@ const MultiplayerApp: Component = () => {
         gameActions.startGameTurn();
     };
 
-    // ✅ CALCULER LE TITRE EN FONCTION DU MODE DE JEU
+    // ✅ CALCULER LE TITRE EN FONCTION DU MODE SÉLECTIONNÉ
     const gameTitle = createMemo(() => {
-        const state = gameState.gameState();
-        console.log('🔍 DEBUG gameTitle - state:', state);
-        console.log('🔍 DEBUG gameTitle - gameMode:', state?.gameMode);
-
-        if (!state || !state.gameMode) {
-            console.log('🔍 DEBUG gameTitle - pas de state ou gameMode, titre par défaut');
-            return "🎮 Take It Easy - Multiplayer vs MCTS"; // Titre par défaut
-        }
-
-        console.log('🔍 DEBUG gameTitle - switch sur gameMode:', state.gameMode);
-        switch (state.gameMode) {
-            case "single-player":
-                console.log('🔍 DEBUG gameTitle - mode single-player détecté');
-                return "🎮 Take It Easy - Single vs MCTS";
-            case "multiplayer":
-                console.log('🔍 DEBUG gameTitle - mode multiplayer détecté');
-                return "🎮 Take It Easy - Multiplayer vs MCTS";
-            case "training":
-                console.log('🔍 DEBUG gameTitle - mode training détecté');
-                return "🎮 Take It Easy - Training Mode";
-            default:
-                console.log('🔍 DEBUG gameTitle - mode par défaut:', state.gameMode);
-                return "🎮 Take It Easy - Multiplayer vs MCTS";
-        }
+        return `${props.gameMode.icon} ${props.gameMode.name}`;
     });
 
     // ✅ MEMO STABLE POUR ÉVITER RE-CRÉATION DU COMPOSANT BOARD
@@ -358,8 +424,8 @@ const MultiplayerApp: Component = () => {
 
     return (
         <div class="multiplayer-app">
-            {/* Interface MCTS spécialisée */}
-            <Show when={gameState.session()?.playerId === 'mcts_ai'}>
+            {/* Interface MCTS spécialisée - Pour MCTS réel ou viewer */}
+            <Show when={gameState.session()?.playerId === 'mcts_ai' || isMctsViewer()}>
                 <MCTSInterface
                     sessionCode={() => gameState.session()?.sessionCode || ''}
                     myTurn={gameState.myTurn}
@@ -368,8 +434,23 @@ const MultiplayerApp: Component = () => {
             </Show>
 
             {/* Interface normale pour les joueurs humains */}
-            <Show when={!gameState.session() || gameState.session()?.playerId !== 'mcts_ai'}>
-                <h1>{gameTitle()}</h1>
+            <Show when={gameState.session() && gameState.session()?.playerId !== 'mcts_ai' && !isMctsViewer()}>
+                <div class="header-section">
+                    <div class="title-with-back">
+                        <button
+                            class="back-button"
+                            onClick={props.onBackToModeSelection}
+                            title="Retour à la sélection de mode"
+                        >
+                            ← Retour
+                        </button>
+                        <h1>{gameTitle()}</h1>
+                    </div>
+                    <p class="mode-description">{props.gameMode.description}</p>
+                    <Show when={props.gameMode.simulations}>
+                        <p class="mode-tech-info">🧠 MCTS : {props.gameMode.simulations} simulations par coup</p>
+                    </Show>
+                </div>
 
 
 
@@ -379,8 +460,8 @@ const MultiplayerApp: Component = () => {
                     statusMessage={gameState.statusMessage}
                 />
 
-                {/* Interface de connexion */}
-                <Show when={!gameState.session()}>
+                {/* Interface de connexion - Masquée en mode solo auto-connect */}
+                <Show when={!gameState.session() && !props.autoConnectSolo}>
                     <ConnectionInterface
                         playerName={gameState.playerName}
                         setPlayerName={gameState.setPlayerName}
@@ -390,6 +471,15 @@ const MultiplayerApp: Component = () => {
                         onCreateSession={handleCreateSession}
                         onJoinSession={handleJoinSession}
                     />
+                </Show>
+
+                {/* Message de chargement en mode solo */}
+                <Show when={!gameState.session() && props.autoConnectSolo}>
+                    <div class="loading-solo glass-container">
+                        <h3>🤖 Préparation de la partie solo...</h3>
+                        <p>Connexion automatique en cours...</p>
+                        <div class="loading-spinner">⚡</div>
+                    </div>
                 </Show>
 
                 {/* Interface de jeu */}

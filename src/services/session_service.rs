@@ -11,7 +11,7 @@ use crate::generated::takeiteasygame::v1::{
 use crate::generated::takeiteasygame::v1::*;
 use crate::generated::takeiteasygame::v1::session_service_server::SessionService;
 
-use crate::services::session_manager::{SessionManager, get_store_from_manager, add_player_to_session, set_player_ready_in_session_with_min, session_to_game_state, transform_session_in_store, get_session_by_code_with_manager, update_session_with_manager, create_session_functional_with_manager, get_session_by_id_with_manager};
+use crate::services::session_manager::{SessionManager, get_store_from_manager, add_player_to_session, set_player_ready_in_session_with_min, session_to_game_state, transform_session_in_store, get_session_by_code_with_manager, update_session_with_manager, create_session_functional_with_manager, get_session_by_id_with_manager, all_players_ready, start_game};
 
 #[derive(Clone)]
 pub struct SessionServiceImpl {
@@ -126,8 +126,8 @@ async fn create_session_logic_with_manager(
                 match add_player_to_session(session.clone(), player_name.clone()) {
                     Ok((mut updated_session, player_id)) => {
 
-                        // 🤖 AJOUTER MCTS SEULEMENT EN MODE SINGLE-PLAYER
-                        if service.single_player_mode {
+                        // 🤖 AJOUTER MCTS AUTOMATIQUEMENT POUR LES MODES SINGLE-PLAYER
+                        if updated_session.game_mode.starts_with("single-player") || updated_session.game_mode == "training" {
                             let mcts_player = Player {
                                 id: "mcts_ai".to_string(),
                                 name: "🤖 MCTS IA".to_string(),
@@ -138,7 +138,19 @@ async fn create_session_logic_with_manager(
                             };
 
                             updated_session.players.insert("mcts_ai".to_string(), mcts_player);
-                            log::info!("🤖 MCTS automatiquement ajouté à la session {}", updated_session.code);
+                            log::info!("🤖 MCTS automatiquement ajouté à la session {} (mode: {})", updated_session.code, updated_session.game_mode);
+
+                            // 🎮 EN MODE SOLO: Mettre automatiquement le joueur humain prêt aussi
+                            if let Some(human_player) = updated_session.players.get_mut(&player_id) {
+                                human_player.is_ready = true;
+                                log::info!("🎮 Joueur humain {} automatiquement mis prêt en mode solo", player_id);
+                            }
+
+                            // Vérifier si le jeu peut démarrer automatiquement
+                            if all_players_ready(&updated_session) && updated_session.players.len() >= 2 {
+                                updated_session = start_game(updated_session);
+                                log::info!("🚀 Jeu démarré automatiquement en mode solo !");
+                            }
                         }
                         let player = updated_session.players.get(&player_id).cloned()
                             .ok_or_else(|| Status::internal("Player not found after creation"))?;
@@ -221,10 +233,10 @@ async fn join_session_logic(
     if player_name.contains("Viewer") || player_name.contains("Observer") {
         log::info!("👁️ Viewer {} rejoint session {}", player_name, session_code);
         
-        // En mode single-player, permettre les viewers
-        if service.single_player_mode {
+        // Permettre les viewers pour les sessions solo (selon game_mode)
+        if service.single_player_mode || session.game_mode.starts_with("single-player") || session.game_mode == "training" {
             let viewer_id = format!("viewer_{}", &uuid::Uuid::new_v4().to_string()[0..8]);
-            let _viewer_player = Player {
+            let viewer_player = Player {
                 id: viewer_id.clone(),
                 name: player_name.clone(),
                 score: 0,
@@ -233,8 +245,14 @@ async fn join_session_logic(
                 joined_at: chrono::Utc::now().timestamp(),
             };
 
-            let session_id = session.id.clone();
-            let game_state = session_to_game_state(&session);
+            // ✅ AJOUTER LE VIEWER À LA SESSION POUR QU'IL REÇOIVE LES MISES À JOUR
+            let mut updated_session = session.clone();
+            updated_session.players.insert(viewer_id.clone(), viewer_player);
+            update_session_with_manager(manager, updated_session.clone()).await
+                .map_err(Status::internal)?;
+
+            let session_id = updated_session.id.clone();
+            let game_state = session_to_game_state(&updated_session);
             let response = join_success_response(session_id, viewer_id, game_state);
             return Ok(Response::new(response));
         } else {
@@ -250,9 +268,22 @@ async fn join_session_logic(
     match add_player_to_session(session, player_name.clone()) {
         Ok((mut updated_session, player_id)) => {
 
+            // ✅ AJOUTER MCTS AUTOMATIQUEMENT EN MODE SOLO
+            if updated_session.game_mode.starts_with("single-player") || updated_session.game_mode == "training" {
+                let mcts_player = Player {
+                    id: "mcts_ai".to_string(),
+                    name: "🤖 MCTS IA".to_string(),
+                    score: 0,
+                    is_ready: true,
+                    is_connected: true,
+                    joined_at: chrono::Utc::now().timestamp(),
+                };
+                updated_session.players.insert("mcts_ai".to_string(), mcts_player);
+                log::info!("🤖 MCTS IA automatiquement ajouté en mode solo");
+            }
 
             // 🎮 EN MODE SINGLE-PLAYER: joueur humain automatiquement prêt + démarrage auto
-            if service.single_player_mode {
+            if service.single_player_mode || updated_session.game_mode.starts_with("single-player") || updated_session.game_mode == "training" {
                 if let Some(player) = updated_session.players.get_mut(&player_id) {
                     player.is_ready = true;
                     log::info!("🎯 Joueur {} automatiquement prêt en mode single-player", player_name);

@@ -1,6 +1,6 @@
 // src/index.tsx
 import { render } from 'solid-js/web';
-import MultiplayerApp from "./components/MultiplayerApp";
+import App from "./components/App";
 
 const root = document.getElementById('root');
 
@@ -10,4 +10,4 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   );
 }
 
-render(() => <MultiplayerApp />, root!);
+render(() => <App />, root!);

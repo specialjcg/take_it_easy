@@ -192,12 +192,12 @@ pub fn set_player_ready_in_session_with_min(
 // FONCTIONS PURES - UTILITAIRES
 // ============================================================================
 
-fn all_players_ready(session: &GameSession) -> bool {
+pub fn all_players_ready(session: &GameSession) -> bool {
     !session.players.is_empty() &&
         session.players.values().all(|p| p.is_ready && p.is_connected)
 }
 
-fn start_game(session: GameSession) -> GameSession {
+pub fn start_game(session: GameSession) -> GameSession {
     let mut new_session = session;
     new_session.state = 1; // IN_PROGRESS
 
