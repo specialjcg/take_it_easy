@@ -1,2 +1,0 @@
-warning: struct `MoveRequest` is never constructed
-warning: function `make_move_logic` is never used
