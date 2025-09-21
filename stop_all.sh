@@ -1,40 +1,25 @@
 #!/bin/bash
 
-# Script d'arrêt Take It Easy
-# Usage: ./stop_all.sh
+# stop_all.sh - Arrêter tous les services Take It Easy
+echo "🛑 Stopping Take It Easy services..."
 
-# Couleurs pour les logs
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Stop backend
+echo "🤖 Stopping backend..."
+pkill -f "take_it_easy --mode" 2>/dev/null || echo "   No backend process found"
 
-echo -e "${YELLOW}🛑 Arrêt de Take It Easy...${NC}"
+# Stop frontend
+echo "🌐 Stopping frontend..."
+pkill -f "npm run dev" 2>/dev/null || echo "   No frontend process found"
 
-cd "$(dirname "$0")"
+# Clean up any remaining node processes
+pkill -f "vite" 2>/dev/null || true
 
-# Arrêter via les PIDs sauvegardés
-if [[ -f .rust_pid ]]; then
-    echo -e "${BLUE}🦀 Arrêt du backend Rust...${NC}"
-    kill "$(cat .rust_pid)" 2>/dev/null || true
-    rm -f .rust_pid
-    echo -e "${GREEN}✅ Backend arrêté${NC}"
-fi
+# Clean up ports
+echo "🔧 Cleaning up ports..."
+lsof -ti:3000,3001,50051 | xargs kill -9 2>/dev/null || true
 
-if [[ -f .frontend_pid ]]; then
-    echo -e "${BLUE}⚛️ Arrêt du frontend...${NC}"
-    kill "$(cat .frontend_pid)" 2>/dev/null || true
-    rm -f .frontend_pid
-    echo -e "${GREEN}✅ Frontend arrêté${NC}"
-fi
+echo "✅ All services stopped!"
 
-# Nettoyage complet par nom de processus
-echo -e "${YELLOW}🧹 Nettoyage des processus restants...${NC}"
-pkill -f "take_it_easy.*multiplayer" 2>/dev/null || true
-pkill -f "vite.*dev" 2>/dev/null || true
-
-# Nettoyage des fichiers de logs
-rm -f backend.log frontend.log
-
-echo -e "${GREEN}🎉 Take It Easy complètement arrêté !${NC}"
+# Show status
+echo "📋 Port status:"
+netstat -tulpn 2>/dev/null | grep -E ":300[01]|:50051" || echo "   All ports free"

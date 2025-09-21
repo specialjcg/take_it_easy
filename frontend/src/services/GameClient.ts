@@ -56,14 +56,14 @@ export class GameClient {
     // MÉTHODES GESTION DE SESSION (avec debug amélioré)
     // ============================================================================
 
-    async createSession(playerName: string) {
-        this.debugLog('📝 createSession DÉBUT', { playerName });
+    async createSession(playerName: string, gameMode: string = "multiplayer") {
+        this.debugLog('📝 createSession DÉBUT', { playerName, gameMode });
 
         try {
             const request: CreateSessionRequest = {
                 playerName: playerName,
                 maxPlayers: 4,
-                gameMode: "multiplayer"
+                gameMode: gameMode
             };
 
             this.debugLog('📤 Envoi createSession request', request);

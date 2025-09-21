@@ -141,47 +141,10 @@ impl GrpcServer {
         &self.config
     }
 
-    /// Initialize single-player session if needed
+    /// Initialize single-player session if needed - DÉSACTIVÉ pour le mode sélection frontend
     async fn init_single_player_session(&self) -> Result<(), Box<dyn std::error::Error>> {
-        if !self.single_player {
-            return Ok(());
-        }
-
-        log::info!("🎮 Création session automatique single-player...");
-        use crate::services::session_manager::{create_session_functional_with_manager, get_session_by_code_with_manager, update_session_with_manager};
-        use crate::generated::takeiteasygame::v1::Player;
-
-        match create_session_functional_with_manager(&self.session_manager, 4, "single-player".to_string()).await {
-            Ok(session_code) => {
-                log::info!("✅ Session single-player créée: {}", session_code);
-
-                // Ajouter MCTS à cette session par défaut
-                if let Some(session) = get_session_by_code_with_manager(&self.session_manager, &session_code).await {
-                    let mcts_player = Player {
-                        id: "mcts_ai".to_string(),
-                        name: "🤖 MCTS IA".to_string(),
-                        score: 0,
-                        is_ready: true,
-                        is_connected: true,
-                        joined_at: chrono::Utc::now().timestamp(),
-                    };
-
-                    let mut updated_session = session;
-                    updated_session.players.insert("mcts_ai".to_string(), mcts_player);
-
-                    if let Err(e) = update_session_with_manager(&self.session_manager, updated_session).await {
-                        log::error!("❌ Erreur ajout MCTS: {}", e);
-                    } else {
-                        log::info!("🤖 MCTS ajouté à la session single-player {}", session_code);
-                    }
-                }
-            },
-            Err(e) => {
-                log::error!("❌ Échec création session single-player: {}", e);
-                return Err(e.into());
-            }
-        }
-
+        // ✅ DÉSACTIVÉ: Les sessions sont maintenant créées via le frontend avec mode sélectionné
+        log::info!("🎮 Auto-création de sessions désactivée - utiliser le frontend pour sélectionner le mode");
         Ok(())
     }
 

@@ -1,5 +1,6 @@
 // components/ui/MCTSInterface.tsx - Interface spécialisée MCTS
-import { Component, Show } from 'solid-js';
+import { Component, Show, createMemo } from 'solid-js';
+import { useGameState } from '../../hooks/useGameState';
 
 interface MCTSInterfaceProps {
     sessionCode: () => string;
@@ -13,6 +14,20 @@ interface MCTSInterfaceProps {
  */
 // Dans MCTSInterface.tsx - AMÉLIORER avec info plateau MCTS
 export const MCTSInterface: Component<MCTSInterfaceProps> = (props) => {
+    const gameState = useGameState();
+
+    // Informations sur le MCTS depuis le state de la session
+    const mctsInfo = createMemo(() => {
+        const state = gameState.gameState();
+        const mctsPlayer = state?.players?.find(p => p.id === 'mcts_ai');
+        return {
+            name: mctsPlayer?.name || '🤖 MCTS IA',
+            score: mctsPlayer?.score || 0,
+            isReady: mctsPlayer?.isReady || false,
+            isConnected: mctsPlayer?.isConnected || false
+        };
+    });
+
     return (
         <div class="mcts-interface">
             <div class="mcts-header">
@@ -20,6 +35,13 @@ export const MCTSInterface: Component<MCTSInterfaceProps> = (props) => {
                 <div class="mcts-session-info">
                     <span>Session: <strong>{props.sessionCode()}</strong></span>
                     <span>Mode: <strong>🤖 Plateau MCTS IA</strong></span>
+                </div>
+                <div class="mcts-player-info">
+                    <span>Joueur: <strong>{mctsInfo().name}</strong></span>
+                    <span>Score: <strong>{mctsInfo().score} points</strong></span>
+                    <span class={mctsInfo().isConnected ? 'status-connected' : 'status-disconnected'}>
+                        {mctsInfo().isConnected ? '🟢 Connecté' : '🔴 Déconnecté'}
+                    </span>
                 </div>
             </div>
 

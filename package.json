@@ -1,0 +1,17 @@
+{
+  "name": "take-it-easy-fullstack",
+  "version": "1.0.0",
+  "description": "Take It Easy - Full stack Rust + SolidJS game",
+  "scripts": {
+    "dev": "./dev_start.sh",
+    "start": "./start_all.sh",
+    "stop": "./stop_all.sh",
+    "build": "cargo build --release && cd frontend && npm run build",
+    "clean": "cargo clean && cd frontend && rm -rf dist node_modules/.vite",
+    "backend": "cargo run -- --mode multiplayer",
+    "frontend": "cd frontend && npm run dev"
+  },
+  "keywords": ["rust", "solidjs", "grpc", "mcts", "game"],
+  "author": "Your Name",
+  "license": "MIT"
+}

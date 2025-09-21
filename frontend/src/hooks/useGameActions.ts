@@ -174,7 +174,8 @@ export const useGameActions = (
         playerName: () => string,
         setSession: (session: Session) => void,
         setGameState: (state: GameState) => void,
-        convertSessionState: (sessionState: any) => GameState
+        convertSessionState: (sessionState: any) => GameState,
+        gameMode?: string
     ) => {
         if (!playerName().trim()) {
             setError('Veuillez entrer votre nom');
@@ -184,7 +185,7 @@ export const useGameActions = (
         loadingManager.setLoading('create-session', true);
         setError('');
 
-        const result = await gameClient.createSession(playerName());
+        const result = await gameClient.createSession(playerName(), gameMode || "multiplayer");
 
         if (result.success) {
             // Validation des données de session

@@ -17,6 +17,115 @@
 }
 
 /* =============================================================================
+   HEADER SECTION WITH BACK BUTTON
+   ============================================================================= */
+
+.header-section {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: white;
+}
+
+.title-with-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  position: relative;
+}
+
+.back-button {
+  position: absolute;
+  left: -8rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.back-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateX(-4px);
+}
+
+.mode-description {
+  font-size: 1.2rem;
+  opacity: 0.9;
+  margin-bottom: 0.5rem;
+}
+
+.mode-tech-info {
+  font-size: 1rem;
+  color: #a78bfa;
+  font-weight: 500;
+}
+
+/* =============================================================================
+   LOADING SOLO MODE
+   ============================================================================= */
+
+.loading-solo {
+  text-align: center;
+  padding: 2rem;
+  margin: 2rem auto;
+  max-width: 400px;
+}
+
+.loading-solo h3 {
+  color: #a78bfa;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.loading-solo p {
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 1.5rem;
+}
+
+.loading-spinner {
+  font-size: 2rem;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* =============================================================================
+   MCTS INTERFACE IMPROVEMENTS
+   ============================================================================= */
+
+.mcts-player-info {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.mcts-player-info span {
+  padding: 0.3rem 0.6rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.status-connected {
+  background: rgba(34, 197, 94, 0.2) !important;
+  color: #22c55e;
+}
+
+.status-disconnected {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #ef4444;
+}
+
+/* =============================================================================
    COMPACT TILE DISPLAY
    ============================================================================= */
 
