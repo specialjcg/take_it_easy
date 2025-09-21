@@ -1,0 +1,28 @@
+warning: struct `MoveRequest` is never constructed
+  --> src/services/game_service/move_handler.rs:24:12
+   |
+24 | pub struct MoveRequest {
+   |            ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `make_move_logic` is never used
+  --> src/services/game_service/move_handler.rs:31:14
+   |
+31 | pub async fn make_move_logic(
+   |              ^^^^^^^^^^^^^^^
+
+warning: `take_it_easy` (lib) generated 2 warnings
+warning: `take_it_easy` (bin "take_it_easy") generated 2 warnings (2 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running tests/lib_integration_test.rs (target/debug/deps/lib_integration_test-e51b2b5f29c059c9)
+
+running 5 tests
+test test_error_types ... ok
+test test_library_metadata ... ok
+test test_result_type_alias ... ok
+test test_server_configs ... ok
+test test_web_ui_server_creation ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

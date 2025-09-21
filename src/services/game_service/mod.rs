@@ -14,6 +14,7 @@ pub mod response_builders;
 pub mod session_utils;
 pub mod mcts_integration;
 pub mod move_handler;
+pub mod async_move_handler;
 pub mod available_moves;
 pub mod turn_manager;
 pub mod state_provider;
@@ -59,12 +60,14 @@ impl GameService for GameServiceImpl {
         request: Request<MakeMoveRequest>,
     ) -> Result<Response<MakeMoveResponse>, Status> {
         let req = request.into_inner();
-        move_handler::make_move_logic(
+
+        // ✅ NOUVEAU: Utiliser le handler asynchrone pour feedback immédiat
+        async_move_handler::make_move_async_logic(
             &self.session_manager,
             &self.policy_net,
             &self.value_net,
             self.num_simulations,
-            move_handler::MoveRequest {
+            async_move_handler::AsyncMoveRequest {
                 session_id: req.session_id,
                 player_id: req.player_id,
                 move_data: req.move_data,

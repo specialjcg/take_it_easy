@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::generated::takeiteasygame::v1::*;
 use crate::services::game_manager::{
-    TakeItEasyGameState, create_take_it_easy_game, start_new_turn, check_turn_completion
+    TakeItEasyGameState, create_take_it_easy_game, start_new_turn
 };
 use crate::services::session_manager::{
     get_store_from_manager, SessionManager, update_session_in_store
@@ -16,7 +16,7 @@ use crate::utils::image::generate_tile_image_names;
 
 use super::response_builders::{start_turn_success_response, start_turn_error_response};
 use super::session_utils::get_session_by_code_or_id_from_store;
-use super::mcts_integration::process_mcts_move_only;
+// use super::mcts_integration::process_mcts_move_only; // Pas utilisé dans cette approche réactive
 
 // ============================================================================
 // LOGIQUE DE GESTION DES TOURS
@@ -24,9 +24,9 @@ use super::mcts_integration::process_mcts_move_only;
 
 pub async fn start_turn_logic(
     session_manager: &Arc<SessionManager>,
-    policy_net: &Arc<Mutex<PolicyNet>>,
-    value_net: &Arc<Mutex<ValueNet>>,
-    num_simulations: usize,
+    _policy_net: &Arc<Mutex<PolicyNet>>,
+    _value_net: &Arc<Mutex<ValueNet>>,
+    _num_simulations: usize,
     session_id: String
 ) -> Result<Response<StartTurnResponse>, Status> {
     let store = get_store_from_manager(session_manager);
@@ -69,33 +69,13 @@ pub async fn start_turn_logic(
         }
     };
 
-    // ✅ NOUVEAU: FAIRE JOUER MCTS AUTOMATIQUEMENT DÈS QU'UNE TUILE EST DISPONIBLE
-    let final_state = if new_state.waiting_for_players.contains(&"mcts_ai".to_string()) {
-        // Utiliser la fonction process_mcts_move_only
-        match process_mcts_move_only(
-            new_state.clone(),
-            policy_net,
-            value_net,
-            num_simulations
-        ).await {
-            Ok((updated_state, _mcts_move)) => {
-                let update_state_clone = updated_state.clone();
-                // Vérifier si le tour est terminé après que MCTS ait joué
-                match check_turn_completion(update_state_clone) {
-                    Ok(completed_state) => completed_state,
-                    Err(_e) => updated_state.clone()
-                }
-            },
-            Err(_e) => {
-                // Retirer MCTS de la liste pour ne pas bloquer le jeu
-                let mut fallback_state = new_state.clone();
-                fallback_state.waiting_for_players.retain(|id| id != "mcts_ai");
-                fallback_state
-            }
-        }
-    } else {
-        new_state
-    };
+    // 🚀 SOLUTION UI RÉACTIVE: NE PAS faire jouer MCTS automatiquement dans start_turn
+    // MCTS jouera seulement après que le joueur humain ait fait son mouvement
+    // Cela permet au joueur de cliquer immédiatement sans attendre 30s
+    let final_state = new_state;
+
+    // MCTS est gardé dans waiting_for_players mais ne joue pas automatiquement ici
+    // Il jouera via le système async après le clic du joueur humain
 
     // Extraire les informations de la tuile
     let announced_tile = final_state.current_tile.unwrap();
@@ -106,9 +86,13 @@ pub async fn start_turn_logic(
     let waiting_for_players = final_state.waiting_for_players.clone();
     let game_state_json = serde_json::to_string(&final_state).unwrap_or_default();
 
-    // Sauvegarder l'état mis à jour (avec le mouvement MCTS si applicable)
+    // 🚀 SOLUTION RÉACTIVITÉ: Enrichir immédiatement avec available_positions
+    // Cela évite d'attendre le polling pour avoir les positions disponibles
+    let enhanced_game_state_json = crate::services::game_service::state_provider::enhance_game_state_with_images(&game_state_json);
+
+    // Sauvegarder l'état mis à jour ET enrichi
     let mut updated_session = session;
-    updated_session.board_state = game_state_json.clone();
+    updated_session.board_state = enhanced_game_state_json.clone();
 
     if let Err(e) = update_session_in_store(store, updated_session).await {
         return Ok(Response::new(start_turn_error_response(format!("Failed to update session: {}", e))));
@@ -119,7 +103,7 @@ pub async fn start_turn_logic(
         tile_image,
         turn_number,
         waiting_for_players,
-        game_state_json
+        enhanced_game_state_json
     );
     Ok(Response::new(response))
 }

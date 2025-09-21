@@ -130,11 +130,33 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
     };
 
     /**
-     * 🚀 GESTION CLIC ULTRA-RAPIDE AVEC FEEDBACK VISUEL
+     * 🚀 GESTION CLIC ULTRA-RAPIDE AVEC FEEDBACK VISUEL + DEBUG
      */
     const handleCanvasClick = (e: MouseEvent) => {
+        const timestamp = performance.now();
+        console.log(`🎯 [${timestamp.toFixed(0)}ms] CLIC DÉTECTÉ sur canvas`);
+
         const currentSession = untrack(() => props.session());
-        if (!currentSession || currentSession.playerId.includes('viewer') || !props.myTurn()) {
+        const myTurn = props.myTurn();
+        const isGameStarted = props.isGameStarted?.() ?? true;
+        const currentTile = props.currentTile?.();
+
+        console.log(`🔍 [${timestamp.toFixed(0)}ms] État clic:`, {
+            hasSession: !!currentSession,
+            playerId: currentSession?.playerId,
+            isViewer: currentSession?.playerId.includes('viewer'),
+            myTurn,
+            isGameStarted,
+            currentTile,
+            availablePositions: props.availablePositions().length
+        });
+
+        if (!currentSession || currentSession.playerId.includes('viewer') || !myTurn) {
+            console.log(`❌ [${timestamp.toFixed(0)}ms] CLIC BLOQUÉ - raison:`, {
+                noSession: !currentSession,
+                isViewer: currentSession?.playerId.includes('viewer'),
+                notMyTurn: !myTurn
+            });
             return;
         }
 
@@ -147,14 +169,22 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
         const gridOriginX = canvasRef.width / 2 - hexWidth;
         const gridOriginY = canvasRef.height / 2 - 2 * offsetY;
 
+        console.log(`🎯 [${timestamp.toFixed(0)}ms] Recherche position pour clic (${clickX.toFixed(0)}, ${clickY.toFixed(0)})`);
+
         for (let index = 0; index < hexPositions.length; index++) {
             const [q, r] = hexPositions[index];
             const x = gridOriginX + q * hexWidth + r * (hexWidth / 6) + 50;
             const y = gridOriginY + r * offsetY - 50;
 
             if (isPointInHexagon(clickX, clickY, x, y, hexRadius)) {
+                console.log(`🎯 [${timestamp.toFixed(0)}ms] Position détectée: ${index} (${x.toFixed(0)}, ${y.toFixed(0)})`);
+
                 const availablePos = untrack(() => props.availablePositions());
+                console.log(`🔍 [${timestamp.toFixed(0)}ms] Positions disponibles:`, availablePos);
+
                 if (availablePos.includes(index)) {
+                    console.log(`✅ [${timestamp.toFixed(0)}ms] Position ${index} autorisée - APPEL onTileClick`);
+
                     // 🚀 FEEDBACK VISUEL IMMÉDIAT
                     const ctx = canvasRef.getContext('2d');
                     if (ctx) {
@@ -163,18 +193,28 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
                         ctx.lineWidth = 3;
                         drawHexagon(ctx, x, y, false);
                         ctx.restore();
-                        
+
                         // Reset après 150ms
                         setTimeout(() => {
                             if (ctx) drawHexagon(ctx, x, y, false);
                         }, 150);
                     }
-                    
+
+                    const startOnTileClick = performance.now();
+                    console.log(`🚀 [${startOnTileClick.toFixed(0)}ms] DÉBUT appel props.onTileClick(${index})`);
+
                     props.onTileClick(index);
+
+                    const endOnTileClick = performance.now();
+                    console.log(`⏱️ [${endOnTileClick.toFixed(0)}ms] FIN appel onTileClick - durée: ${(endOnTileClick - startOnTileClick).toFixed(1)}ms`);
+                } else {
+                    console.log(`❌ [${timestamp.toFixed(0)}ms] Position ${index} NON autorisée`);
                 }
                 return;
             }
         }
+
+        console.log(`❌ [${timestamp.toFixed(0)}ms] Aucune position détectée pour ce clic`);
     };
 
     /**
