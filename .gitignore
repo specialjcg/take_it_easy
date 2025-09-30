@@ -1,7 +1,58 @@
+# Rust
 /target
-diff_output.txt
-.idea
+Cargo.lock
+*.rs.bk
+*.pdb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+backend.log
+frontend.log
+build.log
+lib_tests.log
+integration_tests.log
+
+# Data files
 game_data.csv
 results.csv
-model_weights
-image
+*.pt
+game_data_states.pt
+game_data_positions.pt
+game_data_subscores.pt
+diff_output.txt
+
+# Model & Training
+model_weights/
+*.ckpt
+*.safetensors
+
+# Images & Media
+image/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.svelte-kit/
+frontend/package-lock.json
+
+# Coverage
+coverage/
+*.profraw
+*.profdata
+
+# Environment
+.env
+.env.local
