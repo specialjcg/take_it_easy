@@ -34,7 +34,7 @@ model_weights/
 *.safetensors
 
 # Images & Media
-image/
+frontend/image/
 
 # macOS
 .DS_Store
