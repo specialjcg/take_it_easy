@@ -13,11 +13,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use take_it_easy::{
-//!     game::GameEngine,
-//!     servers::{WebUiServer, WebUiConfig},
-//!     mcts::MctsEngine,
-//! };
+
 //! ```
 
 // ============================================================================
