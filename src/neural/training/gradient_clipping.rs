@@ -75,10 +75,7 @@ fn log_gradient_norms(max_grad_value: f64, max_grad_policy: f64) {
 
 /// Version simple du clipping des gradients
 #[allow(dead_code)]
-pub fn simple_gradient_clipping(
-    vs: &nn::VarStore,
-    max_norm: f64,
-) -> f64 {
+pub fn simple_gradient_clipping(vs: &nn::VarStore, max_norm: f64) -> f64 {
     let mut max_grad: f64 = 0.0;
 
     tch::no_grad(|| {

@@ -1,3 +1,10 @@
+//! Self-play training orchestration for the Take It Easy AI.
+//!
+//! The module provides two entrypoints:
+//! - [`train_and_evaluate`], which expects a WebSocket client (front-end) and streams live updates.
+//! - [`train_and_evaluate_offline`], which replays games entirely offline for headless or CI workloads.
+//! Both variants persist game data to `.pt` files, retrain the policy/value networks, evaluate them
+//! periodically, and checkpoint the weights under `model_weights/`.
 use crate::data::append_result::append_to_results_file;
 use crate::data::load_data::load_game_data;
 use crate::data::save_data::save_game_data;
@@ -12,9 +19,9 @@ use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::training::trainer::train_network_with_game_data;
 use crate::scoring::scoring::result;
 use crate::training::evaluator::evaluate_model;
-use crate::training::websocket::{send_websocket_message};
+use crate::training::websocket::send_websocket_message;
 use crate::utils::image::generate_tile_image_names;
-use futures_util::{StreamExt};
+use futures_util::StreamExt;
 use rand::{rng, Rng};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -78,11 +85,9 @@ pub async fn train_and_evaluate(
                     });
 
                     // 🔄 REMPLACEMENT: write.send() → send_websocket_message()
-                    if let Err(e) = send_websocket_message(
-                        &mut write,
-                        payload.to_string(),
-                        &listener
-                    ).await {
+                    if let Err(e) =
+                        send_websocket_message(&mut write, payload.to_string(), &listener).await
+                    {
                         log::error!("Failed to send tile preview: {}", e);
                         break;
                     }
@@ -113,11 +118,10 @@ pub async fn train_and_evaluate(
                     });
 
                     // 🔄 REMPLACEMENT: Logique complexe de reconnexion → send_websocket_message()
-                    if let Err(e) = send_websocket_message(
-                        &mut write,
-                        score_payload.to_string(),
-                        &listener
-                    ).await {
+                    if let Err(e) =
+                        send_websocket_message(&mut write, score_payload.to_string(), &listener)
+                            .await
+                    {
                         log::error!("Failed to send score update: {}", e);
                         break;
                     }
@@ -134,8 +138,10 @@ pub async fn train_and_evaluate(
                     if let Err(e) = send_websocket_message(
                         &mut write,
                         payload_after_placement.to_string(),
-                        &listener
-                    ).await {
+                        &listener,
+                    )
+                    .await
+                    {
                         log::error!("Failed to send plateau update: {}", e);
                         break;
                     }
@@ -169,6 +175,9 @@ pub async fn train_and_evaluate(
                     best_position: result.best_position,
                     board_tensor: result.board_tensor.shallow_clone(),
                     subscore: result.subscore,
+                    policy_distribution: result.policy_distribution.shallow_clone(),
+                    policy_distribution_boosted: result.policy_distribution_boosted.shallow_clone(),
+                    boost_intensity: result.boost_intensity,
                 }));
 
                 // Keep only last max_memory_size experiences
@@ -190,7 +199,8 @@ pub async fn train_and_evaluate(
                         optimizer_policy,
                         optimizer_value,
                     );
-                }                scores.push(final_score);
+                }
+                scores.push(final_score);
 
                 // Update batch-specific counters
                 batch_games_played += 1;
@@ -200,11 +210,9 @@ pub async fn train_and_evaluate(
                     let moyenne: f64 = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
                     // 🔄 REMPLACEMENT: write.send().await.unwrap() → send_websocket_message()
                     let result_message = format!("GAME_RESULT:{}", moyenne);
-                    if let Err(e) = send_websocket_message(
-                        &mut write,
-                        result_message,
-                        &listener
-                    ).await {
+                    if let Err(e) =
+                        send_websocket_message(&mut write, result_message, &listener).await
+                    {
                         log::error!("Failed to send game result: {}", e);
                     }
                 }
@@ -244,7 +252,6 @@ pub async fn train_and_evaluate(
             // Evaluate model after each interval
             evaluate_model(policy_net, value_net, num_simulations).await;
 
-         
             let _model_path = "model_weights";
             // Save model weights
             if let Err(e) = policy_net.save_model(vs_policy, "model_weights/policy/policy.params") {
@@ -255,5 +262,175 @@ pub async fn train_and_evaluate(
             }
         }
         break; // Exit after handling one connection
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn train_and_evaluate_offline(
+    vs_policy: &nn::VarStore,
+    vs_value: &nn::VarStore,
+    policy_net: &mut PolicyNet,
+    value_net: &mut ValueNet,
+    optimizer_policy: &mut Optimizer,
+    optimizer_value: &mut Optimizer,
+    num_games: usize,
+    num_simulations: usize,
+    evaluation_interval: usize,
+) {
+    let mut total_score = 0;
+    let mut games_played = 0;
+    let results_file = "results.csv";
+    let evaluation_interval_average = 10;
+    let max_memory_size = 1000;
+    let mut scores_by_position: HashMap<usize, Vec<i32>> = HashMap::new();
+    let mut scores = Vec::new();
+
+    let eval_interval = evaluation_interval.max(1);
+
+    while games_played < num_games {
+        let mut batch_games_played = 0;
+
+        for game in 0..eval_interval {
+            if games_played + batch_games_played >= num_games {
+                break;
+            }
+
+            let mut deck = create_deck();
+            let mut plateau = create_plateau_empty();
+            let mut game_data = Vec::new();
+            let mut first_move: Option<(usize, Tile)> = None;
+            let total_turns = 19;
+            let mut current_turn = 0;
+
+            while !is_plateau_full(&plateau) {
+                let tile_index = rng().random_range(0..deck.tiles.len());
+                let chosen_tile = deck.tiles[tile_index];
+
+                let game_result = mcts_find_best_position_for_tile_with_nn(
+                    &mut plateau,
+                    &mut deck,
+                    chosen_tile,
+                    policy_net,
+                    value_net,
+                    num_simulations,
+                    current_turn,
+                    total_turns,
+                );
+
+                let best_position = game_result.best_position;
+                if first_move.is_none() {
+                    first_move = Some((best_position, chosen_tile));
+                }
+                plateau.tiles[best_position] = chosen_tile;
+                deck = replace_tile_in_deck(&deck, &chosen_tile);
+
+                game_data.push(game_result);
+                current_turn += 1;
+            }
+
+            let final_score = result(&plateau);
+
+            if let Some((position, _)) = first_move {
+                scores_by_position
+                    .entry(position)
+                    .or_default()
+                    .push(final_score);
+            }
+
+            let mut batch_game_data = Vec::new();
+
+            let prioritized_data: Vec<MCTSResult> = load_game_data("game_data")
+                .into_iter()
+                .filter(|r| r.subscore > 100.0)
+                .take(50)
+                .collect();
+
+            batch_game_data.extend(prioritized_data);
+            batch_game_data.extend(game_data.iter().map(|result| MCTSResult {
+                best_position: result.best_position,
+                board_tensor: result.board_tensor.shallow_clone(),
+                subscore: result.subscore,
+                policy_distribution: result.policy_distribution.shallow_clone(),
+                policy_distribution_boosted: result.policy_distribution_boosted.shallow_clone(),
+                boost_intensity: result.boost_intensity,
+            }));
+
+            if batch_game_data.len() > max_memory_size {
+                let to_remove = batch_game_data.len() - max_memory_size;
+                batch_game_data.drain(0..to_remove);
+            }
+
+            let batch_size = 10;
+            for batch in batch_game_data.chunks(batch_size) {
+                train_network_with_game_data(
+                    vs_policy,
+                    vs_value,
+                    batch,
+                    final_score.into(),
+                    policy_net,
+                    value_net,
+                    optimizer_policy,
+                    optimizer_value,
+                );
+            }
+
+            scores.push(final_score);
+            batch_games_played += 1;
+            total_score += final_score;
+
+            let progress_game = games_played + batch_games_played;
+            if progress_game % 10 == 0 || progress_game == num_games {
+                log::info!(
+                    "[OfflineTraining] Progress {}/{} (last score {})",
+                    progress_game,
+                    num_games,
+                    final_score
+                );
+            }
+
+            if game % evaluation_interval_average == 0 && game != 0 {
+                let moyenne: f64 = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+                log::info!("[OfflineTraining] GAME_RESULT: {:.2}", moyenne);
+            }
+
+            save_game_data("game_data", game_data);
+        }
+
+        if batch_games_played == 0 {
+            break;
+        }
+
+        games_played += batch_games_played;
+
+        let avg_score = total_score as f64 / games_played as f64;
+        append_to_results_file(results_file, avg_score);
+
+        let mut averages: Vec<(usize, f64)> = scores_by_position
+            .iter()
+            .map(|(position, scores)| {
+                let average_score: f64 = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+                (*position, average_score)
+            })
+            .collect();
+
+        averages.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        log::info!("\n[OfflineTraining] --- Average Scores by First Position (Sorted) ---");
+        for (position, average_score) in averages {
+            log::info!(
+                "[OfflineTraining] Position: {}, Average Score: {:.2}",
+                position,
+                average_score
+            );
+        }
+
+        evaluate_model(policy_net, value_net, num_simulations).await;
+
+        if let Err(e) = policy_net.save_model(vs_policy, "model_weights/policy/policy.params") {
+            log::error!("[OfflineTraining] Error saving PolicyNet weights: {:?}", e);
+        }
+        if let Err(e) = value_net.save_model(vs_value, "model_weights/value/value.params") {
+            log::error!("[OfflineTraining] Error saving ValueNet weights: {:?}", e);
+        }
     }
 }

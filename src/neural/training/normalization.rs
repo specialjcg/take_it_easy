@@ -1,6 +1,6 @@
 //! Normalisation robuste des données pour l'entraînement
 
-use tch::{Tensor, IndexOp};
+use tch::{IndexOp, Tensor};
 
 /// Applique une normalisation robuste basée sur la médiane (MAD)
 pub fn robust_state_normalization(state: &Tensor) -> Tensor {

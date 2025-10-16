@@ -11,6 +11,7 @@ A tile-placement strategy game with real-time multiplayer support and advanced M
 - **Auto-progression:** Automatic tile drawing and turn advancement when all players finish
 - **Web Interface:** Modern SolidJS frontend with real-time game state updates
 - **Performance Optimized:** Async architecture with optimized session lookups and caching
+- **Headless Training:** Offline self-play generator for unattended dataset creation
 
 ## Quick Start
 
@@ -31,11 +32,23 @@ cargo run -- --mode multiplayer --port 50051
 - Independent player progression
 
 ### Training Mode
-```bash  
-cargo run -- --mode training --num-games 500
+```bash
+# WebSocket-driven (requires UI connected to ws://127.0.0.1:9000)
+cargo run -- --mode training --num-games 500 --evaluation-interval 50
+
+# Headless / CI friendly variant
+cargo run -- --mode training --num-games 500 --offline-training --evaluation-interval 50
 ```
-- Neural network training via self-play
-- WebSocket monitoring on port 9000
+- Generates self-play data and continually fine-tunes policy/value networks
+- Offline mode writes progress to logs and is recommended for dataset farming
+
+### Transformer Experiments
+```bash
+# Fine-tune Transformer on generated `.pt` tensors (loads/saves transformer_weights/)
+cargo run -- --mode transformer-training --num-games 500
+```
+- Trains a lightweight attention model to predict best moves / expected score
+- Logs evaluation every few epochs and checkpoints weights automatically
 
 ## Architecture
 
@@ -57,4 +70,7 @@ cargo run -- --mode training --num-games 500
 - **PyTorch C++ (libtorch):** Required for neural networks via `tch` crate
 - **Node.js 18+:** For frontend development and building
 
-
+Configure libtorch before running the binary:
+```bash
+export LD_LIBRARY_PATH="$HOME/libtorch-clean/libtorch/lib:$LD_LIBRARY_PATH"
+```

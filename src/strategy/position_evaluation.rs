@@ -58,7 +58,7 @@ pub fn enhanced_position_evaluation(
     // Bonus pour positions centrales stratégiques en début de partie
     let position_bonus = if current_turn < 8 {
         match position {
-            7..=11 => 5.0,           // Ligne centrale - critique
+            7..=11 => 5.0,                        // Ligne centrale - critique
             4 | 5 | 6 | 12 | 13 | 14 | 15 => 3.0, // Positions stratégiques
             _ => 0.0,
         }

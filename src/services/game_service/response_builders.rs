@@ -1,27 +1,31 @@
 // src/services/game_service/response_builders.rs - Constructeurs de réponses gRPC
 
 use crate::generated::takeiteasygame::v1::*;
-use crate::services::game_manager::{MoveResult, take_it_easy_state_to_protobuf, mcts_move_to_json};
+use crate::services::game_manager::{
+    mcts_move_to_json, take_it_easy_state_to_protobuf, MoveResult,
+};
 
 // ============================================================================
 // CONSTRUCTEURS DE RÉPONSES - FONCTIONS PURES
 // ============================================================================
 
 pub fn make_move_success_response(move_result: MoveResult, game_mode: &str) -> MakeMoveResponse {
-    let mcts_response_json = move_result.mcts_response
+    let mcts_response_json = move_result
+        .mcts_response
         .as_ref()
         .and_then(|mcts| mcts_move_to_json(mcts).ok())
         .unwrap_or_default();
 
     MakeMoveResponse {
-        result: Some(make_move_response::Result::Success(
-            MakeMoveSuccess {
-                new_game_state: Some(take_it_easy_state_to_protobuf(&move_result.new_game_state, game_mode)),
-                mcts_response: mcts_response_json,
-                points_earned: move_result.points_earned,
-                is_game_over: move_result.is_game_over,
-            }
-        )),
+        result: Some(make_move_response::Result::Success(MakeMoveSuccess {
+            new_game_state: Some(take_it_easy_state_to_protobuf(
+                &move_result.new_game_state,
+                game_mode,
+            )),
+            mcts_response: mcts_response_json,
+            points_earned: move_result.points_earned,
+            is_game_over: move_result.is_game_over,
+        })),
     }
 }
 
@@ -36,8 +40,8 @@ pub fn make_move_error_response(code: String, message: String) -> MakeMoveRespon
 }
 
 pub fn available_moves_success_response(
-    positions: Vec<usize>, 
-    current_tile: Option<crate::game::tile::Tile>
+    positions: Vec<usize>,
+    current_tile: Option<crate::game::tile::Tile>,
 ) -> GetAvailableMovesResponse {
     let moves_json: Vec<String> = positions
         .iter()
@@ -45,7 +49,8 @@ pub fn available_moves_success_response(
             serde_json::json!({
                 "position": pos,
                 "tile": current_tile.map(|t| (t.0, t.1, t.2))
-            }).to_string()
+            })
+            .to_string()
         })
         .collect();
 
@@ -71,7 +76,7 @@ pub fn start_turn_success_response(
     tile_image: String,
     turn_number: i32,
     waiting_for_players: Vec<String>,
-    game_state_json: String
+    game_state_json: String,
 ) -> StartTurnResponse {
     StartTurnResponse {
         success: true,
@@ -107,7 +112,7 @@ pub fn game_state_success_response(
     current_turn: i32,
     waiting_for_players: Vec<String>,
     is_game_finished: bool,
-    final_scores_json: String
+    final_scores_json: String,
 ) -> GetGameStateResponse {
     GetGameStateResponse {
         success: true,

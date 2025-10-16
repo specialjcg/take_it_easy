@@ -1,6 +1,6 @@
+use chrono::Utc;
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Write};
-use chrono::Utc;
 
 pub fn append_to_results_file(file_path: &str, avg_score: f64) {
     let timestamp = Utc::now().to_rfc3339();

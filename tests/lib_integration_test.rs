@@ -1,9 +1,8 @@
 //! Integration tests for the Take It Easy library public API
 
 use take_it_easy::{
-    servers::{WebUiServer, WebUiConfig},
-    VERSION, NAME, DESCRIPTION,
-    TakeItEasyError, Result,
+    servers::{WebUiConfig, WebUiServer},
+    Result, TakeItEasyError, DESCRIPTION, NAME, VERSION,
 };
 
 #[test]

@@ -3,10 +3,10 @@
 //! Centralized management of neural networks for the Take It Easy game.
 //! Handles initialization, loading, and configuration of policy and value networks.
 
-use std::path::Path;
-use tch::{nn, Device};
-use tch::nn::OptimizerConfig;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use std::path::Path;
+use tch::nn::OptimizerConfig;
+use tch::{nn, Device};
 
 /// Configuration for neural network initialization
 #[derive(Debug, Clone)]
@@ -59,7 +59,11 @@ impl NeuralManager {
     /// Create a new neural network manager with custom configuration
     pub fn with_config(config: NeuralConfig) -> Result<Self, Box<dyn std::error::Error>> {
         log::info!("🧠 Initializing neural network manager...");
-        log::debug!("Neural config: input_dim={:?}, device={:?}", config.input_dim, config.device);
+        log::debug!(
+            "Neural config: input_dim={:?}, device={:?}",
+            config.input_dim,
+            config.device
+        );
 
         // Initialize VarStores
         let mut vs_policy = nn::VarStore::new(config.device);
@@ -71,7 +75,10 @@ impl NeuralManager {
 
         // Load weights if model directory exists
         if Path::new(&config.model_path).exists() {
-            log::info!("📂 Loading neural network weights from {}", config.model_path);
+            log::info!(
+                "📂 Loading neural network weights from {}",
+                config.model_path
+            );
 
             let policy_path = format!("{}/policy/policy.params", config.model_path);
             if let Err(e) = policy_net.load_model(&mut vs_policy, &policy_path) {
@@ -87,12 +94,14 @@ impl NeuralManager {
                 log::info!("✅ ValueNet loaded successfully");
             }
         } else {
-            log::info!("📁 Model directory {} not found, using fresh networks", config.model_path);
+            log::info!(
+                "📁 Model directory {} not found, using fresh networks",
+                config.model_path
+            );
         }
 
         // Create optimizers
-        let optimizer_policy = nn::Adam::default()
-            .build(&vs_policy, config.policy_lr)?;
+        let optimizer_policy = nn::Adam::default().build(&vs_policy, config.policy_lr)?;
 
         let optimizer_value = nn::Adam {
             wd: config.value_wd,
@@ -194,7 +203,10 @@ impl NeuralManager {
 
     /// Save the current model weights to disk
     pub fn save_models(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!("💾 Saving neural network models to {}", self.config.model_path);
+        log::info!(
+            "💾 Saving neural network models to {}",
+            self.config.model_path
+        );
 
         // Create directories if they don't exist
         std::fs::create_dir_all(format!("{}/policy", self.config.model_path))?;
@@ -255,16 +267,21 @@ pub struct NeuralSummary {
 
 impl std::fmt::Display for NeuralSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,
+        write!(
+            f,
             "Neural Networks Summary:\n\
              📐 Input Dimensions: {:?}\n\
              💻 Device: {}\n\
              📂 Model Path: {}\n\
              🎯 Policy LR: {:.2e}, Value LR: {:.2e}\n\
              🔢 Policy Params: {}, Value Params: {}",
-            self.input_dim, self.device, self.model_path,
-            self.policy_lr, self.value_lr,
-            self.policy_params, self.value_params
+            self.input_dim,
+            self.device,
+            self.model_path,
+            self.policy_lr,
+            self.value_lr,
+            self.policy_params,
+            self.value_params
         )
     }
 }

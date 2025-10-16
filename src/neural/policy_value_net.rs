@@ -1,7 +1,6 @@
-
-use tch::{nn, Tensor};
 use tch::nn::VarStore;
 use tch::Result;
+use tch::{nn, Tensor};
 
 use crate::neural::res_net_block::ResNetBlock;
 
@@ -25,7 +24,16 @@ impl PolicyNet {
         let p = vs.root(); // p is a Path
         let (channels, height, width) = input_dim;
 
-        let conv1 = nn::conv2d(&p / "policy_conv1", channels, INITIAL_CONV_CHANNELS, 3, nn::ConvConfig { padding: 1,..Default::default() });
+        let conv1 = nn::conv2d(
+            &p / "policy_conv1",
+            channels,
+            INITIAL_CONV_CHANNELS,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let gn1 = nn::group_norm(&p / "gn1", 16, 128, Default::default());
 
         let mut res_blocks = Vec::new();
@@ -37,9 +45,13 @@ impl PolicyNet {
             in_channels = out_channels;
         }
 
-
         let flatten_size = in_channels * height * width; // Adjust if you have downsampling in ResNetBlocks
-        let flatten = nn::linear(&p / "policy_flatten", flatten_size, 2048, Default::default());
+        let flatten = nn::linear(
+            &p / "policy_flatten",
+            flatten_size,
+            2048,
+            Default::default(),
+        );
         let fc1 = nn::linear(&p / "policy_fc1", 2048, 512, Default::default());
         let policy_head = nn::linear(&p / "policy_head", 512, 19, nn::LinearConfig::default());
 
@@ -79,19 +91,23 @@ impl PolicyNet {
             let size = h.size();
             (size[1], size[2], size[3]) // Extract dimensions as a tuple
         };
-        let flattened_size = expected_flatten_size.0 * expected_flatten_size.1 * expected_flatten_size.2;
+        let flattened_size =
+            expected_flatten_size.0 * expected_flatten_size.1 * expected_flatten_size.2;
 
         h = h.view([-1, flattened_size]);
 
         h = h.apply(&self.flatten).relu();
-        if train { h = h.dropout(self.dropout_rate, train); }
+        if train {
+            h = h.dropout(self.dropout_rate, train);
+        }
 
         h = h.apply(&self.fc1).relu();
-        if train { h = h.dropout(self.dropout_rate, train); }
+        if train {
+            h = h.dropout(self.dropout_rate, train);
+        }
 
         h.apply(&self.policy_head).softmax(-1, tch::Kind::Float)
     }
-
 }
 
 // Initialize weights
@@ -125,13 +141,11 @@ pub fn initialize_weights(vs: &nn::VarStore) {
         // Validation after initialization
         if param.isnan().any().double_value(&[]) > 0.0 {
             log::error!("🚨 NaN detected in {} after initialization!", name);
-        }    }
+        }
+    }
 }
 
-
-
 //... other imports
-
 
 pub struct ValueNet {
     conv1: nn::Conv2D,
@@ -148,9 +162,25 @@ impl ValueNet {
         let p = vs.root();
         let (channels, height, width) = input_dim;
 
-        let conv1 = nn::conv2d(&p / "value_conv1", channels, INITIAL_CONV_CHANNELS_VALUE, 3, nn::ConvConfig { padding: 1,..Default::default() });
+        let conv1 = nn::conv2d(
+            &p / "value_conv1",
+            channels,
+            INITIAL_CONV_CHANNELS_VALUE,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
 
-        let bn1 = nn::batch_norm2d(&p / "value_bn1", INITIAL_CONV_CHANNELS_VALUE, nn::BatchNormConfig { affine: true, ..Default::default() });
+        let bn1 = nn::batch_norm2d(
+            &p / "value_bn1",
+            INITIAL_CONV_CHANNELS_VALUE,
+            nn::BatchNormConfig {
+                affine: true,
+                ..Default::default()
+            },
+        );
 
         let mut res_blocks = Vec::new();
         let mut in_channels = INITIAL_CONV_CHANNELS_VALUE;
@@ -225,8 +255,10 @@ impl ValueNet {
             size[1] * size[2] * size[3]
         };
 
-        h = h.view([-1, flattened_size])
-            .apply(&self.flatten).leaky_relu_();
+        h = h
+            .view([-1, flattened_size])
+            .apply(&self.flatten)
+            .leaky_relu_();
 
         if train {
             h = h.dropout(self.dropout_rate, train);
@@ -242,16 +274,15 @@ impl ValueNet {
         let output = h.apply(&self.value_head).tanh() * 2.0; // Scale to [-2, 2] range
 
         // Final validation
-        if output.isnan().any().double_value(&[]) > 0.0 || output.isinf().any().double_value(&[]) > 0.0 {
+        if output.isnan().any().double_value(&[]) > 0.0
+            || output.isinf().any().double_value(&[]) > 0.0
+        {
             log::error!("⚠️ Invalid output from ValueNet");
             return Tensor::zeros([1, 1], (tch::Kind::Float, tch::Device::Cpu));
         }
 
         output
     }
-
-
-
 }
 #[allow(dead_code)]
 fn kaiming_uniform(tensor: &mut Tensor, fan_in: f64) {
@@ -260,8 +291,6 @@ fn kaiming_uniform(tensor: &mut Tensor, fan_in: f64) {
         let _ = tensor.f_uniform_(-bound, bound).unwrap();
     });
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -273,7 +302,7 @@ mod tests {
     fn test_policy_net_creation() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (3, 5, 5); // Example dimensions: channels, height, width
-        let policy_net = PolicyNet::new(&vs,  input_dim);
+        let policy_net = PolicyNet::new(&vs, input_dim);
 
         // Assert that the PolicyNet was created correctly
         assert_eq!(policy_net.res_blocks.len(), 4);
@@ -284,7 +313,7 @@ mod tests {
     fn test_policy_net_forward() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (3, 5, 5);
-        let policy_net = PolicyNet::new(&vs,  input_dim);
+        let policy_net = PolicyNet::new(&vs, input_dim);
 
         // Create a dummy input tensor
         let input = Tensor::rand(&[1, 3, 5, 5], (tch::Kind::Float, Device::Cpu));
@@ -294,12 +323,11 @@ mod tests {
         assert_eq!(output.size(), vec![1, 19]); // Assuming 19 is the number of actions
     }
 
-
     #[test]
     fn test_value_net_creation_and_forward() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (3, 5, 5);
-        let value_net = ValueNet::new(&vs,  input_dim);
+        let value_net = ValueNet::new(&vs, input_dim);
 
         // Create a dummy input tensor
         let input = Tensor::rand(&[1, 3, 5, 5], (tch::Kind::Float, Device::Cpu));

@@ -1,20 +1,19 @@
 // src/services/game_service/move_handler.rs - Gestion des mouvements de joueurs
 
-use tonic::{Response, Status};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tonic::{Response, Status};
 
 use crate::generated::takeiteasygame::v1::*;
+use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::services::game_manager::{
-    TakeItEasyGameState, process_player_move_with_mcts, ensure_current_tile,
-    player_move_from_json
+    ensure_current_tile, player_move_from_json, process_player_move_with_mcts, TakeItEasyGameState,
 };
 use crate::services::session_manager::{
-    get_store_from_manager, SessionManager, update_session_in_store
+    get_store_from_manager, update_session_in_store, SessionManager,
 };
-use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 
-use super::response_builders::{make_move_success_response, make_move_error_response};
+use super::response_builders::{make_move_error_response, make_move_success_response};
 use super::session_utils::get_session_by_code_or_id_from_store;
 
 // ============================================================================
@@ -42,23 +41,24 @@ pub async fn make_move_logic(
         None => {
             let response = make_move_error_response(
                 "SESSION_NOT_FOUND".to_string(),
-                "Session not found".to_string()
+                "Session not found".to_string(),
             );
             return Ok(Response::new(response));
         }
     };
 
     // Récupérer l'état de jeu
-    let game_state: TakeItEasyGameState = if session.board_state.is_empty() || session.board_state == "{}" {
-        let response = make_move_error_response(
-            "GAME_NOT_STARTED".to_string(),
-            "No game state found. Please start a turn first.".to_string()
-        );
-        return Ok(Response::new(response));
-    } else {
-        serde_json::from_str(&session.board_state)
-            .map_err(|e| Status::internal(format!("Failed to parse game state: {}", e)))?
-    };
+    let game_state: TakeItEasyGameState =
+        if session.board_state.is_empty() || session.board_state == "{}" {
+            let response = make_move_error_response(
+                "GAME_NOT_STARTED".to_string(),
+                "No game state found. Please start a turn first.".to_string(),
+            );
+            return Ok(Response::new(response));
+        } else {
+            serde_json::from_str(&session.board_state)
+                .map_err(|e| Status::internal(format!("Failed to parse game state: {}", e)))?
+        };
 
     // Vérification: S'assurer qu'une tuile courante existe
     let game_state = match ensure_current_tile(game_state) {
@@ -67,7 +67,7 @@ pub async fn make_move_logic(
             log::error!("❌ Échec garantie tuile: {}", e);
             return Ok(Response::new(make_move_error_response(
                 "NO_CURRENT_TILE".to_string(),
-                format!("No current tile available: {}", e)
+                format!("No current tile available: {}", e),
             )));
         }
     };
@@ -81,11 +81,11 @@ pub async fn make_move_logic(
                 mv.tile = current_tile;
             }
             mv
-        },
+        }
         Err(e) => {
             let response = make_move_error_response(
                 "INVALID_MOVE_FORMAT".to_string(),
-                format!("Failed to parse move: {}", e)
+                format!("Failed to parse move: {}", e),
             );
             return Ok(Response::new(response));
         }
@@ -97,8 +97,10 @@ pub async fn make_move_logic(
         player_move,
         policy_net,
         value_net,
-        num_simulations
-    ).await {
+        num_simulations,
+    )
+    .await
+    {
         Ok(move_result) => {
             let final_state = move_result.new_game_state.clone();
             let game_mode = session.game_mode.clone();
@@ -115,17 +117,16 @@ pub async fn make_move_logic(
                 }
             }
 
-            update_session_in_store(store, updated_session).await
+            update_session_in_store(store, updated_session)
+                .await
                 .map_err(Status::internal)?;
 
             let response = make_move_success_response(move_result, &game_mode);
             Ok(Response::new(response))
-        },
+        }
         Err(error_code) => {
-            let response = make_move_error_response(
-                error_code,
-                "Failed to process move".to_string()
-            );
+            let response =
+                make_move_error_response(error_code, "Failed to process move".to_string());
             Ok(Response::new(response))
         }
     }

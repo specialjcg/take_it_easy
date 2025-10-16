@@ -8,7 +8,8 @@ pub async fn reconnect_websocket(
     listener: &TcpListener,
 ) -> Option<SplitSink<WebSocketStream<tokio::net::TcpStream>, Message>> {
     match listener.accept().await {
-        Ok((stream, _)) => {            let ws_stream = accept_async(stream)
+        Ok((stream, _)) => {
+            let ws_stream = accept_async(stream)
                 .await
                 .expect("Failed to accept WebSocket");
             let (write, _) = ws_stream.split();

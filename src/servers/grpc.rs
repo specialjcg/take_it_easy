@@ -1,20 +1,20 @@
+use crate::generated::takeiteasygame::v1::game_service_server::GameServiceServer;
+use crate::generated::takeiteasygame::v1::session_service_server::SessionServiceServer;
+use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::services::game_service::GameServiceImpl;
+use crate::services::session_manager;
+use crate::services::session_service::SessionServiceImpl;
+use http::{header, Method, StatusCode};
+use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::pin::Pin;
-use std::future::Future;
-use tonic::transport::Server;
-use tonic_web::GrpcWebLayer;
 use tonic::body::BoxBody;
 use tonic::transport::Body;
-use http::{header, Method, StatusCode};
+use tonic::transport::Server;
+use tonic_web::GrpcWebLayer;
 use tower::{Layer, Service};
-use crate::neural::policy_value_net::{PolicyNet, ValueNet};
-use crate::services::session_service::SessionServiceImpl;
-use crate::services::game_service::GameServiceImpl;
-use crate::generated::takeiteasygame::v1::session_service_server::SessionServiceServer;
-use crate::generated::takeiteasygame::v1::game_service_server::GameServiceServer;
-use crate::services::session_manager;
 
 // CORS middleware for gRPC-Web
 #[derive(Clone)]
@@ -63,10 +63,24 @@ where
             let mut response = inner.call(req).await?;
 
             let headers = response.headers_mut();
-            headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, header::HeaderValue::from_static("*"));
-            headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, header::HeaderValue::from_static("GET, POST, OPTIONS"));
-            headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, header::HeaderValue::from_static("content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding"));
-            headers.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, header::HeaderValue::from_static("grpc-status, grpc-message"));
+            headers.insert(
+                header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                header::HeaderValue::from_static("*"),
+            );
+            headers.insert(
+                header::ACCESS_CONTROL_ALLOW_METHODS,
+                header::HeaderValue::from_static("GET, POST, OPTIONS"),
+            );
+            headers.insert(
+                header::ACCESS_CONTROL_ALLOW_HEADERS,
+                header::HeaderValue::from_static(
+                    "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding",
+                ),
+            );
+            headers.insert(
+                header::ACCESS_CONTROL_EXPOSE_HEADERS,
+                header::HeaderValue::from_static("grpc-status, grpc-message"),
+            );
 
             Ok(response)
         })
@@ -158,22 +172,32 @@ impl GrpcServer {
         // Create gRPC services
         let session_service = SessionServiceImpl::new_with_manager_and_mode(
             self.session_manager.clone(),
-            self.single_player
+            self.single_player,
         );
         let game_service = GameServiceImpl::new(
             self.session_manager.clone(),
             self.policy_net.clone(),
             self.value_net.clone(),
-            self.num_simulations
+            self.num_simulations,
         );
 
         // Log server startup info
         if self.single_player {
-            log::info!("🤖 Mode SINGLE-PLAYER démarré : 1 joueur vs MCTS ({} simulations)", self.num_simulations);
+            log::info!(
+                "🤖 Mode SINGLE-PLAYER démarré : 1 joueur vs MCTS ({} simulations)",
+                self.num_simulations
+            );
         } else {
-            log::info!("👥 Mode MULTIJOUEUR démarré : Plusieurs joueurs + MCTS ({} simulations)", self.num_simulations);
+            log::info!(
+                "👥 Mode MULTIJOUEUR démarré : Plusieurs joueurs + MCTS ({} simulations)",
+                self.num_simulations
+            );
         }
-        log::info!("🔗 gRPC server starting on {}:{}", self.config.host, self.config.port);
+        log::info!(
+            "🔗 gRPC server starting on {}:{}",
+            self.config.host,
+            self.config.port
+        );
 
         // Start the server with different configurations
         if self.config.enable_cors && self.config.enable_web_layer {
@@ -245,7 +269,7 @@ mod tests {
     fn test_grpc_server_creation() {
         use crate::neural::policy_value_net::PolicyNet;
         use crate::neural::policy_value_net::ValueNet;
-        use tch::{Device, nn};
+        use tch::{nn, Device};
 
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (5, 47, 1);
@@ -264,7 +288,7 @@ mod tests {
     fn test_grpc_server_config_access() {
         use crate::neural::policy_value_net::PolicyNet;
         use crate::neural::policy_value_net::ValueNet;
-        use tch::{Device, nn};
+        use tch::{nn, Device};
 
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (5, 47, 1);
