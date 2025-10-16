@@ -1,20 +1,19 @@
 // src/services/game_service/state_provider.rs - Fournisseur d'état de jeu
 
-use tonic::{Response, Status};
 use std::sync::Arc;
+use tonic::{Response, Status};
 
+use crate::game::tile::Tile;
 use crate::generated::takeiteasygame::v1::*;
 use crate::services::game_manager::{
-    TakeItEasyGameState, is_game_finished, get_all_players_status
+    get_all_players_status, is_game_finished, TakeItEasyGameState,
 };
 use crate::services::session_manager::{
-    get_store_from_manager, SessionManager, get_session_by_id_from_store, 
-    update_session_in_store
+    get_session_by_id_from_store, get_store_from_manager, update_session_in_store, SessionManager,
 };
 use crate::utils::image::generate_tile_image_names;
-use crate::game::tile::Tile;
 
-use super::response_builders::{game_state_success_response, game_state_error_response};
+use super::response_builders::{game_state_error_response, game_state_success_response};
 
 // ============================================================================
 // LOGIQUE DE FOURNITURE D'ÉTAT
@@ -22,7 +21,7 @@ use super::response_builders::{game_state_success_response, game_state_error_res
 
 pub async fn get_game_state_logic(
     session_manager: &Arc<SessionManager>,
-    session_id: String
+    session_id: String,
 ) -> Result<Response<GetGameStateResponse>, Status> {
     let store = get_store_from_manager(session_manager);
 
@@ -30,25 +29,36 @@ pub async fn get_game_state_logic(
     let session = match get_session_by_id_from_store(store, &session_id).await {
         Some(session) => session,
         None => {
-            return Ok(Response::new(game_state_error_response("Session not found".to_string())));
+            return Ok(Response::new(game_state_error_response(
+                "Session not found".to_string(),
+            )));
         }
     };
 
     if session.board_state.is_empty() || session.board_state == "{}" {
-        return Ok(Response::new(game_state_error_response("Game not started yet".to_string())));
+        return Ok(Response::new(game_state_error_response(
+            "Game not started yet".to_string(),
+        )));
     }
 
     let game_state: TakeItEasyGameState = match serde_json::from_str(&session.board_state) {
         Ok(state) => state,
-        Err(e) => return Ok(Response::new(game_state_error_response(format!("Failed to parse game state: {}", e)))),
+        Err(e) => {
+            return Ok(Response::new(game_state_error_response(format!(
+                "Failed to parse game state: {}",
+                e
+            ))))
+        }
     };
 
-    let current_tile_str = game_state.current_tile
+    let current_tile_str = game_state
+        .current_tile
         .map(|t| format!("{}-{}-{}", t.0, t.1, t.2))
         .unwrap_or_default();
 
     // ✅ CORRECTION: Gérer tuile vide (0,0,0)
-    let current_tile_image = game_state.current_tile
+    let current_tile_image = game_state
+        .current_tile
         .filter(|tile| *tile != Tile(0, 0, 0)) // ✅ Filtrer les tuiles vides
         .map(|tile| {
             let tile_images = generate_tile_image_names(&[tile]);
@@ -80,14 +90,14 @@ pub async fn get_game_state_logic(
     let is_finished = is_game_finished(&game_state);
     let game_state_json = serde_json::to_string(&game_state).unwrap_or_default();
 
-    // ✅ Enrichir avec les images et statuts des joueurs  
+    // ✅ Enrichir avec les images et statuts des joueurs
     let mut enhanced_game_state_json = enhance_game_state_with_images(&game_state_json);
-    
+
     // Ajouter les statuts des joueurs pour le flow indépendant
     let players_status = get_all_players_status(&game_state);
-    let mut enhanced_data: serde_json::Value = serde_json::from_str(&enhanced_game_state_json)
-        .unwrap_or_else(|_| serde_json::json!({}));
-    
+    let mut enhanced_data: serde_json::Value =
+        serde_json::from_str(&enhanced_game_state_json).unwrap_or_else(|_| serde_json::json!({}));
+
     enhanced_data["players_status"] = serde_json::to_value(&players_status).unwrap_or_default();
     enhanced_game_state_json = enhanced_data.to_string();
 
@@ -98,7 +108,7 @@ pub async fn get_game_state_logic(
         current_turn,
         waiting_for_players,
         is_finished,
-        final_scores_json
+        final_scores_json,
     );
 
     Ok(Response::new(response))
@@ -114,7 +124,7 @@ pub fn enhance_game_state_with_images(board_state: &str) -> String {
     use std::sync::OnceLock;
 
     static EMPTY_TILE_CACHE: OnceLock<TileCache> = OnceLock::new();
-    
+
     let cache = EMPTY_TILE_CACHE.get_or_init(|| {
         let mut cache = TileCache::new();
         for size in [19, 20, 25] {
@@ -126,10 +136,11 @@ pub fn enhance_game_state_with_images(board_state: &str) -> String {
         cache
     });
 
-    let mut game_data = serde_json::from_str::<serde_json::Value>(board_state).unwrap_or_else(|_| {
-        log::warn!("Parsing board_state échoué, création structure par défaut");
-        serde_json::json!({"player_plateaus": {}})
-    });
+    let mut game_data =
+        serde_json::from_str::<serde_json::Value>(board_state).unwrap_or_else(|_| {
+            log::warn!("Parsing board_state échoué, création structure par défaut");
+            serde_json::json!({"player_plateaus": {}})
+        });
 
     if game_data.get("player_plateaus").is_none() {
         game_data["player_plateaus"] = serde_json::json!({});
@@ -184,10 +195,24 @@ pub fn enhance_game_state_with_images(board_state: &str) -> String {
 
                     if let Some(plateau_obj) = plateau_data.as_object_mut() {
                         plateau_obj.insert("tiles".to_string(), tiles_array);
-                        plateau_obj.insert("tile_images".to_string(), 
-                            serde_json::Value::Array(tile_images.into_iter().map(serde_json::Value::String).collect()));
-                        plateau_obj.insert("available_positions".to_string(),
-                            serde_json::Value::Array(available_positions.into_iter().map(|pos| serde_json::Value::Number(pos.into())).collect()));
+                        plateau_obj.insert(
+                            "tile_images".to_string(),
+                            serde_json::Value::Array(
+                                tile_images
+                                    .into_iter()
+                                    .map(serde_json::Value::String)
+                                    .collect(),
+                            ),
+                        );
+                        plateau_obj.insert(
+                            "available_positions".to_string(),
+                            serde_json::Value::Array(
+                                available_positions
+                                    .into_iter()
+                                    .map(|pos| serde_json::Value::Number(pos.into()))
+                                    .collect(),
+                            ),
+                        );
                     }
                 } else if let Some((cached_images, cached_positions)) = cache.get(&19) {
                     *plateau_data = serde_json::json!({

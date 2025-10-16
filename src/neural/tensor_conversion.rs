@@ -1,7 +1,7 @@
-use tch::Tensor;
 use crate::game::deck::Deck;
 use crate::game::plateau::Plateau;
 use crate::game::tile::Tile;
+use tch::Tensor;
 
 pub fn convert_plateau_to_tensor(
     plateau: &Plateau,
@@ -84,4 +84,3 @@ fn compute_potential_scores(plateau: &Plateau) -> Vec<f32> {
 
     scores
 }
-

@@ -1,9 +1,9 @@
-use tch::{nn, IndexOp, Tensor};
-use tch::nn::Optimizer;
 use crate::mcts::mcts_result::MCTSResult;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::training::gradient_clipping::enhanced_gradient_clipping;
 use crate::neural::training::normalization::robust_state_normalization;
+use tch::nn::Optimizer;
+use tch::{nn, Tensor};
 
 #[allow(clippy::too_many_arguments)]
 pub fn train_network_with_game_data(
@@ -78,12 +78,56 @@ pub fn train_network_with_game_data(
 
         // === Compute Losses ===
         // Policy loss
-        let best_position = result.best_position as i64;
-        let target_policy = Tensor::zeros([1, pred_policy.size()[1]], tch::kind::FLOAT_CPU);
-        let _ = target_policy.i((0, best_position)).fill_(1.0);
+        let policy_len = pred_policy.size()[1] as usize;
+        let mut policy_vec = vec![0f32; policy_len];
+        let flattened_policy = result
+            .policy_distribution
+            .to_kind(tch::Kind::Float)
+            .flatten(0, -1);
+        let numel = flattened_policy.numel().max(0) as usize;
+        if numel > 0 {
+            let mut buffer = vec![0f32; numel];
+            flattened_policy.copy_data(&mut buffer, numel);
+            for (idx, value) in buffer.into_iter().take(policy_vec.len()).enumerate() {
+                policy_vec[idx] = value;
+            }
+        }
+
+        let sum: f32 = policy_vec.iter().sum();
+        if sum <= f32::EPSILON {
+            if !policy_vec.is_empty() {
+                let best_position = result.best_position.min(policy_vec.len() - 1);
+                policy_vec[best_position] = 1.0;
+            }
+        } else {
+            for value in &mut policy_vec {
+                *value /= sum;
+            }
+        }
+
+        let target_policy = Tensor::from_slice(&policy_vec).view([1, policy_len as i64]);
         let log_policy = pred_policy.log();
         let policy_loss = -(target_policy * log_policy.shallow_clone()).sum(tch::Kind::Float);
         total_policy_loss += policy_loss;
+
+        if log::log_enabled!(log::Level::Trace) {
+            let boosted = result
+                .policy_distribution_boosted
+                .to_kind(tch::Kind::Float)
+                .flatten(0, -1);
+            let boosted_len = boosted.numel().max(0) as usize;
+            if boosted_len == policy_vec.len() {
+                let mut boosted_vec = vec![0f32; boosted_len];
+                boosted.copy_data(&mut boosted_vec, boosted_len);
+                let mut kl = 0.0f32;
+                for (p, q) in policy_vec.iter().zip(boosted_vec.iter()) {
+                    let p = (p + 1e-6).clamp(1e-6, 1.0);
+                    let q = (q + 1e-6).clamp(1e-6, 1.0);
+                    kl += p * (p / q).ln();
+                }
+                log::trace!("[Policy KL] step={} kl={:.6}", step, kl);
+            }
+        }
 
         // Entropy loss
         let entropy_loss = -(pred_policy * (log_policy + epsilon)).sum(tch::Kind::Float);
@@ -131,4 +175,5 @@ pub fn train_network_with_game_data(
     optimizer_policy.step();
     optimizer_policy.zero_grad();
     optimizer_value.step();
-    optimizer_value.zero_grad();}
+    optimizer_value.zero_grad();
+}

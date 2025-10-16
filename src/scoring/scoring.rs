@@ -69,7 +69,10 @@ pub fn result(plateau: &Plateau) -> i32 {
 
     for (indices, multiplier, selector) in patterns {
         let first_value = selector(&plateau.tiles[indices[0]]);
-        if indices.iter().all(|&i| selector(&plateau.tiles[i]) == first_value) {
+        if indices
+            .iter()
+            .all(|&i| selector(&plateau.tiles[i]) == first_value)
+        {
             result += first_value * multiplier;
         }
     }

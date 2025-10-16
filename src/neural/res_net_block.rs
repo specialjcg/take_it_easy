@@ -64,11 +64,6 @@ impl ResNetBlock {
             None
         };
 
-
-
-
-
-
         Self {
             conv1,
             bn1,
@@ -89,7 +84,7 @@ impl ResNetBlock {
             .apply(&self.conv1)
             .apply_t(&self.bn1, train)
             .clamp(-1e3, 1e3) // Ensure this isn't in-place
-            .relu();          // Ensure this isn't in-place
+            .relu(); // Ensure this isn't in-place
         let x = x
             .apply(&self.conv2)
             .apply_t(&self.bn2, train)
@@ -97,12 +92,11 @@ impl ResNetBlock {
 
         (x + residual).relu() // Safe addition and relu
     }
-
 }
 
 #[cfg(test)]
 mod tests {
-    use tch::{Device, nn};
+    use tch::{nn, Device};
 
     use super::*;
 

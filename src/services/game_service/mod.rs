@@ -1,23 +1,23 @@
 // src/services/game_service/mod.rs - Interface principale du service de jeu modulaire
 
-use tonic::{Request, Response, Status};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tonic::{Request, Response, Status};
 
-use crate::generated::takeiteasygame::v1::*;
 use crate::generated::takeiteasygame::v1::game_service_server::GameService;
-use crate::services::session_manager::SessionManager;
+use crate::generated::takeiteasygame::v1::*;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::services::session_manager::SessionManager;
 
 // Modules internes
-pub mod response_builders;
-pub mod session_utils;
-pub mod mcts_integration;
-pub mod move_handler;
 pub mod async_move_handler;
 pub mod available_moves;
-pub mod turn_manager;
+pub mod mcts_integration;
+pub mod move_handler;
+pub mod response_builders;
+pub mod session_utils;
 pub mod state_provider;
+pub mod turn_manager;
 
 // Réexports publics pour compatibilité
 
@@ -38,7 +38,7 @@ impl GameServiceImpl {
         session_manager: Arc<SessionManager>,
         policy_net: Arc<Mutex<PolicyNet>>,
         value_net: Arc<Mutex<ValueNet>>,
-        num_simulations: usize
+        num_simulations: usize,
     ) -> Self {
         GameServiceImpl {
             session_manager,
@@ -73,7 +73,8 @@ impl GameService for GameServiceImpl {
                 move_data: req.move_data,
                 timestamp: req.timestamp,
             },
-        ).await
+        )
+        .await
     }
 
     async fn get_available_moves(
@@ -84,8 +85,9 @@ impl GameService for GameServiceImpl {
         available_moves::get_available_moves_logic(
             &self.session_manager,
             req.session_id,
-            req.player_id
-        ).await
+            req.player_id,
+        )
+        .await
     }
 
     async fn start_turn(
@@ -98,8 +100,9 @@ impl GameService for GameServiceImpl {
             &self.policy_net,
             &self.value_net,
             self.num_simulations,
-            req.session_id
-        ).await
+            req.session_id,
+        )
+        .await
     }
 
     async fn get_game_state(
@@ -107,9 +110,6 @@ impl GameService for GameServiceImpl {
         request: Request<GetGameStateRequest>,
     ) -> Result<Response<GetGameStateResponse>, Status> {
         let req = request.into_inner();
-        state_provider::get_game_state_logic(
-            &self.session_manager,
-            req.session_id
-        ).await
+        state_provider::get_game_state_logic(&self.session_manager, req.session_id).await
     }
 }

@@ -4,11 +4,11 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use tower_http::cors::{Any, CorsLayer};
-use tower_http::services::ServeDir;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
 
 // Structures pour l'API Web
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -57,13 +57,15 @@ impl WebUiServer {
         Self { config }
     }
 
-
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         let app = self.create_router();
         let addr: SocketAddr = format!("{}:{}", self.config.host, self.config.port).parse()?;
         let listener = TcpListener::bind(addr).await?;
 
-        log::info!("🌐 Web UI server starting on http://localhost:{}", self.config.port);
+        log::info!(
+            "🌐 Web UI server starting on http://localhost:{}",
+            self.config.port
+        );
 
         axum::serve(listener, app).await?;
         Ok(())
@@ -82,7 +84,7 @@ impl WebUiServer {
                 CorsLayer::new()
                     .allow_origin(Any)
                     .allow_methods(Any)
-                    .allow_headers(Any)
+                    .allow_headers(Any),
             )
     }
 }
@@ -98,7 +100,8 @@ async fn serve_index() -> Html<String> {
 <h1>🎮 Take It Easy - Game Mode Selector</h1>
 <p>Interface web pour lancer les modes de jeu</p>
 <p>Files should be in ./web/ directory</p>
-</body></html>"#.to_string()
+</body></html>"#
+                .to_string()
         });
 
     Html(index_content)
@@ -111,11 +114,14 @@ async fn api_status() -> ResponseJson<ApiResponse> {
     })
 }
 
-async fn api_launch_mode(Json(request): Json<LaunchRequest>) -> Result<ResponseJson<ApiResponse>, String> {
+async fn api_launch_mode(
+    Json(request): Json<LaunchRequest>,
+) -> Result<ResponseJson<ApiResponse>, String> {
     log::info!("🚀 Launch request: mode={}", request.mode);
 
     // Check if rebuild is requested
-    let should_rebuild = request.options
+    let should_rebuild = request
+        .options
         .as_ref()
         .and_then(|opts| opts.rebuild)
         .unwrap_or(false);
@@ -139,13 +145,17 @@ async fn api_launch_mode(Json(request): Json<LaunchRequest>) -> Result<ResponseJ
         "single" => {
             // For single player mode, we need to launch a separate backend process
             // since the current process is in multiplayer mode
-            let simulations = request.options
+            let simulations = request
+                .options
                 .as_ref()
                 .and_then(|opts| opts.simulations)
                 .unwrap_or(300);
 
             let rebuild_option = if should_rebuild { "rebuild" } else { "" };
-            let command = format!("./launch_modes.sh single {} {} frontend", simulations, rebuild_option);
+            let command = format!(
+                "./launch_modes.sh single {} {} frontend",
+                simulations, rebuild_option
+            );
 
             log::info!("🤖 Launching single player mode: {}", command);
 
@@ -163,15 +173,18 @@ async fn api_launch_mode(Json(request): Json<LaunchRequest>) -> Result<ResponseJ
                     let rebuild_msg = if should_rebuild { " (rebuilt)" } else { "" };
                     Ok(ResponseJson(ApiResponse {
                         status: "started".to_string(),
-                        message: format!("Single player mode ready{} - Frontend: http://localhost:3000", rebuild_msg),
+                        message: format!(
+                            "Single player mode ready{} - Frontend: http://localhost:3000",
+                            rebuild_msg
+                        ),
                     }))
-                },
+                }
                 Err(e) => {
                     log::error!("❌ Failed to start single player mode: {}", e);
                     Err(format!("Failed to start single player mode: {}", e))
                 }
             }
-        },
+        }
         "multiplayer" => {
             // For multiplayer, just start the frontend since backend is already running
             let frontend_result = std::process::Command::new("bash")
@@ -190,21 +203,24 @@ async fn api_launch_mode(Json(request): Json<LaunchRequest>) -> Result<ResponseJ
                         status: "started".to_string(),
                         message: format!("Multiplayer mode ready{} - Backend: http://localhost:51051, Frontend: http://localhost:3000", rebuild_msg),
                     }))
-                },
+                }
                 Err(e) => {
                     log::error!("❌ Failed to start frontend: {}", e);
                     Err(format!("Failed to start frontend: {}", e))
                 }
             }
-        },
+        }
         "training" => {
             let rebuild_msg = if should_rebuild { " (rebuilt)" } else { "" };
             Ok(ResponseJson(ApiResponse {
                 status: "started".to_string(),
-                message: format!("Training mode{} uses console output - check terminal for progress", rebuild_msg),
+                message: format!(
+                    "Training mode{} uses console output - check terminal for progress",
+                    rebuild_msg
+                ),
             }))
-        },
-        _ => Err("Invalid mode".to_string())
+        }
+        _ => Err("Invalid mode".to_string()),
     }
 }
 
@@ -245,14 +261,16 @@ async fn api_stop_all() -> ResponseJson<ApiResponse> {
 }
 
 async fn api_logs() -> Html<String> {
-    let mut logs_html = String::from(r#"<!DOCTYPE html>
+    let mut logs_html = String::from(
+        r#"<!DOCTYPE html>
 <html><head><title>Take It Easy - Logs</title>
 <style>
 body { font-family: monospace; margin: 20px; }
 pre { background: #f5f5f5; padding: 10px; border-radius: 5px; overflow: auto; }
 h2 { color: #333; }
 </style></head>
-<body>"#);
+<body>"#,
+    );
 
     // Read backend logs
     if let Ok(backend_logs) = tokio::fs::read_to_string("backend.log").await {
@@ -261,7 +279,10 @@ h2 { color: #333; }
 
     // Read frontend logs
     if let Ok(frontend_logs) = tokio::fs::read_to_string("frontend.log").await {
-        logs_html.push_str(&format!("<h2>Frontend Logs</h2><pre>{}</pre>", frontend_logs));
+        logs_html.push_str(&format!(
+            "<h2>Frontend Logs</h2><pre>{}</pre>",
+            frontend_logs
+        ));
     }
 
     if !logs_html.contains("Backend Logs") && !logs_html.contains("Frontend Logs") {

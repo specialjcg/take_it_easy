@@ -1,7 +1,16 @@
 use crate::game::deck::Deck;
 use crate::game::tile::Tile;
 
-// pub(crate) fn replace_tile_in_deck(deck: &Deck, tile_to_replace: &Tile) -> Deck {
+/// Get all non-empty tiles from a deck
+pub fn get_available_tiles(deck: &Deck) -> Vec<Tile> {
+    deck.tiles
+        .iter()
+        .copied()
+        .filter(|tile| *tile != Tile(0, 0, 0))
+        .collect()
+}
+
+// pub fn replace_tile_in_deck(deck: &Deck, tile_to_replace: &Tile) -> Deck {
 //     // Replace the specified tile with (0, 0, 0)
 //     let new_tiles: Vec<Tile> = deck
 //         .tiles
@@ -17,7 +26,7 @@ use crate::game::tile::Tile;
 //
 //     Deck { tiles: new_tiles } // Return the new deck with replaced tiles
 // }
-pub(crate) fn replace_tile_in_deck(deck: &Deck, tile_to_replace: &Tile) -> Deck {
+pub fn replace_tile_in_deck(deck: &Deck, tile_to_replace: &Tile) -> Deck {
     let new_tiles: Vec<Tile> = deck
         .tiles
         .iter()
@@ -33,7 +42,6 @@ pub(crate) fn replace_tile_in_deck(deck: &Deck, tile_to_replace: &Tile) -> Deck 
     Deck { tiles: new_tiles } // Return the new deck with replaced tiles
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -42,11 +50,7 @@ mod tests {
     fn test_remove_tile_from_deck() {
         // Create a sample deck
         let deck = Deck {
-            tiles: vec![
-                Tile(1, 2, 3),
-                Tile(4, 5, 6),
-                Tile(7, 8, 9),
-            ],
+            tiles: vec![Tile(1, 2, 3), Tile(4, 5, 6), Tile(7, 8, 9)],
         };
 
         // Define the tile to remove
@@ -67,11 +71,7 @@ mod tests {
     fn test_remove_tile_not_in_deck() {
         // Create a sample deck
         let deck = Deck {
-            tiles: vec![
-                Tile(1, 2, 3),
-                Tile(4, 5, 6),
-                Tile(7, 8, 9),
-            ],
+            tiles: vec![Tile(1, 2, 3), Tile(4, 5, 6), Tile(7, 8, 9)],
         };
 
         // Define a tile that doesn't exist in the deck
@@ -93,11 +93,7 @@ mod tests {
     fn test_replace_tile_in_deck() {
         // Create a sample deck
         let deck = Deck {
-            tiles: vec![
-                Tile(1, 2, 3),
-                Tile(4, 5, 6),
-                Tile(7, 8, 9),
-            ],
+            tiles: vec![Tile(1, 2, 3), Tile(4, 5, 6), Tile(7, 8, 9)],
         };
 
         // Define the tile to replace
@@ -121,11 +117,7 @@ mod tests {
     fn test_replace_tile_not_in_deck() {
         // Create a sample deck
         let deck = Deck {
-            tiles: vec![
-                Tile(1, 2, 3),
-                Tile(4, 5, 6),
-                Tile(7, 8, 9),
-            ],
+            tiles: vec![Tile(1, 2, 3), Tile(4, 5, 6), Tile(7, 8, 9)],
         };
 
         // Define a tile that doesn't exist in the deck
@@ -144,7 +136,11 @@ mod tests {
 
         // Ensure (0, 0, 0) is not added unless it replaces something
         assert_eq!(
-            updated_deck.tiles.iter().filter(|&&tile| tile == Tile(0, 0, 0)).count(),
+            updated_deck
+                .tiles
+                .iter()
+                .filter(|&&tile| tile == Tile(0, 0, 0))
+                .count(),
             0
         );
     }

@@ -1,10 +1,10 @@
 // src/services/session_manager.rs - 100% fonctionnel - TOUTES les fonctions extraites
 
+use crate::generated::takeiteasygame::v1::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use crate::generated::takeiteasygame::v1::*;
 
 // ============================================================================
 // TYPES DE DONNÉES IMMUTABLES PURS
@@ -80,7 +80,7 @@ pub fn apply_session_action(state: SessionStoreState, action: SessionAction) -> 
             new_state.sessions.insert(session_id.clone(), session);
             new_state.sessions_by_code.insert(session_code, session_id);
             new_state
-        },
+        }
     }
 }
 
@@ -88,15 +88,22 @@ pub fn apply_session_action(state: SessionStoreState, action: SessionAction) -> 
 // FONCTIONS PURES - REQUÊTES
 // ============================================================================
 
-pub fn find_session_by_code<'a>(state: &'a SessionStoreState, code: &str) -> Option<&'a GameSession> {
-    state.sessions_by_code.get(code)
+pub fn find_session_by_code<'a>(
+    state: &'a SessionStoreState,
+    code: &str,
+) -> Option<&'a GameSession> {
+    state
+        .sessions_by_code
+        .get(code)
         .and_then(|session_id| state.sessions.get(session_id))
 }
 
-pub fn find_session_by_id<'a>(state: &'a SessionStoreState, session_id: &str) -> Option<&'a GameSession> {
+pub fn find_session_by_id<'a>(
+    state: &'a SessionStoreState,
+    session_id: &str,
+) -> Option<&'a GameSession> {
     state.sessions.get(session_id)
 }
-
 
 // ============================================================================
 // FONCTIONS PURES - CRÉATION D'OBJETS
@@ -131,7 +138,7 @@ pub fn create_session_action(max_players: i32, game_mode: String) -> (SessionAct
 // src/services/session_manager.rs
 pub fn add_player_to_session(
     session: GameSession,
-    player_name: String
+    player_name: String,
 ) -> Result<(GameSession, String), String> {
     if session.players.len() >= session.max_players as usize {
         return Err("SESSION_FULL".to_string());
@@ -161,12 +168,11 @@ pub fn add_player_to_session(
     Ok((new_session, player_id))
 }
 
-
 pub fn set_player_ready_in_session_with_min(
     session: GameSession,
     player_id: &str,
     ready: bool,
-    min_players: usize
+    min_players: usize,
 ) -> Result<(GameSession, bool), String> {
     let mut new_session = session;
 
@@ -174,27 +180,30 @@ pub fn set_player_ready_in_session_with_min(
         Some(player) => {
             player.is_ready = ready;
 
-            let game_started = if all_players_ready(&new_session) && new_session.players.len() >= min_players {
-                new_session = start_game(new_session);
-                true
-            } else {
-                false
-            };
+            let game_started =
+                if all_players_ready(&new_session) && new_session.players.len() >= min_players {
+                    new_session = start_game(new_session);
+                    true
+                } else {
+                    false
+                };
 
             Ok((new_session, game_started))
-        },
-        None => Err("PLAYER_NOT_FOUND".to_string())
+        }
+        None => Err("PLAYER_NOT_FOUND".to_string()),
     }
 }
-
 
 // ============================================================================
 // FONCTIONS PURES - UTILITAIRES
 // ============================================================================
 
 pub fn all_players_ready(session: &GameSession) -> bool {
-    !session.players.is_empty() &&
-        session.players.values().all(|p| p.is_ready && p.is_connected)
+    !session.players.is_empty()
+        && session
+            .players
+            .values()
+            .all(|p| p.is_ready && p.is_connected)
 }
 
 pub fn start_game(session: GameSession) -> GameSession {
@@ -242,7 +251,7 @@ pub async fn create_session_in_store<F, T>(
     store: &Arc<RwLock<SessionStoreState>>,
     max_players: i32,
     game_mode: String,
-    continuation: F
+    continuation: F,
 ) -> Result<T, String>
 where
     F: FnOnce(String) -> Result<T, String>,
@@ -259,7 +268,7 @@ where
 
 pub async fn get_session_by_code_from_store(
     store: &Arc<RwLock<SessionStoreState>>,
-    code: &str
+    code: &str,
 ) -> Option<GameSession> {
     let state = store.read().await;
     find_session_by_code(&state, code).cloned()
@@ -267,7 +276,7 @@ pub async fn get_session_by_code_from_store(
 
 pub async fn get_session_by_id_from_store(
     store: &Arc<RwLock<SessionStoreState>>,
-    session_id: &str
+    session_id: &str,
 ) -> Option<GameSession> {
     let state = store.read().await;
     find_session_by_id(&state, session_id).cloned()
@@ -275,7 +284,7 @@ pub async fn get_session_by_id_from_store(
 
 pub async fn update_session_in_store(
     store: &Arc<RwLock<SessionStoreState>>,
-    session: GameSession
+    session: GameSession,
 ) -> Result<(), String> {
     let action = SessionAction::UpdateSession { session };
 
@@ -290,7 +299,7 @@ pub async fn update_session_in_store(
 pub async fn transform_session_in_store<F, T>(
     store: &Arc<RwLock<SessionStoreState>>,
     session_id: &str,
-    transformation: F
+    transformation: F,
 ) -> Result<Option<T>, String>
 where
     F: FnOnce(GameSession) -> Result<(GameSession, T), String>,
@@ -298,42 +307,38 @@ where
     let current_session = get_session_by_id_from_store(store, session_id).await;
 
     match current_session {
-        Some(session) => {
-            match transformation(session) {
-                Ok((updated_session, result)) => {
-                    update_session_in_store(store, updated_session).await?;
-                    Ok(Some(result))
-                },
-                Err(e) => Err(e)
+        Some(session) => match transformation(session) {
+            Ok((updated_session, result)) => {
+                update_session_in_store(store, updated_session).await?;
+                Ok(Some(result))
             }
+            Err(e) => Err(e),
         },
-        None => Ok(None)
+        None => Ok(None),
     }
 }
-
 
 // ============================================================================
 // FONCTIONS DE NIVEAU SUPÉRIEUR - COMPOSITION AVEC SESSIONMANAGER
 // ============================================================================
 
-
 pub async fn get_session_by_code_with_manager(
     manager: &SessionManager,
-    code: &str
+    code: &str,
 ) -> Option<GameSession> {
     get_session_by_code_from_store(get_store_from_manager(manager), code).await
 }
 
 pub async fn get_session_by_id_with_manager(
     manager: &SessionManager,
-    session_id: &str
+    session_id: &str,
 ) -> Option<GameSession> {
     get_session_by_id_from_store(get_store_from_manager(manager), session_id).await
 }
 
 pub async fn update_session_with_manager(
     manager: &SessionManager,
-    session: GameSession
+    session: GameSession,
 ) -> Result<(), String> {
     update_session_in_store(get_store_from_manager(manager), session).await
 }
@@ -341,11 +346,10 @@ pub async fn update_session_with_manager(
 pub async fn create_session_functional_with_manager(
     manager: &SessionManager,
     max_players: i32,
-    game_mode: String
+    game_mode: String,
 ) -> Result<String, String> {
     create_session_in_store(get_store_from_manager(manager), max_players, game_mode, Ok).await
 }
-
 
 // ============================================================================
 // IMPLÉMENTATION VIDE - SESSIONMANAGER DEVIENT JUSTE UNE STRUCTURE
@@ -355,4 +359,3 @@ impl SessionManager {
     // Toutes les fonctions sont maintenant externes !
     // Utilisez les fonctions *_with_manager() à la place
 }
-

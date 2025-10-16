@@ -1,10 +1,10 @@
 // src/services/game_service/mcts_integration.rs - Intégration MCTS découplée
 
-use tokio::sync::Mutex;
-use crate::services::game_manager::{TakeItEasyGameState, MctsMove, PlayerMove, apply_player_move};
-use crate::neural::policy_value_net::{PolicyNet, ValueNet};
-use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
 use crate::game::get_legal_moves::get_legal_moves;
+use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
+use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::services::game_manager::{apply_player_move, MctsMove, PlayerMove, TakeItEasyGameState};
+use tokio::sync::Mutex;
 
 // ============================================================================
 // INTÉGRATION MCTS DÉCOUPLÉE
@@ -14,18 +14,22 @@ pub async fn process_mcts_move_only(
     game_state: TakeItEasyGameState,
     policy_net: &Mutex<PolicyNet>,
     value_net: &Mutex<ValueNet>,
-    num_simulations: usize
+    num_simulations: usize,
 ) -> Result<(TakeItEasyGameState, MctsMove), String> {
-
     // ✅ VÉRIFICATION: MCTS doit être en attente
-    if !game_state.waiting_for_players.contains(&"mcts_ai".to_string()) {
+    if !game_state
+        .waiting_for_players
+        .contains(&"mcts_ai".to_string())
+    {
         return Err("MCTS_NOT_WAITING".to_string());
     }
 
     let current_tile = game_state.current_tile.ok_or("NO_CURRENT_TILE")?;
 
     // Récupérer le plateau MCTS
-    let mcts_plateau = game_state.player_plateaus.get("mcts_ai")
+    let mcts_plateau = game_state
+        .player_plateaus
+        .get("mcts_ai")
         .ok_or("MCTS_PLAYER_NOT_FOUND")?
         .clone();
 
