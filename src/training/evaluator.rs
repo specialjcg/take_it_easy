@@ -1,4 +1,3 @@
-use rand::{rng, Rng};
 use crate::game::create_deck::create_deck;
 use crate::game::plateau::create_plateau_empty;
 use crate::game::plateau_is_full::is_plateau_full;
@@ -6,8 +5,10 @@ use crate::game::remove_tile_from_deck::replace_tile_in_deck;
 use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::scoring::scoring::result;
+use rand::{rng, Rng};
 
-pub async fn evaluate_model(policy_net: &PolicyNet, value_net: &ValueNet, num_simulations: usize) {    let mut scores = Vec::new();
+pub async fn evaluate_model(policy_net: &PolicyNet, value_net: &ValueNet, num_simulations: usize) {
+    let mut scores = Vec::new();
 
     for _ in 0..10 {
         let mut deck = create_deck();
@@ -37,5 +38,6 @@ pub async fn evaluate_model(policy_net: &PolicyNet, value_net: &ValueNet, num_si
         scores.push(game_score);
     }
 
-    let _avg_score: f64 = scores.iter().copied().sum::<i32>() as f64 / scores.len() as f64;    // **Stop ping task**
+    let _avg_score: f64 = scores.iter().copied().sum::<i32>() as f64 / scores.len() as f64;
+    // **Stop ping task**
 }

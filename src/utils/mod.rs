@@ -1,2 +1,2 @@
-pub mod random_index;
 pub mod image;
+pub mod random_index;

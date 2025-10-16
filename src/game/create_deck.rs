@@ -32,7 +32,7 @@ pub fn create_deck() -> Deck {
         new_tiles(9, 7, 8),
     ];
 
-   Deck { tiles}
+    Deck { tiles }
 }
 
 pub(crate) fn new_tiles(x: i32, y: i32, z: i32) -> Tile {

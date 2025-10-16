@@ -1,10 +1,10 @@
-use rand::Rng;
 use crate::game::deck::Deck;
 use crate::game::get_legal_moves::get_legal_moves;
 use crate::game::plateau::Plateau;
 use crate::game::plateau_is_full::is_plateau_full;
 use crate::game::tile::Tile;
 use crate::scoring::scoring::result;
+use rand::Rng;
 
 pub fn simulate_games(plateau: Plateau, deck: Deck) -> i32 {
     let mut simulated_plateau = plateau.clone();

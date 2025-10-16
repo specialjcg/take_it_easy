@@ -1,5 +1,8 @@
-use std::collections::HashMap;
-use tch::IndexOp;
+//! Core Monte Carlo Tree Search selection loop used by the training pipelines.
+//!
+//! The algorithm combines neural network priors, handcrafted heuristics and rollout simulations
+//! to choose the best placement for a tile. The resulting [`MCTSResult`] snapshot is used both
+//! for online play and for generating supervised training data.
 use crate::game::deck::Deck;
 use crate::game::get_legal_moves::get_legal_moves;
 use crate::game::plateau::Plateau;
@@ -13,6 +16,8 @@ use crate::neural::tensor_conversion::convert_plateau_to_tensor;
 use crate::scoring::scoring::result;
 use crate::strategy::position_evaluation::enhanced_position_evaluation;
 use crate::utils::random_index::random_index;
+use std::collections::HashMap;
+use tch::{IndexOp, Kind, Tensor};
 
 #[allow(clippy::too_many_arguments)]
 pub fn mcts_find_best_position_for_tile_with_nn(
@@ -27,6 +32,10 @@ pub fn mcts_find_best_position_for_tile_with_nn(
 ) -> MCTSResult {
     let legal_moves = get_legal_moves(plateau.clone());
     if legal_moves.is_empty() {
+        let distribution_len = plateau.tiles.len() as i64;
+        let policy_distribution =
+            Tensor::zeros([distribution_len], (Kind::Float, tch::Device::Cpu));
+        let policy_distribution_boosted = policy_distribution.shallow_clone();
         return MCTSResult {
             best_position: 0,
             board_tensor: convert_plateau_to_tensor(
@@ -37,6 +46,9 @@ pub fn mcts_find_best_position_for_tile_with_nn(
                 total_turns,
             ),
             subscore: 0.0,
+            policy_distribution,
+            policy_distribution_boosted,
+            boost_intensity: 0.0,
         };
     }
 
@@ -48,6 +60,7 @@ pub fn mcts_find_best_position_for_tile_with_nn(
     let mut visit_counts: HashMap<usize, usize> = HashMap::new();
     let mut total_scores: HashMap<usize, f64> = HashMap::new();
     let mut ucb_scores: HashMap<usize, f64> = HashMap::new();
+    let mut ucb_scores_raw: HashMap<usize, f64> = HashMap::new();
     let mut total_visits: i32 = 0;
 
     for &position in &legal_moves {
@@ -101,6 +114,9 @@ pub fn mcts_find_best_position_for_tile_with_nn(
     } else {
         min_value + (max_value - min_value) * 0.15 // Pruning moins agressif
     };
+
+    // Track cumulative boost applied per move for logging/analysis
+    let mut boost_applied: HashMap<usize, f64> = HashMap::new();
 
     for _ in 0..num_simulations {
         let mut moves_with_prior: Vec<_> = legal_moves
@@ -193,20 +209,29 @@ pub fn mcts_find_best_position_for_tile_with_nn(
                 + 0.25 * value_estimate.clamp(0.0, 2.0)
                 + 0.1 * enhanced_eval; // Nouveau facteur d'évaluation
 
-            // 🔥 Explicit Priority Logic HERE 🔥
-            // 1️⃣ Ajoute cette fonction en dehors de ta mcts_find_best_position_for_tile_with_nn
+            ucb_scores_raw.insert(position, ucb_score);
 
-            // 2️⃣ Intègre ceci dans ta boucle ucb_scores, juste après le boost fixe
-
-            if chosen_tile.0 == 9 && [7, 8, 9, 10, 11].contains(&position) {
-                ucb_score += 10000.0; // double boost
-            } else if chosen_tile.0 == 5 && [3, 4, 5, 6, 12, 13, 14, 15].contains(&position) {
-                ucb_score += 8000.0;
-            } else if chosen_tile.0 == 1 && [0, 1, 2, 16, 17, 18].contains(&position) {
-                ucb_score += 6000.0;
+            let boost = match chosen_tile.0 {
+                9 if [7, 8, 9, 10, 11].contains(&position) => 10000.0,
+                5 if [3, 4, 5, 6, 12, 13, 14, 15].contains(&position) => 8000.0,
+                1 if [0, 1, 2, 16, 17, 18].contains(&position) => 6000.0,
+                _ => 0.0,
+            };
+            let ucb_score_raw = ucb_score;
+            if boost != 0.0 {
+                ucb_score += boost;
+                *boost_applied.entry(position).or_insert(0.0) += boost;
             }
 
-            // 🔥 Alignment Priority Logic 🔥
+            if boost != 0.0 {
+                log::trace!(
+                    "[MCTS Boost] tile {:?} position {} raw={:.3} -> boosted={:.3}",
+                    chosen_tile,
+                    position,
+                    ucb_score_raw,
+                    ucb_score
+                );
+            }
 
             ucb_scores.insert(position, ucb_score);
         }
@@ -245,9 +270,61 @@ pub fn mcts_find_best_position_for_tile_with_nn(
     }
 
     let final_score = result(&final_plateau); // Get actual game score
+
+    let mut visit_distribution_boosted = vec![0f32; plateau.tiles.len()];
+    for (&position, &count) in visit_counts.iter() {
+        if position < visit_distribution_boosted.len() {
+            visit_distribution_boosted[position] = count as f32;
+        }
+    }
+    let total_boosted_sum: f32 = visit_distribution_boosted.iter().sum();
+    if total_boosted_sum > 0.0 {
+        for value in &mut visit_distribution_boosted {
+            *value /= total_boosted_sum;
+        }
+    } else if best_position < visit_distribution_boosted.len() {
+        visit_distribution_boosted[best_position] = 1.0;
+    }
+
+    let mut visit_distribution_raw = vec![0f32; plateau.tiles.len()];
+    if !ucb_scores_raw.is_empty() {
+        let max_score = ucb_scores_raw
+            .values()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        let mut exp_scores: HashMap<usize, f64> = HashMap::new();
+        let mut exp_sum = 0.0;
+        for (&position, &score) in &ucb_scores_raw {
+            let exp_val = (score - max_score).exp();
+            exp_sum += exp_val;
+            exp_scores.insert(position, exp_val);
+        }
+        if exp_sum > 0.0 {
+            for (&position, &exp_val) in &exp_scores {
+                if position < visit_distribution_raw.len() {
+                    visit_distribution_raw[position] = (exp_val / exp_sum) as f32;
+                }
+            }
+        }
+    }
+    let raw_sum: f32 = visit_distribution_raw.iter().sum();
+    if raw_sum <= f32::EPSILON {
+        if best_position < visit_distribution_raw.len() {
+            visit_distribution_raw[best_position] = 1.0;
+        }
+    }
+
+    let policy_distribution = Tensor::from_slice(&visit_distribution_raw);
+    let policy_distribution_boosted = Tensor::from_slice(&visit_distribution_boosted);
+
+    let total_boost: f64 = boost_applied.values().sum();
+
     MCTSResult {
         best_position,
         board_tensor,
         subscore: final_score as f64, // Store real final score, not UCB score
+        policy_distribution,
+        policy_distribution_boosted,
+        boost_intensity: total_boost as f32,
     }
 }
