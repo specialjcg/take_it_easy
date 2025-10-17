@@ -14,6 +14,7 @@ use crate::mcts::mcts_result::MCTSResult;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::tensor_conversion::convert_plateau_to_tensor;
 use crate::scoring::scoring::result;
+use crate::strategy::contextual_boost::calculate_contextual_boost;
 use crate::strategy::position_evaluation::enhanced_position_evaluation;
 use crate::utils::random_index::random_index;
 use std::collections::HashMap;
@@ -211,25 +212,23 @@ pub fn mcts_find_best_position_for_tile_with_nn(
 
             ucb_scores_raw.insert(position, ucb_score);
 
-            let boost = match chosen_tile.0 {
-                9 if [7, 8, 9, 10, 11].contains(&position) => 10000.0,
-                5 if [3, 4, 5, 6, 12, 13, 14, 15].contains(&position) => 8000.0,
-                1 if [0, 1, 2, 16, 17, 18].contains(&position) => 6000.0,
-                _ => 0.0,
-            };
+            // 🎯 NEW: Contextual boost analyzing all 3 bands and line completion
+            let boost = calculate_contextual_boost(plateau, position, &chosen_tile, current_turn);
+
             let ucb_score_raw = ucb_score;
-            if boost != 0.0 {
+            if boost > 0.0 {
                 ucb_score += boost;
                 *boost_applied.entry(position).or_insert(0.0) += boost;
             }
 
-            if boost != 0.0 {
+            if boost > 10000.0 {
                 log::trace!(
-                    "[MCTS Boost] tile {:?} position {} raw={:.3} -> boosted={:.3}",
+                    "[MCTS ContextualBoost] tile {:?} position {} raw={:.3} -> boosted={:.3} (boost={:.1})",
                     chosen_tile,
                     position,
                     ucb_score_raw,
-                    ucb_score
+                    ucb_score,
+                    boost
                 );
             }
 
