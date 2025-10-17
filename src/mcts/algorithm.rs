@@ -70,18 +70,11 @@ pub fn mcts_find_best_position_for_tile_with_nn(
         ucb_scores.insert(position, f64::NEG_INFINITY);
     }
 
-    let c_puct = if current_turn < 5 {
-        4.2 // Plus d'exploitation en début de partie (positions critiques)
-    } else if current_turn > 15 {
-        3.0 // Plus d'exploration en fin de partie (adaptation)
-    } else {
-        3.8 // Équilibre pour le milieu de partie
-    };
-
     // **Compute ValueNet scores for all legal moves**
     let mut value_estimates = HashMap::new();
     let mut min_value = f64::INFINITY;
     let mut max_value = f64::NEG_INFINITY;
+    let mut sum_values = 0.0;
 
     for &position in &legal_moves {
         let mut temp_plateau = plateau.clone();
@@ -102,19 +95,82 @@ pub fn mcts_find_best_position_for_tile_with_nn(
             .double_value(&[]);
         let pred_value = pred_value.clamp(-1.0, 1.0);
 
-        // Track min and max for dynamic pruning
+        // Track min, max, and sum for variance calculation
         min_value = min_value.min(pred_value);
         max_value = max_value.max(pred_value);
+        sum_values += pred_value;
 
         value_estimates.insert(position, pred_value);
     }
 
-    // **Dynamic Pruning Strategy**
-    let value_threshold = if current_turn < 8 {
-        min_value + (max_value - min_value) * 0.1 // Garder plus de candidats en début
+    // 🎯 **Dynamic c_puct based on ValueNet variance**
+    let mean_value = sum_values / value_estimates.len() as f64;
+    let variance = value_estimates
+        .values()
+        .map(|&v| (v - mean_value).powi(2))
+        .sum::<f64>()
+        / value_estimates.len() as f64;
+
+    // Adapt c_puct: high variance = more exploration needed
+    let base_c_puct = if current_turn < 5 {
+        4.2 // Early game base
+    } else if current_turn > 15 {
+        3.0 // Late game base
     } else {
-        min_value + (max_value - min_value) * 0.15 // Pruning moins agressif
+        3.8 // Mid game base
     };
+
+    // Variance adjustment: 0.0-0.5 variance -> 0.8x-1.3x multiplier
+    let variance_multiplier = if variance > 0.5 {
+        1.3 // High uncertainty -> explore more
+    } else if variance > 0.2 {
+        1.1 // Medium uncertainty
+    } else if variance > 0.05 {
+        1.0 // Low uncertainty
+    } else {
+        0.85 // Very low uncertainty -> exploit more
+    };
+
+    let c_puct = base_c_puct * variance_multiplier;
+
+    if log::log_enabled!(log::Level::Trace) {
+        log::trace!(
+            "[DynamicMCTS] turn={} variance={:.3} c_puct={:.2} (base={:.2} mult={:.2})",
+            current_turn,
+            variance,
+            c_puct,
+            base_c_puct,
+            variance_multiplier
+        );
+    }
+
+    // 🎯 **Improved Dynamic Pruning Strategy**
+    // More conservative in early game (keep more options), more aggressive in late game
+    let pruning_ratio = if current_turn < 5 {
+        0.05 // Keep 95% of moves in very early game (explore broadly)
+    } else if current_turn < 10 {
+        0.10 // Keep 90% in early-mid game
+    } else if current_turn < 15 {
+        0.15 // Keep 85% in mid game
+    } else {
+        0.20 // Keep 80% in late game (focus on best moves)
+    };
+
+    let value_threshold = min_value + (max_value - min_value) * pruning_ratio;
+
+    if log::log_enabled!(log::Level::Trace) {
+        let kept_moves = legal_moves.iter()
+            .filter(|&&pos| value_estimates[&pos] >= value_threshold)
+            .count();
+        log::trace!(
+            "[DynamicPruning] turn={} threshold={:.3} keeping {}/{} moves ({}%)",
+            current_turn,
+            value_threshold,
+            kept_moves,
+            legal_moves.len(),
+            (kept_moves as f64 / legal_moves.len() as f64 * 100.0) as i32
+        );
+    }
 
     // Track cumulative boost applied per move for logging/analysis
     let mut boost_applied: HashMap<usize, f64> = HashMap::new();
