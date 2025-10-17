@@ -71,9 +71,9 @@ fn tile_has_value_on_band(tile: &Tile, band_idx: usize, target_value: i32) -> bo
 
 /// Calculate contextual boost for placing a tile at a position
 ///
-/// SIMPLIFIED APPROACH: Keep old system's aggressive boosts but analyze ALL 3 bands
+/// PHASE 2: Analyze ALL 3 bands + detect line completion progress
 pub fn calculate_contextual_boost(
-    _plateau: &Plateau,
+    plateau: &Plateau,
     position: usize,
     tile: &Tile,
     _current_turn: usize,
@@ -83,21 +83,63 @@ pub fn calculate_contextual_boost(
     // Analyze each band of the tile (0, 1, 2)
     let tile_bands = [tile.0, tile.1, tile.2];
 
-    for &band_value in &tile_bands {
+    for (band_idx, &band_value) in tile_bands.iter().enumerate() {
         if band_value == 0 {
             continue;
         }
 
-        // Apply OLD SYSTEM's simple but effective boosts for THIS band value
-        let boost = match band_value {
-            9 if [7, 8, 9, 10, 11].contains(&position) => 10000.0,
-            5 if [3, 4, 5, 6, 12, 13, 14, 15].contains(&position) => 8000.0,
-            1 if [0, 1, 2, 16, 17, 18].contains(&position) => 6000.0,
-            _ => 0.0,
-        };
+        // Check all lines that could be completed with this band
+        for (line_positions, _line_length, line_band_idx) in LINES {
+            if *line_band_idx != band_idx {
+                continue; // Wrong band type
+            }
 
-        if boost > max_boost {
-            max_boost = boost;
+            if !line_positions.contains(&position) {
+                continue; // Position not in this line
+            }
+
+            // Count how many tiles in this line already have this band value
+            let matching_count = count_matching_tiles(
+                plateau,
+                line_positions,
+                band_idx,
+                band_value,
+                position,
+            );
+
+            // 🎯 PHASE 2: Exponential boost based on line completion
+            let completion_boost = match matching_count {
+                4 => band_value as f64 * 50000.0, // 4/5 or 4/4 = MASSIVE boost
+                3 => band_value as f64 * 25000.0, // 3/4 or 3/5 = huge boost
+                2 => band_value as f64 * 10000.0, // 2/3 or 2/4 = large boost
+                1 => band_value as f64 * 3000.0,  // 1/2 or 1/3 = medium boost
+                0 => {
+                    // Fallback to old system for starting lines
+                    match band_value {
+                        9 if [7, 8, 9, 10, 11].contains(&position) => 10000.0,
+                        5 if [3, 4, 5, 6, 12, 13, 14, 15].contains(&position) => 8000.0,
+                        1 if [0, 1, 2, 16, 17, 18].contains(&position) => 6000.0,
+                        _ => 0.0,
+                    }
+                }
+                _ => 0.0,
+            };
+
+            if completion_boost > max_boost {
+                max_boost = completion_boost;
+
+                if log::log_enabled!(log::Level::Trace) && matching_count >= 2 {
+                    log::trace!(
+                        "[BoostPhase2] pos={} band_idx={} value={} matching={}/{} boost={:.0}",
+                        position,
+                        band_idx,
+                        band_value,
+                        matching_count,
+                        line_positions.len(),
+                        completion_boost
+                    );
+                }
+            }
         }
     }
 
