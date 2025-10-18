@@ -222,7 +222,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize neural network manager with configuration
     let neural_config = NeuralConfig {
-        input_dim: (5, 47, 1),
+        input_dim: (5, 5, 5), // Bronze GNN: 5 channels × 5×5 spatial grid
         model_path: "model_weights".to_string(),
         policy_lr: 1e-3,
         value_lr: 2e-4,
