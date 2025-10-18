@@ -113,11 +113,11 @@ pub fn mcts_find_best_position_for_tile_with_nn(
 
     // Adapt c_puct: high variance = more exploration needed
     let base_c_puct = if current_turn < 5 {
-        4.2 // Early game base
+        5.0 // Early game: more exploration (was 4.2)
     } else if current_turn > 15 {
-        3.0 // Late game base
+        2.8 // Late game: more exploitation (was 3.0)
     } else {
-        3.8 // Mid game base
+        4.0 // Mid game: balanced (was 3.8)
     };
 
     // Variance adjustment: 0.0-0.5 variance -> 0.8x-1.3x multiplier
@@ -145,15 +145,15 @@ pub fn mcts_find_best_position_for_tile_with_nn(
     }
 
     // 🎯 **Improved Dynamic Pruning Strategy**
-    // More conservative in early game (keep more options), more aggressive in late game
+    // More conservative in early game (keep more options), less aggressive in late game
     let pruning_ratio = if current_turn < 5 {
-        0.05 // Keep 95% of moves in very early game (explore broadly)
+        0.03 // Keep 97% of moves in very early game (was 0.05)
     } else if current_turn < 10 {
-        0.10 // Keep 90% in early-mid game
+        0.08 // Keep 92% in early-mid game (was 0.10)
     } else if current_turn < 15 {
-        0.15 // Keep 85% in mid game
+        0.12 // Keep 88% in mid game (was 0.15)
     } else {
-        0.20 // Keep 80% in late game (focus on best moves)
+        0.15 // Keep 85% in late game - keep more options! (was 0.20)
     };
 
     let value_threshold = min_value + (max_value - min_value) * pruning_ratio;
