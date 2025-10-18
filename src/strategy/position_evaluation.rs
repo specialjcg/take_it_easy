@@ -2,6 +2,28 @@ use crate::game::plateau::Plateau;
 use crate::game::tile::Tile;
 use crate::scoring::scoring::compute_alignment_score;
 
+/// Line definitions: (positions, band_index)
+const LINES: &[(&[usize], usize)] = &[
+    // Horizontal lines (band 0)
+    (&[0, 1, 2], 0),
+    (&[3, 4, 5, 6], 0),
+    (&[7, 8, 9, 10, 11], 0),
+    (&[12, 13, 14, 15], 0),
+    (&[16, 17, 18], 0),
+    // Diagonal type 1 (band 1)
+    (&[0, 3, 7], 1),
+    (&[1, 4, 8, 12], 1),
+    (&[2, 5, 9, 13, 16], 1),
+    (&[6, 10, 14, 17], 1),
+    (&[11, 15, 18], 1),
+    // Diagonal type 2 (band 2)
+    (&[7, 12, 16], 2),
+    (&[3, 8, 13, 17], 2),
+    (&[0, 4, 9, 14, 18], 2),
+    (&[1, 5, 10, 15], 2),
+    (&[2, 6, 11], 2),
+];
+
 // Version simplifiée qui se concentre sur les positions stratégiques
 pub fn calculate_line_completion_bonus(_plateau: &Plateau, position: usize, tile: &Tile) -> f64 {
     let mut bonus = 0.0;
@@ -80,5 +102,37 @@ pub fn enhanced_position_evaluation(
     // Bonus pour complétion de lignes
     let completion_bonus = calculate_line_completion_bonus(plateau, position, tile);
 
-    alignment_score + position_bonus + position_malus + completion_bonus
+    // 🎯 Keep it simple: let MCTS + ValueNet handle complex patterns
+    // Multi-line potential is useful but empirical bonuses were misleading
+    let multi_line_bonus = calculate_multi_line_potential(position, tile);
+
+    alignment_score + position_bonus + position_malus + completion_bonus + multi_line_bonus
 }
+
+/// Calculate bonus for positions that participate in multiple lines
+fn calculate_multi_line_potential(position: usize, tile: &Tile) -> f64 {
+    let tile_bands = [tile.0, tile.1, tile.2];
+    let mut line_count = 0;
+
+    // Count how many lines this position belongs to
+    for (line_positions, band_idx) in LINES {
+        if !line_positions.contains(&position) {
+            continue;
+        }
+
+        // Check if tile has a value on this band
+        let band_value = tile_bands[*band_idx];
+        if band_value > 0 {
+            line_count += 1;
+        }
+    }
+
+    // More lines = more flexibility and scoring potential
+    match line_count {
+        3 => 3.0,  // Excellent: 3 lines
+        2 => 1.5,  // Good: 2 lines
+        1 => 0.0,  // Normal: 1 line
+        _ => 0.0,
+    }
+}
+
