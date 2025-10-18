@@ -3,37 +3,77 @@ use crate::game::plateau::Plateau;
 use crate::game::tile::Tile;
 use tch::Tensor;
 
+/// Bronze GNN: Map 19-position hexagonal plateau to 5×5 2D grid preserving spatial structure
+///
+/// Hexagonal layout (19 positions):
+///     0  1  2
+///    3  4  5  6
+///   7  8  9 10 11
+///    12 13 14 15
+///      16 17 18
+///
+/// Mapped to 5×5 grid (padding with -1 for empty cells):
+///   -1  0  1  2 -1
+///   -1  3  4  5  6
+///    7  8  9 10 11
+///   12 13 14 15 -1
+///   -1 16 17 18 -1
+const HEX_TO_GRID_MAP: [(usize, usize); 19] = [
+    // Row 0: positions 0,1,2
+    (0, 1), (0, 2), (0, 3),
+    // Row 1: positions 3,4,5,6
+    (1, 1), (1, 2), (1, 3), (1, 4),
+    // Row 2: positions 7,8,9,10,11
+    (2, 0), (2, 1), (2, 2), (2, 3), (2, 4),
+    // Row 3: positions 12,13,14,15
+    (3, 0), (3, 1), (3, 2), (3, 3),
+    // Row 4: positions 16,17,18
+    (4, 1), (4, 2), (4, 3),
+];
+
 pub fn convert_plateau_to_tensor(
     plateau: &Plateau,
-    _tile: &Tile, // Add underscore prefix
-    _deck: &Deck, // Add underscore prefix
+    _tile: &Tile,
+    _deck: &Deck,
     current_turn: usize,
     total_turns: usize,
 ) -> Tensor {
-    let mut features = vec![0.0; 5 * 47]; // 5 channels
+    // 5 channels × 5 rows × 5 cols = 125 features
+    let mut features = vec![-1.0f32; 5 * 5 * 5]; // Initialize with -1 for padding
 
-    // Channel 1-3: Plateau (only use plateau data, not tile/deck)
-    for (i, t) in plateau.tiles.iter().enumerate() {
-        if i < 19 {
-            features[i] = (t.0 as f32 / 10.0).clamp(0.0, 1.0);
-            features[47 + i] = (t.1 as f32 / 10.0).clamp(0.0, 1.0);
-            features[2 * 47 + i] = (t.2 as f32 / 10.0).clamp(0.0, 1.0);
+    let potential_scores = compute_potential_scores(plateau);
+    let turn_normalized = current_turn as f32 / total_turns as f32;
+
+    // Map each of the 19 hexagonal positions to the 5×5 grid
+    for (hex_pos, &(row, col)) in HEX_TO_GRID_MAP.iter().enumerate() {
+        let grid_idx = row * 5 + col;
+
+        if hex_pos < plateau.tiles.len() {
+            let tile = &plateau.tiles[hex_pos];
+
+            // Channel 0: Band 0 (red band)
+            features[grid_idx] = (tile.0 as f32 / 10.0).clamp(0.0, 1.0);
+
+            // Channel 1: Band 1 (green band)
+            features[25 + grid_idx] = (tile.1 as f32 / 10.0).clamp(0.0, 1.0);
+
+            // Channel 2: Band 2 (blue band)
+            features[50 + grid_idx] = (tile.2 as f32 / 10.0).clamp(0.0, 1.0);
+
+            // Channel 3: Score Potential
+            features[75 + grid_idx] = if hex_pos < potential_scores.len() {
+                potential_scores[hex_pos]
+            } else {
+                0.0
+            };
+
+            // Channel 4: Current Turn (normalized)
+            features[100 + grid_idx] = turn_normalized;
         }
     }
 
-    // Channel 4: Score Potential for each position
-    let potential_scores = compute_potential_scores(plateau);
-    for i in 0..19 {
-        features[3 * 47 + i] = potential_scores[i];
-    }
-
-    // Channel 5: Current Turn
-    let turn_normalized = current_turn as f32 / total_turns as f32;
-    for i in 0..19 {
-        features[4 * 47 + i] = turn_normalized;
-    }
-
-    Tensor::from_slice(&features).view([1, 5, 47, 1])
+    // Reshape to [batch, channels, height, width] = [1, 5, 5, 5]
+    Tensor::from_slice(&features).view([1, 5, 5, 5])
 }
 // Type alias for complex pattern type
 type PatternTuple = (&'static [usize], i32, Box<dyn Fn(&Tile) -> i32>);

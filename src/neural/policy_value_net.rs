@@ -19,10 +19,10 @@ const INITIAL_CONV_CHANNELS: i64 = 128;
 const NUM_RES_BLOCKS_VALUE: usize = 4; // Or adjust as needed
 const INITIAL_CONV_CHANNELS_VALUE: i64 = 128;
 impl PolicyNet {
-    // policy_value_net.rs (PolicyNet and ValueNet)
+    // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
     pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64)) -> Self {
-        let p = vs.root(); // p is a Path
-        let (channels, height, width) = input_dim;
+        let p = vs.root();
+        let (channels, height, width) = input_dim; // Expecting (5, 5, 5)
 
         let conv1 = nn::conv2d(
             &p / "policy_conv1",
@@ -40,22 +40,25 @@ impl PolicyNet {
         let mut in_channels = INITIAL_CONV_CHANNELS;
 
         for _ in 0..NUM_RES_BLOCKS {
-            let out_channels = 32; // Or adjust as needed (e.g., increase in stages)
-            res_blocks.push(ResNetBlock::new(vs, in_channels, out_channels)); // Use &vs here!
+            let out_channels = 32;
+            res_blocks.push(ResNetBlock::new(vs, in_channels, out_channels));
             in_channels = out_channels;
         }
 
-        let flatten_size = in_channels * height * width; // Adjust if you have downsampling in ResNetBlocks
+        // After conv operations, spatial dimensions remain 5×5 (with padding=1)
+        let flatten_size = in_channels * height * width;
+        log::info!("🔧 PolicyNet flatten_size: {} (channels={}, height={}, width={})", flatten_size, in_channels, height, width);
         let flatten = nn::linear(
             &p / "policy_flatten",
             flatten_size,
             2048,
             Default::default(),
         );
+        log::info!("✅ PolicyNet flatten layer created with input size {}", flatten_size);
         let fc1 = nn::linear(&p / "policy_fc1", 2048, 512, Default::default());
         let policy_head = nn::linear(&p / "policy_head", 512, 19, nn::LinearConfig::default());
 
-        initialize_weights(vs); // Use &vs here!
+        initialize_weights(vs);
 
         Self {
             conv1,
@@ -158,9 +161,10 @@ pub struct ValueNet {
 }
 
 impl ValueNet {
+    // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
     pub fn new(vs: &VarStore, input_dim: (i64, i64, i64)) -> Self {
         let p = vs.root();
-        let (channels, height, width) = input_dim;
+        let (channels, height, width) = input_dim; // Expecting (5, 5, 5)
 
         let conv1 = nn::conv2d(
             &p / "value_conv1",
