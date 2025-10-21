@@ -42,14 +42,6 @@ cargo run -- --mode training --num-games 500 --offline-training --evaluation-int
 - Generates self-play data and continually fine-tunes policy/value networks
 - Offline mode writes progress to logs and is recommended for dataset farming
 
-### Transformer Experiments
-```bash
-# Fine-tune Transformer on generated `.pt` tensors (loads/saves transformer_weights/)
-cargo run -- --mode transformer-training --num-games 500
-```
-- Trains a lightweight attention model to predict best moves / expected score
-- Logs evaluation every few epochs and checkpoints weights automatically
-
 ## Architecture
 
 ### Core Services

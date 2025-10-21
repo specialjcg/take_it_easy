@@ -22,7 +22,7 @@ impl PolicyNet {
     // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
     pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64)) -> Self {
         let p = vs.root();
-        let (channels, height, width) = input_dim; // Expecting (5, 5, 5)
+        let (channels, height, width) = input_dim; // Expecting (channels, height, width)
 
         let conv1 = nn::conv2d(
             &p / "policy_conv1",
@@ -47,14 +47,23 @@ impl PolicyNet {
 
         // After conv operations, spatial dimensions remain 5×5 (with padding=1)
         let flatten_size = in_channels * height * width;
-        log::info!("🔧 PolicyNet flatten_size: {} (channels={}, height={}, width={})", flatten_size, in_channels, height, width);
+        log::info!(
+            "🔧 PolicyNet flatten_size: {} (channels={}, height={}, width={})",
+            flatten_size,
+            in_channels,
+            height,
+            width
+        );
         let flatten = nn::linear(
             &p / "policy_flatten",
             flatten_size,
             2048,
             Default::default(),
         );
-        log::info!("✅ PolicyNet flatten layer created with input size {}", flatten_size);
+        log::info!(
+            "✅ PolicyNet flatten layer created with input size {}",
+            flatten_size
+        );
         let fc1 = nn::linear(&p / "policy_fc1", 2048, 512, Default::default());
         let policy_head = nn::linear(&p / "policy_head", 512, 19, nn::LinearConfig::default());
 
@@ -164,7 +173,7 @@ impl ValueNet {
     // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
     pub fn new(vs: &VarStore, input_dim: (i64, i64, i64)) -> Self {
         let p = vs.root();
-        let (channels, height, width) = input_dim; // Expecting (5, 5, 5)
+        let (channels, height, width) = input_dim; // Expecting (channels, height, width)
 
         let conv1 = nn::conv2d(
             &p / "value_conv1",

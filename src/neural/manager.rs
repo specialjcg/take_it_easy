@@ -28,7 +28,7 @@ pub struct NeuralConfig {
 impl Default for NeuralConfig {
     fn default() -> Self {
         Self {
-            input_dim: (5, 5, 5), // Bronze GNN: 5 channels × 5×5 spatial grid
+            input_dim: (8, 5, 5), // Enhanced channels × 5×5 spatial grid
             device: Device::Cpu,
             model_path: "model_weights".to_string(),
             policy_lr: 1e-3,
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn test_neural_config_default() {
         let config = NeuralConfig::default();
-        assert_eq!(config.input_dim, (5, 5, 5)); // Bronze GNN
+        assert_eq!(config.input_dim, (8, 5, 5));
         assert_eq!(config.device, Device::Cpu);
         assert_eq!(config.model_path, "model_weights");
         assert_eq!(config.policy_lr, 1e-3);
@@ -323,7 +323,7 @@ mod tests {
         assert!(manager.is_ok());
 
         let manager = manager.unwrap();
-        assert_eq!(manager.config().input_dim, (5, 5, 5)); // Bronze GNN
+        assert_eq!(manager.config().input_dim, (8, 5, 5));
         assert_eq!(manager.config().model_path, "model_weights");
     }
 
@@ -350,7 +350,7 @@ mod tests {
     #[test]
     fn test_neural_summary_display() {
         let summary = NeuralSummary {
-            input_dim: (5, 5, 5), // Bronze GNN
+            input_dim: (8, 5, 5),
             device: "Cpu".to_string(),
             model_path: "model_weights".to_string(),
             policy_lr: 1e-3,
@@ -361,7 +361,7 @@ mod tests {
 
         let display = format!("{}", summary);
         assert!(display.contains("Neural Networks Summary"));
-        assert!(display.contains("Input Dimensions: (5, 5, 5)"));
+        assert!(display.contains("Input Dimensions: (8, 5, 5)"));
         assert!(display.contains("Device: Cpu"));
         assert!(display.contains("Policy Params: 1000"));
     }
@@ -381,7 +381,7 @@ mod tests {
 
         // Test summary
         let summary = manager.summary();
-        assert_eq!(summary.input_dim, (5, 5, 5)); // Bronze GNN
+        assert_eq!(summary.input_dim, (8, 5, 5));
         assert_eq!(summary.model_path, "model_weights");
     }
 
@@ -403,7 +403,7 @@ mod tests {
         let manager = NeuralManager::new().unwrap();
         let components = manager.into_components();
 
-        assert_eq!(components.config.input_dim, (5, 5, 5)); // Bronze GNN
+        assert_eq!(components.config.input_dim, (8, 5, 5));
         assert_eq!(components.config.model_path, "model_weights");
         // Components should be properly moved
     }

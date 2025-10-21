@@ -59,49 +59,81 @@ fn count_matching_tiles(
         .count()
 }
 
-/// Checks if a tile has the target value on the target band
-fn tile_has_value_on_band(tile: &Tile, band_idx: usize, target_value: i32) -> bool {
-    match band_idx {
-        0 => tile.0 == target_value,
-        1 => tile.1 == target_value,
-        2 => tile.2 == target_value,
-        _ => false,
-    }
-}
-
-/// Calculate contextual boost for placing a tile at a position
-///
-/// STABLE VERSION: Analyze ALL 3 bands with simple position-based boosts
-pub fn calculate_contextual_boost(
-    _plateau: &Plateau,
+pub fn calculate_contextual_boost_entropy(
+    plateau: &Plateau,
     position: usize,
     tile: &Tile,
-    _current_turn: usize,
+    current_turn: usize,
+    entropy_factor: f64,
 ) -> f64 {
-    let mut max_boost = 0.0;
-
-    // Analyze each band of the tile (0, 1, 2)
     let tile_bands = [tile.0, tile.1, tile.2];
+    let mut score = 0.0;
 
-    for &band_value in &tile_bands {
-        if band_value == 0 {
+    for (line_positions, length, band_idx) in LINES {
+        if !line_positions.contains(&position) {
             continue;
         }
 
-        // Simple but effective boosts based on strategic positions
-        let boost = match band_value {
-            9 if [7, 8, 9, 10, 11].contains(&position) => 10000.0,
-            5 if [3, 4, 5, 6, 12, 13, 14, 15].contains(&position) => 8000.0,
-            1 if [0, 1, 2, 16, 17, 18].contains(&position) => 6000.0,
-            _ => 0.0,
-        };
-
-        if boost > max_boost {
-            max_boost = boost;
+        let target_value = tile_bands[*band_idx];
+        if target_value == 0 {
+            continue;
         }
+
+        let matches =
+            count_matching_tiles(plateau, line_positions, *band_idx, target_value, position);
+
+        let conflicts = line_positions
+            .iter()
+            .filter(|&&pos| pos != position)
+            .filter(|&&pos| {
+                let tile = plateau.tiles[pos];
+                if tile == Tile(0, 0, 0) {
+                    return false;
+                }
+                let band_value = match band_idx {
+                    0 => tile.0,
+                    1 => tile.1,
+                    2 => tile.2,
+                    _ => 0,
+                };
+                band_value != 0 && band_value != target_value
+            })
+            .count();
+
+        let filled = line_positions
+            .iter()
+            .filter(|&&pos| plateau.tiles[pos] != Tile(0, 0, 0))
+            .count();
+
+        let completion_ratio = (matches as f64 + 1.0) / (*length as f64);
+        let occupancy_ratio = filled as f64 / (*length as f64);
+        let conflict_penalty = conflicts as f64 / (*length as f64);
+
+        score += completion_ratio * (1.0 + occupancy_ratio) - conflict_penalty;
     }
 
-    max_boost
+    let positional_bonus = match position {
+        8 => 1.5,
+        9 | 10 => 1.2,
+        3 | 4 | 5 | 6 | 12 | 13 | 14 | 15 => 0.9,
+        2 | 7 | 11 | 16 => 0.5,
+        0 | 1 | 17 | 18 => 0.2,
+        _ => 0.0,
+    };
+
+    let phase_factor = if current_turn < 6 {
+        1.15
+    } else if current_turn > 14 {
+        0.85
+    } else {
+        1.0
+    };
+
+    let scaled = (score + positional_bonus) * phase_factor;
+    let normalized = (scaled / 4.0).tanh().clamp(-1.0, 1.0);
+    let entropy_scaled = 0.3 + 0.7 * entropy_factor.clamp(0.0, 1.0);
+
+    normalized * entropy_scaled
 }
 
 #[cfg(test)]
@@ -113,17 +145,13 @@ mod tests {
     fn test_empty_plateau_has_minimal_boost() {
         let plateau = create_plateau_empty();
         let tile = Tile(9, 5, 1);
-        let boost = calculate_contextual_boost(&plateau, 8, &tile, 5);
+        let boost = calculate_contextual_boost_entropy(&plateau, 8, &tile, 5, 1.0);
 
-        // Should have minimal boost for starting a line
         assert!(
             boost > 0.0,
             "Empty plateau should still have starting boost"
         );
-        assert!(
-            boost < 10000.0,
-            "Empty plateau boost should be reasonable"
-        );
+        assert!(boost <= 1.0, "Boost should be normalized to [-1, 1]");
     }
 
     #[test]
@@ -138,10 +166,10 @@ mod tests {
         // Position 11 is empty
 
         let tile = Tile(9, 5, 5); // Will complete the line!
-        let boost = calculate_contextual_boost(&plateau, 11, &tile, 5);
+        let boost = calculate_contextual_boost_entropy(&plateau, 11, &tile, 5, 1.0);
 
-        // Should have MASSIVE boost (4/4 matching = 3000x multiplier)
-        assert!(boost > 100000.0, "Near-complete line should get massive boost: got {}", boost);
+        assert!(boost > 0.6, "Near-complete line should get strong boost");
+        assert!(boost <= 1.0, "Boost should remain normalized");
     }
 
     #[test]
@@ -163,10 +191,10 @@ mod tests {
         // Position 9 will match band 1 with value 3
 
         let tile = Tile(5, 3, 7);
-        let boost = calculate_contextual_boost(&plateau, 9, &tile, 5);
+        let boost = calculate_contextual_boost_entropy(&plateau, 9, &tile, 5, 1.0);
 
-        // Should get boost from both band 0 (value 5) and band 1 (value 3)
         assert!(boost > 0.0, "Should analyze multiple bands");
+        assert!(boost <= 1.0, "Boost should remain normalized");
     }
 
     #[test]
@@ -178,12 +206,8 @@ mod tests {
         plateau.tiles[1] = Tile(5, 2, 2); // Different value on band 0!
 
         let tile = Tile(9, 3, 3);
-        let boost = calculate_contextual_boost(&plateau, 2, &tile, 5);
+        let boost = calculate_contextual_boost_entropy(&plateau, 2, &tile, 5, 1.0);
 
-        // Boost should be low because line has conflict
-        assert!(
-            boost < 50000.0,
-            "Conflicting line should have minimal boost"
-        );
+        assert!(boost < 0.2, "Conflicting line should have minimal boost");
     }
 }

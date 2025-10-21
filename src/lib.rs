@@ -1,4 +1,3 @@
-use neural::transformer::profiling::TransformerProfiler;
 use thiserror::Error;
 
 pub const NAME: &str = env!("CARGO_PKG_NAME");
@@ -16,21 +15,6 @@ pub enum TakeItEasyError {
 }
 
 pub type Result<T> = std::result::Result<T, TakeItEasyError>;
-
-pub fn profile_section<T, F>(
-    profiler: &mut TransformerProfiler,
-    section: &str,
-    memory_usage: f64,
-    code: F,
-) -> T
-where
-    F: FnOnce() -> T,
-{
-    profiler.start_operation(section);
-    let result = code();
-    profiler.end_operation(section, memory_usage);
-    result
-}
 
 pub mod data;
 pub mod game;
