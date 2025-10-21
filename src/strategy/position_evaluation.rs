@@ -129,10 +129,9 @@ fn calculate_multi_line_potential(position: usize, tile: &Tile) -> f64 {
 
     // More lines = more flexibility and scoring potential
     match line_count {
-        3 => 3.0,  // Excellent: 3 lines
-        2 => 1.5,  // Good: 2 lines
-        1 => 0.0,  // Normal: 1 line
+        3 => 3.0, // Excellent: 3 lines
+        2 => 1.5, // Good: 2 lines
+        1 => 0.0, // Normal: 1 line
         _ => 0.0,
     }
 }
-

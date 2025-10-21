@@ -13,13 +13,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "game_data_policy_raw.pt",
         "game_data_policy_boosted.pt",
         "game_data_boosts.pt",
-        "game_data_states_transformer.pt",
-        "game_data_positions_transformer.pt",
-        "game_data_subscores_transformer.pt",
-        "game_data_policy_transformer.pt",
-        "game_data_policy_raw_transformer.pt",
-        "game_data_policy_boosted_transformer.pt",
-        "game_data_boosts_transformer.pt",
     ];
 
     let args: Vec<String> = env::args().skip(1).collect();
@@ -114,7 +107,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 println!(
                     "     Exemple {}: min={:.4}, max={:.4}, mean={:.4}",
-                    idx + 1, s_min, s_max, s_mean
+                    idx + 1,
+                    s_min,
+                    s_max,
+                    s_mean
                 );
 
                 if is_positions_tensor(&tensor) && idx == 0 {

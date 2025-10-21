@@ -100,16 +100,6 @@ pub fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
     if let Err(_e) = combined_policy_raw.save(format!("{}_policy_raw.pt", file_path)) {}
     if let Err(_e) = combined_policy_boosted.save(format!("{}_policy_boosted.pt", file_path)) {}
     if let Err(_e) = combined_boosts.save(format!("{}_boosts.pt", file_path)) {}
-
-    // Sauvegardes dédiées au Transformer pour éviter les collisions avec le CNN
-    if let Err(_e) = combined_states.save(format!("{}_states_transformer.pt", file_path)) {}
-    if let Err(_e) = combined_positions.save(format!("{}_positions_transformer.pt", file_path)) {}
-    if let Err(_e) = combined_subscores.save(format!("{}_subscores_transformer.pt", file_path)) {}
-    if let Err(_e) = combined_policy_raw.save(format!("{}_policy_raw_transformer.pt", file_path)) {}
-    if let Err(_e) =
-        combined_policy_boosted.save(format!("{}_policy_boosted_transformer.pt", file_path))
-    {}
-    if let Err(_e) = combined_boosts.save(format!("{}_boosts_transformer.pt", file_path)) {}
 }
 
 fn positions_to_one_hot(positions: &Tensor, policy_len: i64) -> Tensor {

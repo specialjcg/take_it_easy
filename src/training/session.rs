@@ -30,6 +30,18 @@ use tch::nn::Optimizer;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 
+const MIN_TRAINING_SCORE: f64 = 140.0;
+
+fn weight_from_score(score: f64) -> usize {
+    if score >= 160.0 {
+        3
+    } else if score >= MIN_TRAINING_SCORE {
+        2
+    } else {
+        0
+    }
+}
+
 /// Lance une session MCTS vs Humain - Version refactorisée avec send_websocket_message
 #[allow(clippy::too_many_arguments)]
 pub async fn train_and_evaluate(
@@ -57,6 +69,7 @@ pub async fn train_and_evaluate(
         let mut scores_by_position: HashMap<usize, Vec<i32>> = HashMap::new();
         let mut scores = Vec::new(); // Stocke les scores
         let evaluation_interval_average = 10;
+        let mut training_buffer: Vec<MCTSResult> = Vec::new();
 
         while games_played < num_games {
             let mut batch_games_played = 0; // Tracks games processed in this evaluation interval
@@ -158,47 +171,39 @@ pub async fn train_and_evaluate(
                         .push(final_score);
                 }
 
-                let mut batch_game_data = Vec::new();
-
                 // Prioritized historical data
                 let prioritized_data: Vec<MCTSResult> = load_game_data("game_data")
                     .into_iter()
-                    .filter(|r| r.subscore > 100.0) // Only select high-score games
+                    .filter(|r| r.subscore >= MIN_TRAINING_SCORE) // Only select high-score games
                     .take(50) // Limit to 50 samples to prevent overfitting
                     .collect();
 
-                // Add historical data to batch
-                batch_game_data.extend(prioritized_data);
-
-                // Add current game's data to batch
-                batch_game_data.extend(game_data.iter().map(|result| MCTSResult {
-                    best_position: result.best_position,
-                    board_tensor: result.board_tensor.shallow_clone(),
-                    subscore: result.subscore,
-                    policy_distribution: result.policy_distribution.shallow_clone(),
-                    policy_distribution_boosted: result.policy_distribution_boosted.shallow_clone(),
-                    boost_intensity: result.boost_intensity,
-                }));
-
-                // Keep only last max_memory_size experiences
-                if batch_game_data.len() > max_memory_size {
-                    let to_remove = batch_game_data.len() - max_memory_size;
-                    batch_game_data.drain(0..to_remove); // Remove oldest data
+                // Add historical data to batch with score-based weighting
+                for result in prioritized_data {
+                    let copies = weight_from_score(result.subscore);
+                    if copies == 0 {
+                        continue;
+                    }
+                    for _ in 0..copies {
+                        training_buffer.push(result.clone());
+                    }
                 }
 
-                // Train in batches
-                let batch_size = 10;
-                for batch in batch_game_data.chunks(batch_size) {
-                    train_network_with_game_data(
-                        vs_policy,
-                        vs_value,
-                        batch, // Use each batch directly
-                        final_score.into(),
-                        policy_net,
-                        value_net,
-                        optimizer_policy,
-                        optimizer_value,
-                    );
+                // Add current game's data to batch with weighting
+                for result in &game_data {
+                    let copies = weight_from_score(result.subscore);
+                    if copies == 0 {
+                        continue;
+                    }
+                    for _ in 0..copies {
+                        training_buffer.push(result.clone());
+                    }
+                }
+
+                // Keep only last max_memory_size experiences
+                if training_buffer.len() > max_memory_size {
+                    let to_remove = training_buffer.len() - max_memory_size;
+                    training_buffer.drain(0..to_remove); // Remove oldest data
                 }
                 scores.push(final_score);
 
@@ -218,10 +223,33 @@ pub async fn train_and_evaluate(
                 }
 
                 // Save current game data for future training
-                save_game_data("game_data", game_data);
+                let filtered_game_data: Vec<MCTSResult> = game_data
+                    .into_iter()
+                    .filter(|result| result.subscore >= MIN_TRAINING_SCORE)
+                    .collect();
+                if !filtered_game_data.is_empty() {
+                    save_game_data("game_data", filtered_game_data);
+                }
             }
 
             // Update main game counters
+            if !training_buffer.is_empty() {
+                let batch_size = 16;
+                for batch in training_buffer.chunks(batch_size) {
+                    train_network_with_game_data(
+                        vs_policy,
+                        vs_value,
+                        batch,
+                        0.0,
+                        policy_net,
+                        value_net,
+                        optimizer_policy,
+                        optimizer_value,
+                    );
+                }
+                training_buffer.clear();
+            }
+
             games_played += batch_games_played;
 
             // Append results to the file
@@ -284,6 +312,7 @@ pub async fn train_and_evaluate_offline(
     let max_memory_size = 1000;
     let mut scores_by_position: HashMap<usize, Vec<i32>> = HashMap::new();
     let mut scores = Vec::new();
+    let mut training_buffer: Vec<MCTSResult> = Vec::new();
 
     let eval_interval = evaluation_interval.max(1);
 
@@ -337,41 +366,34 @@ pub async fn train_and_evaluate_offline(
                     .push(final_score);
             }
 
-            let mut batch_game_data = Vec::new();
-
             let prioritized_data: Vec<MCTSResult> = load_game_data("game_data")
                 .into_iter()
-                .filter(|r| r.subscore > 100.0)
+                .filter(|r| r.subscore >= MIN_TRAINING_SCORE)
                 .take(50)
                 .collect();
 
-            batch_game_data.extend(prioritized_data);
-            batch_game_data.extend(game_data.iter().map(|result| MCTSResult {
-                best_position: result.best_position,
-                board_tensor: result.board_tensor.shallow_clone(),
-                subscore: result.subscore,
-                policy_distribution: result.policy_distribution.shallow_clone(),
-                policy_distribution_boosted: result.policy_distribution_boosted.shallow_clone(),
-                boost_intensity: result.boost_intensity,
-            }));
-
-            if batch_game_data.len() > max_memory_size {
-                let to_remove = batch_game_data.len() - max_memory_size;
-                batch_game_data.drain(0..to_remove);
+            for result in prioritized_data {
+                let copies = weight_from_score(result.subscore);
+                if copies == 0 {
+                    continue;
+                }
+                for _ in 0..copies {
+                    training_buffer.push(result.clone());
+                }
+            }
+            for result in &game_data {
+                let copies = weight_from_score(result.subscore);
+                if copies == 0 {
+                    continue;
+                }
+                for _ in 0..copies {
+                    training_buffer.push(result.clone());
+                }
             }
 
-            let batch_size = 10;
-            for batch in batch_game_data.chunks(batch_size) {
-                train_network_with_game_data(
-                    vs_policy,
-                    vs_value,
-                    batch,
-                    final_score.into(),
-                    policy_net,
-                    value_net,
-                    optimizer_policy,
-                    optimizer_value,
-                );
+            if training_buffer.len() > max_memory_size {
+                let to_remove = training_buffer.len() - max_memory_size;
+                training_buffer.drain(0..to_remove);
             }
 
             scores.push(final_score);
@@ -393,7 +415,30 @@ pub async fn train_and_evaluate_offline(
                 log::info!("[OfflineTraining] GAME_RESULT: {:.2}", moyenne);
             }
 
-            save_game_data("game_data", game_data);
+            let filtered_game_data: Vec<MCTSResult> = game_data
+                .into_iter()
+                .filter(|result| result.subscore >= MIN_TRAINING_SCORE)
+                .collect();
+            if !filtered_game_data.is_empty() {
+                save_game_data("game_data", filtered_game_data);
+            }
+        }
+
+        if !training_buffer.is_empty() {
+            let batch_size = 16;
+            for batch in training_buffer.chunks(batch_size) {
+                train_network_with_game_data(
+                    vs_policy,
+                    vs_value,
+                    batch,
+                    0.0,
+                    policy_net,
+                    value_net,
+                    optimizer_policy,
+                    optimizer_value,
+                );
+            }
+            training_buffer.clear();
         }
 
         if batch_games_played == 0 {
