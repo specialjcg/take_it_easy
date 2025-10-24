@@ -1,3 +1,4 @@
+pub mod gnn;
 pub mod manager;
 pub mod policy_value_net;
 pub mod res_net_block;

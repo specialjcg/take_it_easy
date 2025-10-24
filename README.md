@@ -66,3 +66,38 @@ Configure libtorch before running the binary:
 ```bash
 export LD_LIBRARY_PATH="$HOME/libtorch-clean/libtorch/lib:$LD_LIBRARY_PATH"
 ```
+
+## Entraînement et comparaison des architectures CNN et GNN
+
+Les poids des modèles sont automatiquement séparés selon l’architecture :
+- **CNN** : `model_weights/cnn/policy/policy.params` et `model_weights/cnn/value/value.params`
+- **GNN** : `model_weights/gnn/policy/policy.params` et `model_weights/gnn/value/value.params`
+
+### Entraîner le CNN
+```bash
+cargo run --release --bin take_it_easy -- \
+    --mode training --offline-training \
+    --num-games 500 \
+    --num-simulations 150 \
+    --evaluation-interval 50 \
+    --nn-architecture cnn
+```
+
+### Entraîner le GNN
+```bash
+cargo run --release --bin take_it_easy -- \
+    --mode training --offline-training \
+    --num-games 500 \
+    --num-simulations 150 \
+    --evaluation-interval 50 \
+    --nn-architecture gnn
+```
+
+### Comparer les deux modèles
+Pour comparer les performances, lancez la commande de comparaison en précisant l’architecture :
+```bash
+cargo run --release --bin compare_mcts -- --nn-architecture cnn
+cargo run --release --bin compare_mcts -- --nn-architecture gnn
+```
+
+Chaque architecture utilisera automatiquement ses propres poids.

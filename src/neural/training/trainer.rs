@@ -1,4 +1,6 @@
 use crate::mcts::mcts_result::MCTSResult;
+use crate::neural::gnn::convert_plateau_for_gnn;
+use crate::neural::manager::NNArchitecture;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::training::gradient_clipping::enhanced_gradient_clipping;
 use crate::neural::training::normalization::robust_state_normalization;
@@ -33,14 +35,27 @@ pub fn train_network_with_game_data(
     let mut discounted_sum = Tensor::zeros([], (tch::Kind::Float, tch::Device::Cpu));
 
     // === Training Loop ===
+    let PolicyNet { arch, .. } = &policy_net;
+    let arch = *arch;
     for (step, result) in game_data.iter().rev().enumerate() {
         // 🛑 No Normalization: Use raw tensor
         let state = result.board_tensor.shallow_clone();
         let normalized_state = robust_state_normalization(&state);
-
+        let (input_policy, input_value) = match arch {
+            NNArchitecture::CNN => (normalized_state.shallow_clone(), normalized_state),
+            NNArchitecture::GNN => {
+                let plateau_ref = result.plateau.as_ref().expect("MCTSResult.plateau is None");
+                let current_turn = result
+                    .current_turn
+                    .expect("MCTSResult.current_turn is None");
+                let total_turns = result.total_turns.expect("MCTSResult.total_turns is None");
+                let gnn_feat = convert_plateau_for_gnn(plateau_ref, current_turn, total_turns);
+                (gnn_feat.shallow_clone(), gnn_feat)
+            }
+        };
         // Forward pass through networks with normalized state
-        let pred_policy = policy_net.forward(&normalized_state, true).clamp_min(1e-7);
-        let pred_value = value_net.forward(&normalized_state, true);
+        let pred_policy = policy_net.forward(&input_policy, true).clamp_min(1e-7);
+        let pred_value = value_net.forward(&input_value, true);
 
         // Forward pass through networks with normalized state
         // Normalize reward: divide by a constant max value (e.g., 100)
@@ -84,7 +99,7 @@ pub fn train_network_with_game_data(
             .policy_distribution
             .to_kind(tch::Kind::Float)
             .flatten(0, -1);
-        let numel = flattened_policy.numel().max(0) as usize;
+        let numel = flattened_policy.numel().max(0);
         if numel > 0 {
             let mut buffer = vec![0f32; numel];
             flattened_policy.copy_data(&mut buffer, numel);
@@ -115,7 +130,7 @@ pub fn train_network_with_game_data(
                 .policy_distribution_boosted
                 .to_kind(tch::Kind::Float)
                 .flatten(0, -1);
-            let boosted_len = boosted.numel().max(0) as usize;
+            let boosted_len = boosted.numel().max(0);
             if boosted_len == policy_vec.len() {
                 let mut boosted_vec = vec![0f32; boosted_len];
                 boosted.copy_data(&mut boosted_vec, boosted_len);

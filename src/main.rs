@@ -32,6 +32,21 @@ mod generated;
 mod servers;
 mod services;
 
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+pub enum NnArchitectureCli {
+    Cnn,
+    Gnn,
+}
+
+impl From<NnArchitectureCli> for neural::manager::NNArchitecture {
+    fn from(cli: NnArchitectureCli) -> Self {
+        match cli {
+            NnArchitectureCli::Cnn => neural::manager::NNArchitecture::CNN,
+            NnArchitectureCli::Gnn => neural::manager::NNArchitecture::GNN,
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "take_it_easy")]
 struct Config {
@@ -62,6 +77,26 @@ struct Config {
     /// Mode un seul joueur contre MCTS (pour mode multiplayer)
     #[arg(long, default_value_t = false)]
     single_player: bool,
+
+    /// Score minimum pour considérer une partie comme haute qualité
+    #[arg(long, default_value_t = 140.0)]
+    min_score_high: f64,
+
+    /// Score minimum pour ajouter quelques parties moyennes
+    #[arg(long, default_value_t = 120.0)]
+    min_score_medium: f64,
+
+    /// Ratio de parties moyennes injectées par rapport au nombre de parties hautes
+    #[arg(long, default_value_t = 0.2)]
+    medium_mix_ratio: f32,
+
+    /// Surcoût de simulations en début/fin de partie
+    #[arg(long, default_value_t = 50)]
+    dynamic_sim_boost: usize,
+
+    /// Architecture du réseau de neurones (cnn ou gnn)
+    #[arg(long, value_enum, default_value = "cnn")]
+    nn_architecture: NnArchitectureCli,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -222,6 +257,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         policy_lr: 1e-3,
         value_lr: 2e-4,
         value_wd: 1e-6,
+        nn_architecture: config.nn_architecture.clone().into(),
         ..Default::default()
     };
 
@@ -230,6 +266,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Match sur les modes
     match config.mode {
         GameMode::Training => {
+            let training_options = training::session::TrainingOptions {
+                min_score_high: config.min_score_high,
+                min_score_medium: config.min_score_medium.min(config.min_score_high),
+                medium_mix_ratio: config.medium_mix_ratio.clamp(0.0, 1.0),
+                dynamic_sim_boost: config.dynamic_sim_boost,
+            };
             if config.offline_training {
                 log::info!("[Training] Mode offline activé (sans WebSocket)");
                 let mut components = neural_manager.into_components();
@@ -243,6 +285,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     config.num_games,
                     config.num_simulations,
                     config.evaluation_interval,
+                    &training_options,
                 )
                 .await;
             } else {
@@ -263,6 +306,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     config.num_simulations,
                     config.evaluation_interval,
                     listener.into(),
+                    &training_options,
                 )
                 .await;
             }
