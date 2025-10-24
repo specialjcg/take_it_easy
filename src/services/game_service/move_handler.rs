@@ -20,6 +20,7 @@ use super::session_utils::get_session_by_code_or_id_from_store;
 // LOGIQUE DE GESTION DES MOUVEMENTS
 // ============================================================================
 
+#[allow(dead_code)]
 pub struct MoveRequest {
     pub session_id: String,
     pub player_id: String,
@@ -27,6 +28,7 @@ pub struct MoveRequest {
     pub timestamp: i64,
 }
 
+#[allow(dead_code)]
 pub async fn make_move_logic(
     session_manager: &Arc<SessionManager>,
     policy_net: &Arc<Mutex<PolicyNet>>,

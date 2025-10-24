@@ -11,6 +11,8 @@ use crate::game::remove_tile_from_deck::replace_tile_in_deck;
 use crate::game::simulate_game::simulate_games;
 use crate::game::tile::Tile;
 use crate::mcts::mcts_result::MCTSResult;
+use crate::neural::gnn::convert_plateau_for_gnn;
+use crate::neural::manager::NNArchitecture;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::tensor_conversion::convert_plateau_to_tensor;
 use crate::scoring::scoring::result;
@@ -26,10 +28,12 @@ pub enum MctsEvaluator<'a> {
         policy_net: &'a PolicyNet,
         value_net: &'a ValueNet,
     },
+    #[allow(dead_code)]
     Pure,
 }
 
 /// Convenience wrapper retaining the legacy API with neural guidance.
+#[allow(clippy::too_many_arguments)]
 pub fn mcts_find_best_position_for_tile_with_nn(
     plateau: &mut Plateau,
     deck: &mut Deck,
@@ -55,6 +59,7 @@ pub fn mcts_find_best_position_for_tile_with_nn(
 }
 
 /// Run MCTS without neural priors/value predictions (pure Monte Carlo rollouts).
+#[allow(dead_code)]
 pub fn mcts_find_best_position_for_tile_pure(
     plateau: &mut Plateau,
     deck: &mut Deck,
@@ -103,11 +108,64 @@ fn mcts_core(
             policy_distribution,
             policy_distribution_boosted,
             boost_intensity: 0.0,
+            graph_features: None,
+            plateau: Some(plateau.clone()),
+            current_turn: Some(current_turn),
+            total_turns: Some(total_turns),
         };
     }
 
-    let board_tensor =
-        convert_plateau_to_tensor(plateau, &chosen_tile, deck, current_turn, total_turns);
+    let (input_tensor, graph_features) = match evaluator {
+        MctsEvaluator::Neural { policy_net, .. } => {
+            let PolicyNet { arch, .. } = policy_net;
+            match arch {
+                NNArchitecture::CNN => (
+                    convert_plateau_to_tensor(
+                        plateau,
+                        &chosen_tile,
+                        deck,
+                        current_turn,
+                        total_turns,
+                    ),
+                    None,
+                ),
+                NNArchitecture::GNN => {
+                    let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
+                    (gnn_feat.shallow_clone(), Some(gnn_feat))
+                }
+            }
+        }
+        _ => (
+            convert_plateau_to_tensor(plateau, &chosen_tile, deck, current_turn, total_turns),
+            None,
+        ),
+    };
+
+    let legal_moves = get_legal_moves(plateau.clone());
+    if legal_moves.is_empty() {
+        let distribution_len = plateau.tiles.len() as i64;
+        let policy_distribution =
+            Tensor::zeros([distribution_len], (Kind::Float, tch::Device::Cpu));
+        let policy_distribution_boosted = policy_distribution.shallow_clone();
+        return MCTSResult {
+            best_position: 0,
+            board_tensor: convert_plateau_to_tensor(
+                plateau,
+                &chosen_tile,
+                deck,
+                current_turn,
+                total_turns,
+            ),
+            subscore: 0.0,
+            policy_distribution,
+            policy_distribution_boosted,
+            boost_intensity: 0.0,
+            graph_features: None,
+            plateau: Some(plateau.clone()),
+            current_turn: Some(current_turn),
+            total_turns: Some(total_turns),
+        };
+    }
     let mut value_estimates: HashMap<usize, f64> = HashMap::new();
     let mut min_value = f64::INFINITY;
     let mut max_value = f64::NEG_INFINITY;
@@ -118,7 +176,7 @@ fn mcts_core(
             policy_net,
             value_net,
         } => {
-            let policy_logits = policy_net.forward(&board_tensor, false);
+            let policy_logits = policy_net.forward(&input_tensor, false);
             let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
 
             for &position in &legal_moves {
@@ -127,13 +185,20 @@ fn mcts_core(
 
                 temp_plateau.tiles[position] = chosen_tile;
                 temp_deck = replace_tile_in_deck(&temp_deck, &chosen_tile);
-                let board_tensor_temp = convert_plateau_to_tensor(
-                    &temp_plateau,
-                    &chosen_tile,
-                    &temp_deck,
-                    current_turn,
-                    total_turns,
-                );
+
+                // Créer le tenseur selon l'architecture (CNN ou GNN)
+                let board_tensor_temp = match policy_net.arch {
+                    NNArchitecture::CNN => convert_plateau_to_tensor(
+                        &temp_plateau,
+                        &chosen_tile,
+                        &temp_deck,
+                        current_turn,
+                        total_turns,
+                    ),
+                    NNArchitecture::GNN => {
+                        convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
+                    }
+                };
 
                 let pred_value = value_net
                     .forward(&board_tensor_temp, false)
@@ -472,10 +537,8 @@ fn mcts_core(
         }
     }
     let raw_sum: f32 = visit_distribution_raw.iter().sum();
-    if raw_sum <= f32::EPSILON {
-        if best_position < visit_distribution_raw.len() {
-            visit_distribution_raw[best_position] = 1.0;
-        }
+    if raw_sum <= f32::EPSILON && best_position < visit_distribution_raw.len() {
+        visit_distribution_raw[best_position] = 1.0;
     }
 
     let policy_distribution = Tensor::from_slice(&visit_distribution_raw);
@@ -485,10 +548,14 @@ fn mcts_core(
 
     MCTSResult {
         best_position,
-        board_tensor,
+        board_tensor: input_tensor,
         subscore: final_score as f64, // Store real final score, not UCB score
         policy_distribution,
         policy_distribution_boosted,
         boost_intensity: total_boost as f32,
+        graph_features,
+        plateau: Some(plateau.clone()),
+        current_turn: Some(current_turn),
+        total_turns: Some(total_turns),
     }
 }

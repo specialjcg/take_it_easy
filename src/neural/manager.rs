@@ -8,6 +8,32 @@ use std::path::Path;
 use tch::nn::OptimizerConfig;
 use tch::{nn, Device};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NNArchitecture {
+    CNN,
+    GNN,
+}
+
+impl std::str::FromStr for NNArchitecture {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "cnn" => Ok(NNArchitecture::CNN),
+            "gnn" => Ok(NNArchitecture::GNN),
+            _ => Err(format!("Unknown architecture: {}", s)),
+        }
+    }
+}
+
+impl std::fmt::Display for NNArchitecture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NNArchitecture::CNN => write!(f, "cnn"),
+            NNArchitecture::GNN => write!(f, "gnn"),
+        }
+    }
+}
+
 /// Configuration for neural network initialization
 #[derive(Debug, Clone)]
 pub struct NeuralConfig {
@@ -23,6 +49,8 @@ pub struct NeuralConfig {
     pub value_lr: f64,
     /// Value network weight decay
     pub value_wd: f64,
+    /// Neural network architecture (CNN or GNN)
+    pub nn_architecture: NNArchitecture,
 }
 
 impl Default for NeuralConfig {
@@ -34,6 +62,7 @@ impl Default for NeuralConfig {
             policy_lr: 1e-3,
             value_lr: 2e-4,
             value_wd: 1e-6,
+            nn_architecture: NNArchitecture::CNN,
         }
     }
 }
@@ -60,18 +89,19 @@ impl NeuralManager {
     pub fn with_config(config: NeuralConfig) -> Result<Self, Box<dyn std::error::Error>> {
         log::info!("🧠 Initializing neural network manager...");
         log::debug!(
-            "Neural config: input_dim={:?}, device={:?}",
+            "Neural config: input_dim={:?}, device={:?}, arch={:?}",
             config.input_dim,
-            config.device
+            config.device,
+            config.nn_architecture
         );
 
         // Initialize VarStores
         let mut vs_policy = nn::VarStore::new(config.device);
         let mut vs_value = nn::VarStore::new(config.device);
 
-        // Create networks
-        let policy_net = PolicyNet::new(&vs_policy, config.input_dim);
-        let value_net = ValueNet::new(&vs_value, config.input_dim);
+        // Create networks (choix archi)
+        let policy_net = PolicyNet::new(&vs_policy, config.input_dim, config.nn_architecture);
+        let value_net = ValueNet::new(&vs_value, config.input_dim, config.nn_architecture);
 
         // Load weights if model directory exists
         if Path::new(&config.model_path).exists() {
@@ -80,14 +110,20 @@ impl NeuralManager {
                 config.model_path
             );
 
-            let policy_path = format!("{}/policy/policy.params", config.model_path);
+            // Utiliser le sous-dossier correspondant à l'architecture
+            let arch_dir = match config.nn_architecture {
+                NNArchitecture::CNN => "cnn",
+                NNArchitecture::GNN => "gnn",
+            };
+
+            let policy_path = format!("{}/{}/policy/policy.params", config.model_path, arch_dir);
             if let Err(e) = policy_net.load_model(&mut vs_policy, &policy_path) {
                 log::warn!("⚠️ Failed to load PolicyNet from {}: {:?}", policy_path, e);
             } else {
                 log::info!("✅ PolicyNet loaded successfully");
             }
 
-            let value_path = format!("{}/value/value.params", config.model_path);
+            let value_path = format!("{}/{}/value/value.params", config.model_path, arch_dir);
             if let Err(e) = value_net.load_model(&mut vs_value, &value_path) {
                 log::warn!("⚠️ Failed to load ValueNet from {}: {:?}", value_path, e);
             } else {
@@ -203,22 +239,24 @@ impl NeuralManager {
 
     /// Save the current model weights to disk
     pub fn save_models(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!(
-            "💾 Saving neural network models to {}",
-            self.config.model_path
-        );
+        let arch_dir = match self.config.nn_architecture {
+            NNArchitecture::CNN => "cnn",
+            NNArchitecture::GNN => "gnn",
+        };
+        let model_path = format!("{}/{}", self.config.model_path, arch_dir);
+        log::info!("💾 Saving neural network models to {}", model_path);
 
         // Create directories if they don't exist
-        std::fs::create_dir_all(format!("{}/policy", self.config.model_path))?;
-        std::fs::create_dir_all(format!("{}/value", self.config.model_path))?;
+        std::fs::create_dir_all(format!("{}/policy", model_path))?;
+        std::fs::create_dir_all(format!("{}/value", model_path))?;
 
         // Save policy network
-        let policy_path = format!("{}/policy/policy.params", self.config.model_path);
+        let policy_path = format!("{}/policy/policy.params", model_path);
         self.vs_policy.save(&policy_path)?;
         log::info!("✅ PolicyNet saved to {}", policy_path);
 
         // Save value network
-        let value_path = format!("{}/value/value.params", self.config.model_path);
+        let value_path = format!("{}/value/value.params", model_path);
         self.vs_value.save(&value_path)?;
         log::info!("✅ ValueNet saved to {}", value_path);
 
@@ -299,6 +337,7 @@ mod tests {
         assert_eq!(config.policy_lr, 1e-3);
         assert_eq!(config.value_lr, 2e-4);
         assert_eq!(config.value_wd, 1e-6);
+        assert_eq!(config.nn_architecture, NNArchitecture::CNN);
     }
 
     #[test]
@@ -310,11 +349,13 @@ mod tests {
             policy_lr: 1e-4,
             value_lr: 1e-5,
             value_wd: 1e-7,
+            nn_architecture: NNArchitecture::GNN,
         };
 
         assert_eq!(config.input_dim, (3, 64, 64));
         assert_eq!(config.model_path, "test_models");
         assert_eq!(config.policy_lr, 1e-4);
+        assert_eq!(config.nn_architecture, NNArchitecture::GNN);
     }
 
     #[test]
@@ -325,6 +366,7 @@ mod tests {
         let manager = manager.unwrap();
         assert_eq!(manager.config().input_dim, (8, 5, 5));
         assert_eq!(manager.config().model_path, "model_weights");
+        assert_eq!(manager.config().nn_architecture, NNArchitecture::CNN);
     }
 
     #[test]
@@ -336,6 +378,7 @@ mod tests {
             policy_lr: 5e-4,
             value_lr: 1e-4,
             value_wd: 5e-7,
+            nn_architecture: NNArchitecture::GNN,
         };
 
         let manager = NeuralManager::with_config(config);
@@ -345,6 +388,7 @@ mod tests {
         assert_eq!(manager.config().input_dim, (1, 32, 32));
         assert_eq!(manager.config().policy_lr, 5e-4);
         assert_eq!(manager.config().model_path, "test_path");
+        assert_eq!(manager.config().nn_architecture, NNArchitecture::GNN);
     }
 
     #[test]

@@ -1,12 +1,25 @@
 use crate::mcts::mcts_result::MCTSResult;
+use crate::neural::manager::NNArchitecture;
 use std::path::Path;
 use tch::{IndexOp, Kind, Tensor};
 
+#[allow(dead_code)]
 pub fn load_game_data(file_path: &str) -> Vec<MCTSResult> {
+    load_game_data_with_arch(file_path, NNArchitecture::CNN)
+}
+
+pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MCTSResult> {
+    // Ajouter le suffixe d'architecture au chemin
+    let arch_suffix = match arch {
+        NNArchitecture::CNN => "_cnn",
+        NNArchitecture::GNN => "_gnn",
+    };
+    let prefixed_path = format!("{}{}", file_path, arch_suffix);
+
     // Paths for the .pt files
-    let states_path = format!("{}_states.pt", file_path);
-    let positions_path = format!("{}_positions.pt", file_path);
-    let subscores_path = format!("{}_subscores.pt", file_path);
+    let states_path = format!("{}_states.pt", prefixed_path);
+    let positions_path = format!("{}_positions.pt", prefixed_path);
+    let subscores_path = format!("{}_subscores.pt", prefixed_path);
 
     // Check if all files exist
     if !Path::new(&states_path).exists() {
@@ -37,9 +50,9 @@ pub fn load_game_data(file_path: &str) -> Vec<MCTSResult> {
     let state_tensor = Tensor::load(states_path).expect("Failed to load states");
     let position_tensor = Tensor::load(positions_path).expect("Failed to load positions");
     let subscore_tensor = Tensor::load(subscores_path).expect("Failed to load subscores");
-    let policy_raw_path = format!("{}_policy_raw.pt", file_path);
-    let policy_boosted_path = format!("{}_policy_boosted.pt", file_path);
-    let boosts_path = format!("{}_boosts.pt", file_path);
+    let policy_raw_path = format!("{}_policy_raw.pt", prefixed_path);
+    let policy_boosted_path = format!("{}_policy_boosted.pt", prefixed_path);
+    let boosts_path = format!("{}_boosts.pt", prefixed_path);
 
     let policy_raw_tensor = if Path::new(&policy_raw_path).exists() {
         Some(Tensor::load(&policy_raw_path).expect("Failed to load policy_raw"))
@@ -100,6 +113,10 @@ pub fn load_game_data(file_path: &str) -> Vec<MCTSResult> {
             policy_distribution,
             policy_distribution_boosted,
             boost_intensity,
+            graph_features: None,
+            plateau: None,
+            current_turn: None,
+            total_turns: None,
         });
     }
     println!("✅ Loaded {} game records.", data.len());

@@ -10,10 +10,14 @@ pub struct ResNetBlock {
 }
 
 impl ResNetBlock {
+    #[allow(dead_code)]
     pub fn new(vs: &nn::VarStore, channels_in: i64, channels_out: i64) -> Self {
-        let p = vs.root();
+        Self::new_path(&vs.root(), channels_in, channels_out)
+    }
+
+    pub fn new_path(path: &nn::Path, channels_in: i64, channels_out: i64) -> Self {
         let conv1 = nn::conv2d(
-            &p / "conv1",
+            &(path / "conv1"),
             channels_in,
             channels_out,
             3,
@@ -23,7 +27,7 @@ impl ResNetBlock {
             },
         );
         let bn1 = nn::batch_norm2d(
-            &p / "bn1",
+            &(path / "bn1"),
             channels_out,
             nn::BatchNormConfig {
                 ws_init: nn::Init::Const(1.0),
@@ -32,7 +36,7 @@ impl ResNetBlock {
             },
         );
         let conv2 = nn::conv2d(
-            &p / "conv2",
+            &(path / "conv2"),
             channels_out,
             channels_out,
             3,
@@ -42,7 +46,7 @@ impl ResNetBlock {
             },
         );
         let bn2 = nn::batch_norm2d(
-            &p / "bn2",
+            &(path / "bn2"),
             channels_out,
             nn::BatchNormConfig {
                 ws_init: nn::Init::Const(1.0),
@@ -54,7 +58,7 @@ impl ResNetBlock {
         // Downsample if input/output channels differ
         let downsample = if channels_in != channels_out {
             Some(nn::conv2d(
-                &p / "downsample",
+                &(path / "downsample"),
                 channels_in,
                 channels_out,
                 1,

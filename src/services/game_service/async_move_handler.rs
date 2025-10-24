@@ -150,6 +150,7 @@ fn create_immediate_move_confirmation(
 }
 
 /// Traite MCTS en arrière-plan et met à jour la session
+#[allow(clippy::too_many_arguments)]
 async fn process_mcts_in_background(
     session_manager: Arc<SessionManager>,
     policy_net: Arc<Mutex<PolicyNet>>,

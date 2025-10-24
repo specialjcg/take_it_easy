@@ -1,9 +1,14 @@
+use chrono::Utc;
 use clap::Parser;
 use flexi_logger::Logger;
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::error::Error;
+use std::fmt;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::Path;
 
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
@@ -15,6 +20,30 @@ use take_it_easy::mcts::algorithm::{
 use take_it_easy::neural::policy_value_net::{PolicyNet, ValueNet};
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::scoring::scoring::result;
+
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+pub enum NnArchitectureCli {
+    Cnn,
+    Gnn,
+}
+
+impl From<NnArchitectureCli> for take_it_easy::neural::manager::NNArchitecture {
+    fn from(cli: NnArchitectureCli) -> Self {
+        match cli {
+            NnArchitectureCli::Cnn => take_it_easy::neural::manager::NNArchitecture::CNN,
+            NnArchitectureCli::Gnn => take_it_easy::neural::manager::NNArchitecture::GNN,
+        }
+    }
+}
+
+impl fmt::Display for NnArchitectureCli {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NnArchitectureCli::Cnn => write!(f, "cnn"),
+            NnArchitectureCli::Gnn => write!(f, "gnn"),
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -37,6 +66,14 @@ struct Args {
     /// Number of turns to play (default 19 for full Take It Easy game)
     #[arg(long, default_value_t = 19)]
     turns: usize,
+
+    /// CSV path to append benchmark results (empty to disable)
+    #[arg(long, default_value = "compare_mcts_log.csv")]
+    log_path: String,
+
+    /// Architecture du réseau de neurones (cnn ou gnn)
+    #[arg(long, value_enum, default_value = "cnn")]
+    nn_architecture: NnArchitectureCli,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -60,6 +97,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let neural_config = NeuralConfig {
         input_dim: (8, 5, 5),
+        nn_architecture: args.nn_architecture.clone().into(),
         ..Default::default()
     };
     let manager = NeuralManager::with_config(neural_config)?;
@@ -129,6 +167,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         same_score
     );
     println!("===================================\n");
+
+    if !args.log_path.trim().is_empty() {
+        if let Err(e) = append_log(
+            &args.log_path,
+            &args,
+            &pure_stats,
+            &neural_stats,
+            delta_mean,
+            nn_better,
+            same_score,
+        ) {
+            eprintln!("[compare_mcts] failed to append log: {}", e);
+        }
+    }
 
     Ok(())
 }
@@ -232,4 +284,62 @@ fn compute_stats(scores: &[i32]) -> Stats {
         min,
         max,
     }
+}
+
+fn append_log(
+    path: &str,
+    args: &Args,
+    pure: &Stats,
+    neural: &Stats,
+    delta: f64,
+    nn_better: usize,
+    same_score: usize,
+) -> Result<(), String> {
+    let path = Path::new(path);
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| format!("create log dir failed: {e}"))?;
+        }
+    }
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("open log failed: {e}"))?;
+
+    if file
+        .metadata()
+        .map_err(|e| format!("metadata failed: {e}"))?
+        .len()
+        == 0
+    {
+        writeln!(
+            file,
+            "timestamp,games,simulations,pure_mean,pure_std,nn_mean,nn_std,delta,nn_wins,same,turns,seed,nn_architecture"
+        )
+        .map_err(|e| format!("write header failed: {e}"))?;
+    }
+
+    let timestamp = Utc::now().to_rfc3339();
+    writeln!(
+        file,
+        "{timestamp},{games},{sims},{pmean:.2},{pstd:.2},{nmean:.2},{nstd:.2},{delta:.2},{wins},{same},{turns},{seed},{arch}",
+        timestamp = timestamp,
+        games = args.games,
+        sims = args.simulations,
+        pmean = pure.mean,
+        pstd = pure.std_dev,
+        nmean = neural.mean,
+        nstd = neural.std_dev,
+        delta = delta,
+        wins = nn_better,
+        same = same_score,
+        turns = args.turns,
+        seed = args.seed,
+        arch = format!("{}", args.nn_architecture.to_string().to_lowercase()),
+    )
+    .map_err(|e| format!("write row failed: {e}"))?;
+
+    Ok(())
 }

@@ -267,14 +267,15 @@ mod tests {
 
     #[test]
     fn test_grpc_server_creation() {
+        use crate::neural::manager::NNArchitecture;
         use crate::neural::policy_value_net::PolicyNet;
         use crate::neural::policy_value_net::ValueNet;
         use tch::{nn, Device};
 
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (5, 47, 1);
-        let policy_net = PolicyNet::new(&vs, input_dim);
-        let value_net = ValueNet::new(&vs, input_dim);
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::CNN);
 
         let config = GrpcConfig::default();
         let server = GrpcServer::new(config, policy_net, value_net, 300, true);
@@ -286,14 +287,15 @@ mod tests {
 
     #[test]
     fn test_grpc_server_config_access() {
+        use crate::neural::manager::NNArchitecture;
         use crate::neural::policy_value_net::PolicyNet;
         use crate::neural::policy_value_net::ValueNet;
         use tch::{nn, Device};
 
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (5, 47, 1);
-        let policy_net = PolicyNet::new(&vs, input_dim);
-        let value_net = ValueNet::new(&vs, input_dim);
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::CNN);
 
         let config = GrpcConfig {
             port: 9000,

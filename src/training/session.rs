@@ -1,12 +1,14 @@
 //! Self-play training orchestration for the Take It Easy AI.
 //!
 //! The module provides two entrypoints:
+//!
 //! - [`train_and_evaluate`], which expects a WebSocket client (front-end) and streams live updates.
 //! - [`train_and_evaluate_offline`], which replays games entirely offline for headless or CI workloads.
+//!
 //! Both variants persist game data to `.pt` files, retrain the policy/value networks, evaluate them
 //! periodically, and checkpoint the weights under `model_weights/`.
 use crate::data::append_result::append_to_results_file;
-use crate::data::load_data::load_game_data;
+use crate::data::load_data::load_game_data_with_arch;
 use crate::data::save_data::save_game_data;
 use crate::game::create_deck::create_deck;
 use crate::game::plateau::create_plateau_empty;
@@ -15,6 +17,7 @@ use crate::game::remove_tile_from_deck::replace_tile_in_deck;
 use crate::game::tile::Tile;
 use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
 use crate::mcts::mcts_result::MCTSResult;
+use crate::neural::manager::NNArchitecture;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::training::trainer::train_network_with_game_data;
 use crate::scoring::scoring::result;
@@ -30,15 +33,58 @@ use tch::nn::Optimizer;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 
-const MIN_TRAINING_SCORE: f64 = 140.0;
+#[derive(Clone, Debug)]
+pub struct TrainingOptions {
+    pub min_score_high: f64,
+    pub min_score_medium: f64,
+    pub medium_mix_ratio: f32,
+    pub dynamic_sim_boost: usize,
+}
 
-fn weight_from_score(score: f64) -> usize {
-    if score >= 160.0 {
+impl Default for TrainingOptions {
+    fn default() -> Self {
+        Self {
+            min_score_high: 140.0,
+            min_score_medium: 120.0,
+            medium_mix_ratio: 0.2,
+            dynamic_sim_boost: 50,
+        }
+    }
+}
+
+fn weight_from_score(score: f64, options: &TrainingOptions) -> usize {
+    if score >= options.min_score_high + 20.0 {
         3
-    } else if score >= MIN_TRAINING_SCORE {
+    } else if score >= options.min_score_high {
         2
+    } else if score >= options.min_score_medium {
+        1
     } else {
         0
+    }
+}
+
+fn push_sample(buffer: &mut Vec<MCTSResult>, sample: &MCTSResult, copies: usize) {
+    for _ in 0..copies {
+        buffer.push(sample.clone());
+    }
+}
+
+fn adjust_num_simulations(
+    base: usize,
+    current_turn: usize,
+    total_turns: usize,
+    options: &TrainingOptions,
+) -> usize {
+    let early_threshold = total_turns / 3;
+    let late_threshold = (total_turns as f32 * 0.75) as usize;
+
+    if current_turn <= early_threshold {
+        base + options.dynamic_sim_boost
+    } else if current_turn >= late_threshold {
+        base + options.dynamic_sim_boost / 2
+    } else {
+        base
     }
 }
 
@@ -55,6 +101,7 @@ pub async fn train_and_evaluate(
     num_simulations: usize,
     evaluation_interval: usize,
     listener: Arc<TcpListener>,
+    options: &TrainingOptions,
 ) {
     let mut total_score = 0;
     let mut games_played = 0;
@@ -105,13 +152,15 @@ pub async fn train_and_evaluate(
                         break;
                     }
 
+                    let effective_sims =
+                        adjust_num_simulations(num_simulations, current_turn, total_turns, options);
                     let game_result = mcts_find_best_position_for_tile_with_nn(
                         &mut plateau,
                         &mut deck,
                         chosen_tile,
                         policy_net,
                         value_net,
-                        num_simulations,
+                        effective_sims,
                         current_turn,
                         total_turns,
                     );
@@ -171,33 +220,58 @@ pub async fn train_and_evaluate(
                         .push(final_score);
                 }
 
-                // Prioritized historical data
-                let prioritized_data: Vec<MCTSResult> = load_game_data("game_data")
-                    .into_iter()
-                    .filter(|r| r.subscore >= MIN_TRAINING_SCORE) // Only select high-score games
-                    .take(50) // Limit to 50 samples to prevent overfitting
-                    .collect();
+                // Historical data (high-quality + medium mix)
+                let historical_samples: Vec<MCTSResult> =
+                    load_game_data_with_arch("game_data", policy_net.arch)
+                        .into_iter()
+                        .filter(|r| r.subscore >= options.min_score_medium)
+                        .take(200)
+                        .collect();
 
-                // Add historical data to batch with score-based weighting
-                for result in prioritized_data {
-                    let copies = weight_from_score(result.subscore);
-                    if copies == 0 {
-                        continue;
-                    }
-                    for _ in 0..copies {
-                        training_buffer.push(result.clone());
+                let (hist_high, hist_medium): (Vec<_>, Vec<_>) = historical_samples
+                    .into_iter()
+                    .partition(|r| r.subscore >= options.min_score_high);
+
+                let medium_quota = ((hist_high.len() as f32 * options.medium_mix_ratio).round()
+                    as usize)
+                    .min(hist_medium.len());
+
+                for result in hist_high {
+                    let copies = weight_from_score(result.subscore, options);
+                    if copies > 0 {
+                        push_sample(&mut training_buffer, &result, copies);
                     }
                 }
 
-                // Add current game's data to batch with weighting
+                for result in hist_medium.into_iter().take(medium_quota) {
+                    let copies = weight_from_score(result.subscore, options).max(1);
+                    push_sample(&mut training_buffer, &result, copies);
+                }
+
+                let mut current_high = Vec::new();
+                let mut current_medium = Vec::new();
                 for result in &game_data {
-                    let copies = weight_from_score(result.subscore);
-                    if copies == 0 {
-                        continue;
+                    if result.subscore >= options.min_score_high {
+                        current_high.push(result);
+                    } else if result.subscore >= options.min_score_medium {
+                        current_medium.push(result);
                     }
-                    for _ in 0..copies {
-                        training_buffer.push(result.clone());
+                }
+
+                let current_medium_quota = ((current_high.len() as f32 * options.medium_mix_ratio)
+                    .round() as usize)
+                    .min(current_medium.len());
+
+                for result in current_high {
+                    let copies = weight_from_score(result.subscore, options);
+                    if copies > 0 {
+                        push_sample(&mut training_buffer, result, copies);
                     }
+                }
+
+                for result in current_medium.into_iter().take(current_medium_quota) {
+                    let copies = weight_from_score(result.subscore, options).max(1);
+                    push_sample(&mut training_buffer, result, copies);
                 }
 
                 // Keep only last max_memory_size experiences
@@ -225,7 +299,7 @@ pub async fn train_and_evaluate(
                 // Save current game data for future training
                 let filtered_game_data: Vec<MCTSResult> = game_data
                     .into_iter()
-                    .filter(|result| result.subscore >= MIN_TRAINING_SCORE)
+                    .filter(|result| result.subscore >= options.min_score_medium)
                     .collect();
                 if !filtered_game_data.is_empty() {
                     save_game_data("game_data", filtered_game_data);
@@ -280,12 +354,18 @@ pub async fn train_and_evaluate(
             // Evaluate model after each interval
             evaluate_model(policy_net, value_net, num_simulations).await;
 
-            let _model_path = "model_weights";
-            // Save model weights
-            if let Err(e) = policy_net.save_model(vs_policy, "model_weights/policy/policy.params") {
+            // Save model weights avec les bons chemins selon l'architecture
+            let arch_dir = match policy_net.arch {
+                NNArchitecture::CNN => "cnn",
+                NNArchitecture::GNN => "gnn",
+            };
+            let policy_path = format!("model_weights/{}/policy/policy.params", arch_dir);
+            let value_path = format!("model_weights/{}/value/value.params", arch_dir);
+
+            if let Err(e) = policy_net.save_model(vs_policy, &policy_path) {
                 log::error!("Error saving PolicyNet weights: {:?}", e);
             }
-            if let Err(e) = value_net.save_model(vs_value, "model_weights/value/value.params") {
+            if let Err(e) = value_net.save_model(vs_value, &value_path) {
                 log::error!("Error saving ValueNet weights: {:?}", e);
             }
         }
@@ -304,6 +384,7 @@ pub async fn train_and_evaluate_offline(
     num_games: usize,
     num_simulations: usize,
     evaluation_interval: usize,
+    options: &TrainingOptions,
 ) {
     let mut total_score = 0;
     let mut games_played = 0;
@@ -318,6 +399,32 @@ pub async fn train_and_evaluate_offline(
 
     while games_played < num_games {
         let mut batch_games_played = 0;
+
+        // Charger les données historiques UNE SEULE FOIS par intervalle d'évaluation
+        let historical_samples: Vec<MCTSResult> =
+            load_game_data_with_arch("game_data", policy_net.arch)
+                .into_iter()
+                .filter(|r| r.subscore >= options.min_score_medium)
+                .filter(|r| {
+                    // Pour le GNN, ne garder que les résultats avec plateau/turn renseignés
+                    match policy_net.arch {
+                        NNArchitecture::GNN => {
+                            r.plateau.is_some()
+                                && r.current_turn.is_some()
+                                && r.total_turns.is_some()
+                        }
+                        NNArchitecture::CNN => true,
+                    }
+                })
+                .take(200)
+                .collect();
+
+        let (hist_high, hist_medium): (Vec<_>, Vec<_>) = historical_samples
+            .into_iter()
+            .partition(|r| r.subscore >= options.min_score_high);
+
+        let medium_quota = ((hist_high.len() as f32 * options.medium_mix_ratio).round() as usize)
+            .min(hist_medium.len());
 
         for game in 0..eval_interval {
             if games_played + batch_games_played >= num_games {
@@ -335,13 +442,15 @@ pub async fn train_and_evaluate_offline(
                 let tile_index = rng().random_range(0..deck.tiles.len());
                 let chosen_tile = deck.tiles[tile_index];
 
+                let effective_sims =
+                    adjust_num_simulations(num_simulations, current_turn, total_turns, options);
                 let game_result = mcts_find_best_position_for_tile_with_nn(
                     &mut plateau,
                     &mut deck,
                     chosen_tile,
                     policy_net,
                     value_net,
-                    num_simulations,
+                    effective_sims,
                     current_turn,
                     total_turns,
                 );
@@ -366,29 +475,43 @@ pub async fn train_and_evaluate_offline(
                     .push(final_score);
             }
 
-            let prioritized_data: Vec<MCTSResult> = load_game_data("game_data")
-                .into_iter()
-                .filter(|r| r.subscore >= MIN_TRAINING_SCORE)
-                .take(50)
-                .collect();
-
-            for result in prioritized_data {
-                let copies = weight_from_score(result.subscore);
-                if copies == 0 {
-                    continue;
-                }
-                for _ in 0..copies {
-                    training_buffer.push(result.clone());
+            // Utiliser les données historiques déjà chargées
+            for result in &hist_high {
+                let copies = weight_from_score(result.subscore, options);
+                if copies > 0 {
+                    push_sample(&mut training_buffer, result, copies);
                 }
             }
+
+            for result in hist_medium.iter().take(medium_quota) {
+                let copies = weight_from_score(result.subscore, options).max(1);
+                push_sample(&mut training_buffer, result, copies);
+            }
+
+            let mut current_high = Vec::new();
+            let mut current_medium = Vec::new();
             for result in &game_data {
-                let copies = weight_from_score(result.subscore);
-                if copies == 0 {
-                    continue;
+                if result.subscore >= options.min_score_high {
+                    current_high.push(result);
+                } else if result.subscore >= options.min_score_medium {
+                    current_medium.push(result);
                 }
-                for _ in 0..copies {
-                    training_buffer.push(result.clone());
+            }
+
+            let current_medium_quota = ((current_high.len() as f32 * options.medium_mix_ratio)
+                .round() as usize)
+                .min(current_medium.len());
+
+            for result in current_high {
+                let copies = weight_from_score(result.subscore, options);
+                if copies > 0 {
+                    push_sample(&mut training_buffer, result, copies);
                 }
+            }
+
+            for result in current_medium.into_iter().take(current_medium_quota) {
+                let copies = weight_from_score(result.subscore, options).max(1);
+                push_sample(&mut training_buffer, result, copies);
             }
 
             if training_buffer.len() > max_memory_size {
@@ -417,7 +540,7 @@ pub async fn train_and_evaluate_offline(
 
             let filtered_game_data: Vec<MCTSResult> = game_data
                 .into_iter()
-                .filter(|result| result.subscore >= MIN_TRAINING_SCORE)
+                .filter(|result| result.subscore >= options.min_score_medium)
                 .collect();
             if !filtered_game_data.is_empty() {
                 save_game_data("game_data", filtered_game_data);
@@ -471,10 +594,18 @@ pub async fn train_and_evaluate_offline(
 
         evaluate_model(policy_net, value_net, num_simulations).await;
 
-        if let Err(e) = policy_net.save_model(vs_policy, "model_weights/policy/policy.params") {
+        // Save model weights avec les bons chemins selon l'architecture
+        let arch_dir = match policy_net.arch {
+            NNArchitecture::CNN => "cnn",
+            NNArchitecture::GNN => "gnn",
+        };
+        let policy_path = format!("model_weights/{}/policy/policy.params", arch_dir);
+        let value_path = format!("model_weights/{}/value/value.params", arch_dir);
+
+        if let Err(e) = policy_net.save_model(vs_policy, &policy_path) {
             log::error!("[OfflineTraining] Error saving PolicyNet weights: {:?}", e);
         }
-        if let Err(e) = value_net.save_model(vs_value, "model_weights/value/value.params") {
+        if let Err(e) = value_net.save_model(vs_value, &value_path) {
             log::error!("[OfflineTraining] Error saving ValueNet weights: {:?}", e);
         }
     }

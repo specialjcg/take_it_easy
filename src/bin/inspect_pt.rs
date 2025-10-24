@@ -152,6 +152,7 @@ fn is_positions_tensor(tensor: &Tensor) -> bool {
     matches!(tensor.kind(), Kind::Int | Kind::Int64)
 }
 
+#[allow(dead_code)]
 fn is_subscore_tensor(tensor: &Tensor) -> bool {
     matches!(tensor.kind(), Kind::Float | Kind::Double)
 }

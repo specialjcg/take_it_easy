@@ -4,6 +4,28 @@ use tch::{Kind, Tensor};
 pub fn save_game_data(file_path: &str, game_data: Vec<MCTSResult>) {
     println!("🚀 Saving game data to .pt files...");
 
+    // Séparer les données par architecture (CNN vs GNN)
+    let mut cnn_data = vec![];
+    let mut gnn_data = vec![];
+
+    for result in game_data {
+        if result.graph_features.is_some() {
+            gnn_data.push(result);
+        } else {
+            cnn_data.push(result);
+        }
+    }
+
+    // Sauvegarder CNN et GNN séparément
+    if !cnn_data.is_empty() {
+        save_architecture_data(&format!("{}_cnn", file_path), cnn_data);
+    }
+    if !gnn_data.is_empty() {
+        save_architecture_data(&format!("{}_gnn", file_path), gnn_data);
+    }
+}
+
+fn save_architecture_data(file_path: &str, game_data: Vec<MCTSResult>) {
     let mut tensors = vec![];
     let mut positions = vec![];
     let mut subscores = vec![];

@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 // INTÉGRATION MCTS DÉCOUPLÉE
 // ============================================================================
 
+#[allow(dead_code)]
 pub async fn process_mcts_move_only(
     game_state: TakeItEasyGameState,
     policy_net: &Mutex<PolicyNet>,

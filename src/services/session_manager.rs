@@ -32,7 +32,7 @@ pub enum SessionAction {
     UpdateSession { session: GameSession },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SessionStoreState {
     pub sessions: HashMap<String, GameSession>,
     pub sessions_by_code: HashMap<String, String>,
@@ -40,10 +40,7 @@ pub struct SessionStoreState {
 
 impl SessionStoreState {
     pub fn new() -> Self {
-        Self {
-            sessions: HashMap::new(),
-            sessions_by_code: HashMap::new(),
-        }
+        Self::default()
     }
 }
 

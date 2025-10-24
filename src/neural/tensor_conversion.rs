@@ -18,7 +18,42 @@ use tch::Tensor;
 ///    7  8  9 10 11
 ///   12 13 14 15  x
 ///   x 16 17 18  x
-const HEX_TO_GRID_MAP: [(usize, usize); 19] = [
+pub const GRAPH_NODE_COUNT: usize = 19;
+
+pub const GRAPH_EDGES: &[(usize, usize)] = &[
+    (0, 1),
+    (1, 2),
+    (0, 3),
+    (1, 4),
+    (2, 5),
+    (2, 6),
+    (3, 4),
+    (4, 5),
+    (5, 6),
+    (3, 7),
+    (4, 8),
+    (5, 9),
+    (6, 10),
+    (6, 11),
+    (7, 8),
+    (8, 9),
+    (9, 10),
+    (10, 11),
+    (7, 12),
+    (8, 13),
+    (9, 14),
+    (10, 15),
+    (12, 13),
+    (13, 14),
+    (14, 15),
+    (12, 16),
+    (13, 17),
+    (14, 18),
+    (16, 17),
+    (17, 18),
+];
+
+const HEX_TO_GRID_MAP: [(usize, usize); GRAPH_NODE_COUNT] = [
     (0, 1),
     (0, 2),
     (0, 3),
@@ -72,7 +107,57 @@ pub fn convert_plateau_to_tensor(
     let mut features = vec![0.0f32; CHANNELS * GRID_SIZE * GRID_SIZE];
     let turn_normalized = current_turn as f32 / total_turns as f32;
 
-    let mut orientation_scores = [[0f32; 19]; 3];
+    let orientation_scores = compute_orientation_scores(plateau);
+
+    for (hex_pos, &(row, col)) in HEX_TO_GRID_MAP.iter().enumerate() {
+        let grid_idx = row * GRID_SIZE + col;
+
+        if hex_pos < plateau.tiles.len() {
+            let tile = &plateau.tiles[hex_pos];
+            features[grid_idx] = (tile.0 as f32 / 10.0).clamp(0.0, 1.0);
+            features[GRID_SIZE * GRID_SIZE + grid_idx] = (tile.1 as f32 / 10.0).clamp(0.0, 1.0);
+            features[2 * GRID_SIZE * GRID_SIZE + grid_idx] = (tile.2 as f32 / 10.0).clamp(0.0, 1.0);
+            features[3 * GRID_SIZE * GRID_SIZE + grid_idx] =
+                if *tile == Tile(0, 0, 0) { 0.0 } else { 1.0 };
+            features[4 * GRID_SIZE * GRID_SIZE + grid_idx] = turn_normalized;
+            features[5 * GRID_SIZE * GRID_SIZE + grid_idx] = orientation_scores[0][hex_pos];
+            features[6 * GRID_SIZE * GRID_SIZE + grid_idx] = orientation_scores[1][hex_pos];
+            features[7 * GRID_SIZE * GRID_SIZE + grid_idx] = orientation_scores[2][hex_pos];
+        }
+    }
+
+    Tensor::from_slice(&features).view([1, CHANNELS as i64, GRID_SIZE as i64, GRID_SIZE as i64])
+}
+
+pub fn convert_plateau_to_graph_features(
+    plateau: &Plateau,
+    current_turn: usize,
+    total_turns: usize,
+) -> Tensor {
+    let mut features = vec![0f32; GRAPH_NODE_COUNT * 8];
+    let orientation_scores = compute_orientation_scores(plateau);
+    let turn_normalized = current_turn as f32 / total_turns as f32;
+
+    for node in 0..GRAPH_NODE_COUNT {
+        let base = node * 8;
+        if node < plateau.tiles.len() {
+            let tile = plateau.tiles[node];
+            features[base] = (tile.0 as f32 / 10.0).clamp(0.0, 1.0);
+            features[base + 1] = (tile.1 as f32 / 10.0).clamp(0.0, 1.0);
+            features[base + 2] = (tile.2 as f32 / 10.0).clamp(0.0, 1.0);
+            features[base + 3] = if tile == Tile(0, 0, 0) { 0.0 } else { 1.0 };
+            features[base + 4] = orientation_scores[0][node];
+            features[base + 5] = orientation_scores[1][node];
+            features[base + 6] = orientation_scores[2][node];
+            features[base + 7] = turn_normalized;
+        }
+    }
+
+    Tensor::from_slice(&features).view([1, GRAPH_NODE_COUNT as i64, 8])
+}
+
+pub fn compute_orientation_scores(plateau: &Plateau) -> [[f32; GRAPH_NODE_COUNT]; 3] {
+    let mut orientation_scores = [[0f32; GRAPH_NODE_COUNT]; 3];
 
     for (positions, orientation) in LINE_DEFS {
         let len = positions.len() as f32;
@@ -110,22 +195,5 @@ pub fn convert_plateau_to_tensor(
         }
     }
 
-    for (hex_pos, &(row, col)) in HEX_TO_GRID_MAP.iter().enumerate() {
-        let grid_idx = row * GRID_SIZE + col;
-
-        if hex_pos < plateau.tiles.len() {
-            let tile = &plateau.tiles[hex_pos];
-            features[grid_idx] = (tile.0 as f32 / 10.0).clamp(0.0, 1.0);
-            features[GRID_SIZE * GRID_SIZE + grid_idx] = (tile.1 as f32 / 10.0).clamp(0.0, 1.0);
-            features[2 * GRID_SIZE * GRID_SIZE + grid_idx] = (tile.2 as f32 / 10.0).clamp(0.0, 1.0);
-            features[3 * GRID_SIZE * GRID_SIZE + grid_idx] =
-                if *tile == Tile(0, 0, 0) { 0.0 } else { 1.0 };
-            features[4 * GRID_SIZE * GRID_SIZE + grid_idx] = turn_normalized;
-            features[5 * GRID_SIZE * GRID_SIZE + grid_idx] = orientation_scores[0][hex_pos];
-            features[6 * GRID_SIZE * GRID_SIZE + grid_idx] = orientation_scores[1][hex_pos];
-            features[7 * GRID_SIZE * GRID_SIZE + grid_idx] = orientation_scores[2][hex_pos];
-        }
-    }
-
-    Tensor::from_slice(&features).view([1, CHANNELS as i64, GRID_SIZE as i64, GRID_SIZE as i64])
+    orientation_scores
 }

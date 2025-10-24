@@ -2,6 +2,7 @@ use crate::game::deck::Deck;
 use crate::game::tile::Tile;
 
 /// Get all non-empty tiles from a deck
+#[allow(dead_code)]
 pub fn get_available_tiles(deck: &Deck) -> Vec<Tile> {
     deck.tiles
         .iter()

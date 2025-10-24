@@ -1,10 +1,50 @@
-use tch::nn::VarStore;
-use tch::Result;
+use crate::neural::gnn::{GraphPolicyNet, GraphValueNet};
+use crate::neural::manager::NNArchitecture;
 use tch::{nn, Tensor};
 
 use crate::neural::res_net_block::ResNetBlock;
 
 pub struct PolicyNet {
+    pub arch: NNArchitecture,
+    net: PolicyNetImpl,
+}
+
+pub enum PolicyNetImpl {
+    CNN(Box<PolicyNetCNN>),
+    GNN(GraphPolicyNet),
+}
+
+impl PolicyNet {
+    // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
+    pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64), arch: NNArchitecture) -> Self {
+        match arch {
+            NNArchitecture::CNN => Self {
+                arch,
+                net: PolicyNetImpl::CNN(Box::new(PolicyNetCNN::new(vs, input_dim))),
+            },
+            NNArchitecture::GNN => Self {
+                arch,
+                net: PolicyNetImpl::GNN(GraphPolicyNet::new(vs, input_dim.0, &[64, 64, 64], 0.1)),
+            },
+        }
+    }
+
+    pub fn forward(&self, input: &Tensor, train: bool) -> Tensor {
+        match &self.net {
+            PolicyNetImpl::CNN(net) => net.forward(input, train),
+            PolicyNetImpl::GNN(net) => net.forward(input, train),
+        }
+    }
+
+    pub fn save_model(&mut self, vs: &tch::nn::VarStore, path: &str) -> tch::Result<()> {
+        vs.save(path)
+    }
+    pub fn load_model(&self, vs: &mut tch::nn::VarStore, path: &str) -> tch::Result<()> {
+        vs.load(path)
+    }
+}
+
+pub struct PolicyNetCNN {
     conv1: nn::Conv2D,
     gn1: nn::GroupNorm,
     res_blocks: Vec<ResNetBlock>,
@@ -13,12 +53,12 @@ pub struct PolicyNet {
     policy_head: nn::Linear,
     dropout_rate: f64,
 }
-const NUM_RES_BLOCKS: usize = 4; // Or any number you want
-const INITIAL_CONV_CHANNELS: i64 = 128;
+const INITIAL_CONV_CHANNELS: i64 = 160;
+const POLICY_STAGE_CHANNELS: &[i64] = &[160, 128, 128, 96, 96, 64];
 
-const NUM_RES_BLOCKS_VALUE: usize = 4; // Or adjust as needed
-const INITIAL_CONV_CHANNELS_VALUE: i64 = 128;
-impl PolicyNet {
+const INITIAL_CONV_CHANNELS_VALUE: i64 = 160;
+const VALUE_STAGE_CHANNELS: &[i64] = &[160, 128, 128, 96, 96, 64];
+impl PolicyNetCNN {
     // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
     pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64)) -> Self {
         let p = vs.root();
@@ -34,14 +74,14 @@ impl PolicyNet {
                 ..Default::default()
             },
         );
-        let gn1 = nn::group_norm(&p / "gn1", 16, 128, Default::default());
+        let gn1 = nn::group_norm(&p / "gn1", 16, INITIAL_CONV_CHANNELS, Default::default());
 
         let mut res_blocks = Vec::new();
         let mut in_channels = INITIAL_CONV_CHANNELS;
 
-        for _ in 0..NUM_RES_BLOCKS {
-            let out_channels = 32;
-            res_blocks.push(ResNetBlock::new(vs, in_channels, out_channels));
+        for (idx, &out_channels) in POLICY_STAGE_CHANNELS.iter().enumerate() {
+            let block_vs = vs.root() / format!("policy_block_{idx}");
+            res_blocks.push(ResNetBlock::new_path(&block_vs, in_channels, out_channels));
             in_channels = out_channels;
         }
 
@@ -80,17 +120,13 @@ impl PolicyNet {
         }
     }
 
-    pub fn save_model(&self, vs: &nn::VarStore, path: &str) -> Result<()> {
-        // Save the model's state dictionary to the specified path
-        vs.save(path)?;
-        Ok(())
+    #[allow(dead_code)]
+    pub fn save_model(&mut self, vs: &tch::nn::VarStore, path: &str) -> tch::Result<()> {
+        vs.save(path)
     }
-
-    pub fn load_model(&self, vs: &mut nn::VarStore, path: &str) -> Result<()> {
-        // Load the model's state dictionary from the specified path
-        vs.load(path)?;
-        // Recreate the model with the loaded weights
-        Ok(())
+    #[allow(dead_code)]
+    pub fn load_model(&mut self, vs: &mut tch::nn::VarStore, path: &str) -> tch::Result<()> {
+        vs.load(path)
     }
     pub fn forward(&self, x: &Tensor, train: bool) -> Tensor {
         let mut h = x.apply(&self.conv1).apply_t(&self.gn1, train).leaky_relu();
@@ -160,6 +196,48 @@ pub fn initialize_weights(vs: &nn::VarStore) {
 //... other imports
 
 pub struct ValueNet {
+    #[allow(dead_code)]
+    pub arch: NNArchitecture,
+    net: ValueNetImpl,
+}
+
+pub enum ValueNetImpl {
+    CNN(Box<ValueNetCNN>),
+    GNN(GraphValueNet),
+}
+
+impl ValueNet {
+    // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
+    pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64), arch: NNArchitecture) -> Self {
+        match arch {
+            NNArchitecture::CNN => Self {
+                arch,
+                net: ValueNetImpl::CNN(Box::new(ValueNetCNN::new(vs, input_dim))),
+            },
+            NNArchitecture::GNN => Self {
+                arch,
+                net: ValueNetImpl::GNN(GraphValueNet::new(vs, input_dim.0, &[64, 64, 64], 0.1)),
+            },
+        }
+    }
+
+    pub fn forward(&self, input: &Tensor, train: bool) -> Tensor {
+        match &self.net {
+            ValueNetImpl::CNN(net) => net.forward(input, train),
+            ValueNetImpl::GNN(net) => net.forward(input, train),
+        }
+    }
+
+    pub fn save_model(&mut self, vs: &tch::nn::VarStore, path: &str) -> tch::Result<()> {
+        vs.save(path)
+    }
+    pub fn load_model(&self, vs: &mut tch::nn::VarStore, path: &str) -> tch::Result<()> {
+        vs.load(path)
+    }
+}
+
+// Renommer l’implémentation CNN existante en PolicyNetCNN/ValueNetCNN
+pub struct ValueNetCNN {
     conv1: nn::Conv2D,
     bn1: nn::BatchNorm,
     res_blocks: Vec<ResNetBlock>,
@@ -169,9 +247,9 @@ pub struct ValueNet {
     dropout_rate: f64,
 }
 
-impl ValueNet {
+impl ValueNetCNN {
     // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
-    pub fn new(vs: &VarStore, input_dim: (i64, i64, i64)) -> Self {
+    pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64)) -> Self {
         let p = vs.root();
         let (channels, height, width) = input_dim; // Expecting (channels, height, width)
 
@@ -198,9 +276,9 @@ impl ValueNet {
         let mut res_blocks = Vec::new();
         let mut in_channels = INITIAL_CONV_CHANNELS_VALUE;
 
-        for _ in 0..NUM_RES_BLOCKS_VALUE {
-            let out_channels = 128; // Or adjust as needed
-            res_blocks.push(ResNetBlock::new(vs, in_channels, out_channels)); // Use &vs here!
+        for (idx, &out_channels) in VALUE_STAGE_CHANNELS.iter().enumerate() {
+            let block_vs = vs.root() / format!("value_block_{idx}");
+            res_blocks.push(ResNetBlock::new_path(&block_vs, in_channels, out_channels));
             in_channels = out_channels;
         }
 
@@ -221,17 +299,13 @@ impl ValueNet {
             dropout_rate: 0.3,
         }
     }
-    pub fn save_model(&self, vs: &nn::VarStore, path: &str) -> Result<()> {
-        // Save the model's state dictionary to the specified path
-        vs.save(path)?;
-        Ok(())
+    #[allow(dead_code)]
+    pub fn save_model(&mut self, vs: &tch::nn::VarStore, path: &str) -> tch::Result<()> {
+        vs.save(path)
     }
-
-    pub fn load_model(&self, vs: &mut nn::VarStore, path: &str) -> Result<()> {
-        // Load the model's state dictionary from the specified path
-        vs.load(path)?;
-        // Recreate the model with the loaded weights
-        Ok(())
+    #[allow(dead_code)]
+    pub fn load_model(&mut self, vs: &mut tch::nn::VarStore, path: &str) -> tch::Result<()> {
+        vs.load(path)
     }
     pub fn forward(&self, x: &Tensor, train: bool) -> Tensor {
         // Input validation and normalization
@@ -307,29 +381,28 @@ fn kaiming_uniform(tensor: &mut Tensor, fan_in: f64) {
 
 #[cfg(test)]
 mod tests {
-    use tch::{nn, Device};
-
     use super::*;
+    use tch::{nn, Device, Tensor};
 
     #[test]
     fn test_policy_net_creation() {
         let vs = nn::VarStore::new(Device::Cpu);
-        let input_dim = (3, 5, 5); // Example dimensions: channels, height, width
-        let policy_net = PolicyNet::new(&vs, input_dim);
+        let input_dim = (8, 5, 5); // Enhanced feature stack
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
 
         // Assert that the PolicyNet was created correctly
-        assert_eq!(policy_net.res_blocks.len(), 4);
-        assert_eq!(policy_net.dropout_rate, 0.3);
+        assert_eq!(policy_net.arch, NNArchitecture::CNN);
+        // Internal fields are now private within the enum variant
     }
 
     #[test]
     fn test_policy_net_forward() {
         let vs = nn::VarStore::new(Device::Cpu);
-        let input_dim = (3, 5, 5);
-        let policy_net = PolicyNet::new(&vs, input_dim);
+        let input_dim = (8, 5, 5);
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
 
         // Create a dummy input tensor
-        let input = Tensor::rand(&[1, 3, 5, 5], (tch::Kind::Float, Device::Cpu));
+        let input = Tensor::rand(&[1, 8, 5, 5], (tch::Kind::Float, Device::Cpu));
         let output = policy_net.forward(&input, true);
 
         // Assert that the output has the expected shape
@@ -339,14 +412,35 @@ mod tests {
     #[test]
     fn test_value_net_creation_and_forward() {
         let vs = nn::VarStore::new(Device::Cpu);
-        let input_dim = (3, 5, 5);
-        let value_net = ValueNet::new(&vs, input_dim);
+        let input_dim = (8, 5, 5);
+        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::CNN);
 
         // Create a dummy input tensor
-        let input = Tensor::rand(&[1, 3, 5, 5], (tch::Kind::Float, Device::Cpu));
+        let input = Tensor::rand(&[1, 8, 5, 5], (tch::Kind::Float, Device::Cpu));
         let output = value_net.forward(&input, true);
 
         // Assert that the output has the expected shape
         assert_eq!(output.size(), vec![1, 1]); // Assuming 1 output value
+        assert_eq!(value_net.arch, NNArchitecture::CNN);
+    }
+
+    #[test]
+    fn test_policy_net_forward_cnn() {
+        let vs = nn::VarStore::new(Device::Cpu);
+        let input_dim = (8, 5, 5);
+        let net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let input = Tensor::rand(&[1, 8, 5, 5], (tch::Kind::Float, Device::Cpu));
+        let out = net.forward(&input, false);
+        assert_eq!(out.size(), vec![1, 19]);
+    }
+
+    #[test]
+    fn test_policy_net_forward_gnn() {
+        let vs = nn::VarStore::new(Device::Cpu);
+        let input_dim = (8, 5, 5); // 8 features, 19 nœuds attendus côté GNN
+        let net = PolicyNet::new(&vs, input_dim, NNArchitecture::GNN);
+        let input = Tensor::rand(&[1, 8, 19], (tch::Kind::Float, Device::Cpu));
+        let out = net.forward(&input, false);
+        assert_eq!(out.size()[0], 1);
     }
 }
