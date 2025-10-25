@@ -162,34 +162,43 @@ CNN + Pattern V2        : 139.40 pts (+9.1%) ✅
 CNN + Pattern V2 + RAVE : 125.66 pts (-1.5%) ❌
 ```
 
+## ❌ Tentative d'Optimisation V3 (Échec)
+
+**Date**: 2025-10-25
+
+Tentative d'optimisation pour atteindre 145+ pts en combinant:
+1. Progressive Widening optimisé (racine cubique au lieu de carré)
+2. c_puct augmenté (+5-7%)
+3. Coefficients ajustés [0.65, 0.20, 0.08, 0.07]
+
+**Résultat**: ❌ **Échec catastrophique - Régression de -51.28 pts (-37%)**
+- V2 (baseline): 139.40 pts
+- V3 (optimisé): 88.12 pts
+
+**Cause**:
+- Progressive Widening trop restrictif (8 coups au lieu de 12)
+- Sur-exploration par c_puct élevé
+- Déséquilibre des coefficients (trop de poids au ValueNet, pas assez aux heuristiques)
+
+**Conclusion**: Les paramètres V2 sont **déjà optimaux**, toute modification casse l'équilibre fragile entre exploration/exploitation et NN/heuristiques.
+
+➡️ Voir `docs/optimization_failure_v3.md` pour analyse détaillée
+
 ## 🎯 Prochaines Étapes (Optionnel)
 
 Pour atteindre 145+ pts (encore 5.60 pts à gagner) :
 
-### Option A : Progressive Widening Optimisé
-- Améliorer la sélection des coups dans MCTS
-- Gain estimé : +3-5 pts
-- Complexité : Moyenne
-- **Cible : 142-144 pts**
-
-### Option B : Hyperparameter Tuning
-- Ajuster coefficients (0.6, 0.2, 0.1, 0.1)
-- Ajuster k_MCTS, c_puct, entropy_factor
-- Gain estimé : +2-4 pts
-- Complexité : Faible
-- **Cible : 141-143 pts**
-
-### Option C : Gold GNN Architecture
+### Option A : Gold GNN Architecture ⭐ **Recommandé**
 - Graph Attention Networks (GAT)
-- Meilleure capture des dépendances spatiales
+- Meilleure capture des dépendances spatiales hexagonales
 - Gain estimé : +3-6 pts
 - Complexité : Élevée
 - **Cible : 142-145 pts**
 
-### Option D : Combinaison A + B
-- Progressive Widening + Tuning
-- Gain cumulé estimé : +5-8 pts
-- **Cible : 144-147 pts** ✅
+### Option B : Ne Rien Faire ✅ **Solution Conservatrice**
+- Pattern Rollouts V2 dépasse déjà les objectifs conservateur (136) et réaliste (138)
+- Risque élevé de régression avec modifications MCTS
+- **"Perfect is the enemy of good"**
 
 ## 🏆 Conclusion
 
