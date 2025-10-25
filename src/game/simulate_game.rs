@@ -6,6 +6,7 @@ use crate::game::tile::Tile;
 use crate::scoring::scoring::result;
 use rand::Rng;
 
+#[allow(dead_code)]
 pub fn simulate_games(plateau: Plateau, deck: Deck) -> i32 {
     let mut simulated_plateau = plateau.clone();
     let simulated_deck = deck.clone();
