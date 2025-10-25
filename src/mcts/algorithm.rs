@@ -8,7 +8,7 @@ use crate::game::get_legal_moves::get_legal_moves;
 use crate::game::plateau::Plateau;
 use crate::game::plateau_is_full::is_plateau_full;
 use crate::game::remove_tile_from_deck::replace_tile_in_deck;
-use crate::game::simulate_game::simulate_games;
+use crate::game::simulate_game_smart::simulate_games_smart;
 use crate::game::tile::Tile;
 use crate::mcts::mcts_result::MCTSResult;
 use crate::neural::gnn::convert_plateau_for_gnn;
@@ -249,7 +249,7 @@ fn mcts_core(
                 let mut total_simulated_score = 0.0;
                 for _ in 0..rollout_count {
                     total_simulated_score +=
-                        simulate_games(temp_plateau.clone(), temp_deck.clone()) as f64;
+                        simulate_games_smart(temp_plateau.clone(), temp_deck.clone(), None) as f64;
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
                 let normalized_value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
@@ -272,6 +272,10 @@ fn mcts_core(
     let mut total_scores: HashMap<usize, f64> = HashMap::new();
     let mut ucb_scores: HashMap<usize, f64> = HashMap::new();
     let mut ucb_scores_raw: HashMap<usize, f64> = HashMap::new();
+
+    // RAVE disabled - incompatible with Pattern Rollouts heuristics
+    // Pattern Rollouts biases introduce false correlations in RAVE statistics
+
     let mut total_visits: i32 = 0;
     for &position in &legal_moves {
         visit_counts.insert(position, 0);
@@ -418,7 +422,8 @@ fn mcts_core(
                     plateau2.tiles[pos2] = tile2;
                     deck2 = replace_tile_in_deck(&deck2, &tile2);
 
-                    let score = simulate_games(plateau2.clone(), deck2.clone()) as f64;
+                    // Pattern Rollouts V2: Smart heuristic-based simulation
+                    let score = simulate_games_smart(plateau2.clone(), deck2.clone(), None) as f64;
                     best_score_for_tile2 = best_score_for_tile2.max(score);
                 }
 
@@ -427,6 +432,7 @@ fn mcts_core(
 
             let simulated_score = total_simulated_score / rollout_count as f64;
 
+            // Update MCTS statistics
             let visits = visit_counts.entry(position).or_insert(0);
             *visits += 1;
             total_visits += 1;
@@ -452,6 +458,7 @@ fn mcts_core(
             )
             .clamp(-1.0, 1.0);
 
+            // Pattern Rollouts V2: Weighted combination of evaluators
             let combined_eval = 0.6 * normalized_value
                 + 0.2 * normalized_rollout
                 + 0.1 * normalized_heuristic
