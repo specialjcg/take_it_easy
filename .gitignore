@@ -54,4 +54,4 @@ coverage/
 
 # Environment
 .env
-.env.local
+.env.localworkspace_snapshot.tar
