@@ -247,6 +247,7 @@ pub async fn process_mcts_turn(
         num_simulations,
         game_state.current_turn,
         game_state.total_turns,
+        None,
     );
 
     // ✅ VALIDATION: Position légale

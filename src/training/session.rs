@@ -163,6 +163,7 @@ pub async fn train_and_evaluate(
                         effective_sims,
                         current_turn,
                         total_turns,
+                        None,
                     );
 
                     let best_position = game_result.best_position;
@@ -453,6 +454,7 @@ pub async fn train_and_evaluate_offline(
                     effective_sims,
                     current_turn,
                     total_turns,
+                    None,
                 );
 
                 let best_position = game_result.best_position;

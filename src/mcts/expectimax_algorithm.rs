@@ -372,10 +372,9 @@ mod tests {
     fn test_normalize_score() {
         let policy_net = PolicyNet {
             arch: NNArchitecture::CNN,
-            vs: tch::nn::VarStore::new(tch::Device::Cpu),
         };
         let value_net = ValueNet {
-            vs: tch::nn::VarStore::new(tch::Device::Cpu),
+            arch: NNArchitecture::CNN,
         };
 
         let engine = ExpectimaxMCTS::new(&policy_net, &value_net, 1.4, 0, 19);

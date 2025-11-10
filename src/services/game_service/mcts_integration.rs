@@ -57,6 +57,7 @@ pub async fn process_mcts_move_only(
         num_simulations,
         game_state.current_turn,
         game_state.total_turns,
+        None,
     );
 
     // ✅ VALIDATION: Position choisie doit être légale

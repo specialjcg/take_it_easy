@@ -27,6 +27,7 @@ pub async fn evaluate_model(policy_net: &PolicyNet, value_net: &ValueNet, num_si
                 num_simulations,
                 current_turn,
                 total_turns,
+                None,
             );
             let best_position = game_result.best_position;
             plateau.tiles[best_position] = chosen_tile;
