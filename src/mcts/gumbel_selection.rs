@@ -11,8 +11,7 @@
 //! - Theoretically proven convergence for stochastic games
 //! - Used in MuZero Reanalyze
 
-use rand::distributions::Distribution;
-use rand::thread_rng;
+use rand::{rng, Rng};
 use std::collections::HashMap;
 
 /// Gumbel distribution for sampling exploration noise
@@ -43,12 +42,6 @@ impl Default for Gumbel {
     }
 }
 
-impl Distribution<f64> for Gumbel {
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> f64 {
-        let u: f64 = rng.gen(); // Uniform(0,1)
-        self.mu - self.beta * (-u.ln()).ln()
-    }
-}
 
 /// Gumbel MCTS selection strategy
 pub struct GumbelSelector {
@@ -91,12 +84,13 @@ impl GumbelSelector {
             return None;
         }
 
-        let mut rng = thread_rng();
+        let mut rng_instance = rng();
         let mut scored_moves: Vec<(usize, f64)> = Vec::new();
 
         for (&position, &q_value) in q_values.iter() {
             // Sample Gumbel noise
-            let gumbel_noise = self.gumbel.sample(&mut rng);
+            let u1: f64 = rng_instance.gen_range(0.001..1.0);
+            let gumbel_noise = -(-(u1.ln())).ln();
 
             // Gumbel score = Q(s,a) + Gumbel / temperature
             let gumbel_score = q_value + (gumbel_noise / self.temperature);
@@ -184,7 +178,7 @@ mod tests {
     #[test]
     fn test_gumbel_distribution() {
         let gumbel = Gumbel::new();
-        let mut rng = thread_rng();
+        let mut rng_instance = rng();
 
         // Sample 1000 values
         let samples: Vec<f64> = (0..1000).map(|_| gumbel.sample(&mut rng)).collect();
