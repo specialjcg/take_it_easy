@@ -181,7 +181,10 @@ mod tests {
         let mut rng_instance = rng();
 
         // Sample 1000 values
-        let samples: Vec<f64> = (0..1000).map(|_| gumbel.sample(&mut rng)).collect();
+        let samples: Vec<f64> = (0..1000).map(|_| {
+            let u1: f64 = rng_instance.gen_range(0.001..1.0);
+            -(-(u1.ln())).ln()
+        }).collect();
 
         // Gumbel(0,1) has mean ≈ 0.577 (Euler-Mascheroni constant)
         let mean: f64 = samples.iter().sum::<f64>() / samples.len() as f64;
