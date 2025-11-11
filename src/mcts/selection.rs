@@ -6,6 +6,10 @@
 //!
 //! The key difference from standard MCTS is that Chance nodes use expectation
 //! over tile probabilities instead of maximization.
+//!
+//! **Status**: Experimental code for Expectimax MCTS (Phase 3 testing)
+
+#![allow(dead_code)]
 
 use crate::mcts::node::{MCTSNode, NodeType};
 

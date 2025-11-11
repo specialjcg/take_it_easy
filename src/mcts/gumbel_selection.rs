@@ -14,34 +14,14 @@
 use rand::{rng, Rng};
 use std::collections::HashMap;
 
-/// Gumbel distribution for sampling exploration noise
+/// Samples from standard Gumbel(0,1) distribution
 ///
-/// Gumbel(0,1) is equivalent to: -ln(-ln(Uniform(0,1)))
-pub struct Gumbel {
-    /// Location parameter (typically 0)
-    pub mu: f64,
-    /// Scale parameter (typically 1)
-    pub beta: f64,
+/// Gumbel(0,1) = -ln(-ln(Uniform(0,1)))
+#[inline]
+fn sample_gumbel(rng: &mut impl Rng) -> f64 {
+    let u: f64 = rng.random_range(0.001..1.0);
+    -(-(u.ln())).ln()
 }
-
-impl Gumbel {
-    /// Creates a standard Gumbel(0,1) distribution
-    pub fn new() -> Self {
-        Self { mu: 0.0, beta: 1.0 }
-    }
-
-    /// Creates a Gumbel distribution with custom parameters
-    pub fn with_params(mu: f64, beta: f64) -> Self {
-        Self { mu, beta }
-    }
-}
-
-impl Default for Gumbel {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 
 /// Gumbel MCTS selection strategy
 pub struct GumbelSelector {
@@ -51,18 +31,12 @@ pub struct GumbelSelector {
     /// - temperature < 1.0: more exploitation
     /// - temperature > 1.0: more exploration
     pub temperature: f64,
-
-    /// Gumbel noise distribution
-    gumbel: Gumbel,
 }
 
 impl GumbelSelector {
     /// Creates a new Gumbel selector with given temperature
     pub fn new(temperature: f64) -> Self {
-        Self {
-            temperature,
-            gumbel: Gumbel::new(),
-        }
+        Self { temperature }
     }
 
     /// Selects best move using Gumbel-Top-k sampling
@@ -89,8 +63,7 @@ impl GumbelSelector {
 
         for (&position, &q_value) in q_values.iter() {
             // Sample Gumbel noise
-            let u1: f64 = rng_instance.gen_range(0.001..1.0);
-            let gumbel_noise = -(-(u1.ln())).ln();
+            let gumbel_noise = sample_gumbel(&mut rng_instance);
 
             // Gumbel score = Q(s,a) + Gumbel / temperature
             let gumbel_score = q_value + (gumbel_noise / self.temperature);
@@ -177,14 +150,12 @@ mod tests {
 
     #[test]
     fn test_gumbel_distribution() {
-        let gumbel = Gumbel::new();
         let mut rng_instance = rng();
 
-        // Sample 1000 values
-        let samples: Vec<f64> = (0..1000).map(|_| {
-            let u1: f64 = rng_instance.gen_range(0.001..1.0);
-            -(-(u1.ln())).ln()
-        }).collect();
+        // Sample 1000 values using sample_gumbel function
+        let samples: Vec<f64> = (0..1000)
+            .map(|_| sample_gumbel(&mut rng_instance))
+            .collect();
 
         // Gumbel(0,1) has mean ≈ 0.577 (Euler-Mascheroni constant)
         let mean: f64 = samples.iter().sum::<f64>() / samples.len() as f64;

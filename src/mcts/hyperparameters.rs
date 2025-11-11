@@ -247,6 +247,7 @@ impl MCTSHyperparameters {
     }
 
     /// Validate that evaluation weights sum to approximately 1.0
+    #[allow(dead_code)] // Used in binaries, not in lib
     pub fn validate_weights(&self) -> Result<(), String> {
         let sum =
             self.weight_cnn + self.weight_rollout + self.weight_heuristic + self.weight_contextual;
@@ -262,6 +263,7 @@ impl MCTSHyperparameters {
     }
 
     /// Create a configuration string for logging
+    #[allow(dead_code)] // Used in binaries, not in lib
     pub fn to_config_string(&self) -> String {
         format!(
             "c_puct[{:.2},{:.2},{:.2}]_prune[{:.2},{:.2},{:.2},{:.2}]_roll[{},{},{},{}]_weights[{:.2},{:.2},{:.2},{:.2}]",
@@ -325,6 +327,7 @@ mod tests {
         let params = MCTSHyperparameters::default();
         let config = params.to_config_string();
         assert!(config.contains("c_puct[4.20,3.80,3.00]"));
-        assert!(config.contains("weights[0.60,0.20,0.10,0.10]"));
+        // Updated after Phase 1 optimization: 0.65,0.25,0.05,0.05
+        assert!(config.contains("weights[0.65,0.25,0.05,0.05]"));
     }
 }

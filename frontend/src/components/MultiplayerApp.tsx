@@ -195,12 +195,33 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
         }
     });
 
+    // ✅ AUTO-DÉMARRAGE POUR LE MODE VIEWER MCTS
+    createEffect(() => {
+        const currentSession = gameState.session();
+        const state = gameState.gameState();
+
+        // Si on est en mode viewer ET qu'on a des données de plateau, marquer le jeu comme démarré
+        if (currentSession &&
+            (currentSession.playerId.includes('viewer') || currentSession.playerId.includes('mcts_viewer')) &&
+            state &&
+            !gameState.isGameStarted()) {
+
+            console.log('👁️ VIEWER: Activation automatique du mode visualisation');
+            gameState.setIsGameStarted(true);
+            gameState.setStatusMessage('👁️ Mode visualisation MCTS activé');
+        }
+    });
+
     // Démarrer le jeu quand tous sont prêts
     createEffect(() => {
         const state = gameState.gameState();
-        if (state && state.state === SessionState.IN_PROGRESS && !gameState.isGameStarted()) {
+        const currentSession = gameState.session();
+
+        // ✅ NE PAS DÉCLENCHER SI ON EST EN MODE VIEWER
+        const isViewer = currentSession && (currentSession.playerId.includes('viewer') || currentSession.playerId.includes('mcts_viewer'));
+
+        if (state && state.state === SessionState.IN_PROGRESS && !gameState.isGameStarted() && !isViewer) {
             console.log('🎮 Jeu commencé ! Prêt pour démarrer le premier tour...');
-            const currentSession = gameState.session();
             const currentPlayerScore = state.players?.find(p => p.id === currentSession?.playerId)?.score || 0;
             gameState.setStatusMessage(`🎯 Votre score actuel: ${currentPlayerScore} points`);
         }

@@ -183,6 +183,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         weight_rollout: args.weight_rollout,
         weight_heuristic: args.weight_heuristic,
         weight_contextual: args.weight_contextual,
+        // Quick Wins defaults (not tunable via CLI in this binary)
+        sim_mult_early: 0.67,
+        sim_mult_mid: 1.0,
+        sim_mult_late: 1.67,
+        temp_initial: 1.8,
+        temp_final: 0.5,
+        temp_decay_start: 7,
+        temp_decay_end: 13,
     };
 
     // Validate hyperparameters
