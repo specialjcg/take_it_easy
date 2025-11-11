@@ -55,3 +55,10 @@ coverage/
 # Environment
 .env
 .env.localworkspace_snapshot.tar
+
+# Local assistant/config artifacts
+.claude/
+.claude/codex_rust_prompts.txt
+
+# Root-level text snapshots (status dumps, etc.)
+/*.txt
