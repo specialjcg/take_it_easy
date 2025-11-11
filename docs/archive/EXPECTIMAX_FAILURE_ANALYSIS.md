@@ -196,5 +196,5 @@ Pattern rollouts provide ~100x better signal than untrained CNN (143 pts vs 10 p
 - Świechowski et al. (2018) - "MCTS + Supervised Learning for Hearthstone"
 
 **Date**: 2025-11-07
-**Author**: Claude Code
+**Author**: Automation Assistant
 **Status**: POST-MORTEM COMPLETE

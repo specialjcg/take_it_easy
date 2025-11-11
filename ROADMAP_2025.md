@@ -131,7 +131,7 @@ MCTS explores ONLY top-3 → Final decision (robust)
 
 ### Yann LeCun's Vision: Beyond LLMs
 
-**Context**: Current LLMs (ChatGPT, Claude, etc.) have limitations:
+**Context**: Current LLMs (ChatGPT and other assistants) have limitations:
 - Predict next token, but don't truly "understand" the world
 - Struggle with planning and multi-step reasoning
 - Can't anticipate consequences of actions
@@ -334,6 +334,6 @@ Each turn:
 
 ---
 
-**Maintainer**: Claude Code
+**Maintainer**: Core Take It Easy Team
 **Status**: Living Document (Update after each major experiment)
 **License**: Internal Research

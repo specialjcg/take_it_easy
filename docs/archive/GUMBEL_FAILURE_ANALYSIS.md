@@ -274,5 +274,5 @@ pub fn mcts_find_best_position_for_tile_gumbel(...) -> MCTSResult {
 - Our baseline: CNN Curriculum + Pattern Rollouts V2 (143.98 pts documented)
 
 **Date**: 2025-11-07
-**Author**: Claude Code
+**Author**: Automation Assistant
 **Status**: POST-MORTEM COMPLETE

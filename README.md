@@ -1,103 +1,130 @@
-# Take It Easy - Multiplayer Game with MCTS AI
+# Take It Easy – Installation & Runbook
 
-A tile-placement strategy game with real-time multiplayer support and advanced MCTS AI powered by neural networks.
+This repository hosts the Rust backend (gRPC + MCTS AI) and the SolidJS frontend for the **Take It Easy** multiplayer board game.  
+The goal of this README is to help you clone the project from GitHub, install dependencies, and launch the full stack in just a few commands.
 
-## Features
+---
 
-- **Real-time Multiplayer:** gRPC-based multiplayer sessions with automatic session management
-- **MCTS AI Integration:** Advanced Monte Carlo Tree Search with neural network guidance  
-- **Single-player Mode:** Play against AI with automatic session creation and flow
-- **Independent Gameplay:** Players can move at their own pace, no turn-based waiting
-- **Auto-progression:** Automatic tile drawing and turn advancement when all players finish
-- **Web Interface:** Modern SolidJS frontend with real-time game state updates
-- **Performance Optimized:** Async architecture with optimized session lookups and caching
-- **Headless Training:** Offline self-play generator for unattended dataset creation
+## 1. Prerequisites
 
-## Quick Start
+| Component | Version | Notes |
+|-----------|---------|-------|
+| Rust toolchain | 1.70+ | `rustup default stable` |
+| Node.js + npm | Node 18 / npm 9+ | Required for the SolidJS client |
+| protoc | 3.21+ | Needed because the backend uses gRPC/tonic |
+| libtorch | 2.1+ (CPU build is enough) | Required by the `tch` crate for neural inference |
 
-### Single-player vs AI
+> **Linux/macOS**: After extracting libtorch, export the path (adjust to your install):
+> ```bash
+> export LIBTORCH_HOME="$HOME/libtorch"
+> export LD_LIBRARY_PATH="$LIBTORCH_HOME/lib:$LD_LIBRARY_PATH"
+> ```
+
+---
+
+## 2. Clone & Install
+
 ```bash
-cargo run -- --single-player --num-simulations 300
-```
-- Access at: http://localhost:51051
-- Auto-connects to game session
-- MCTS plays automatically when tiles are drawn
+git clone https://github.com/specialjcg/take_it_easy.git
+cd take_it_easy
 
-### Multiplayer 
-```bash
-cargo run -- --mode multiplayer --port 50051
-```
-- Players join with session codes
-- MCTS participates as additional player
-- Independent player progression
+# Backend dependencies
+cargo fetch
 
-### Training Mode
-```bash
-# WebSocket-driven (requires UI connected to ws://127.0.0.1:9000)
-cargo run -- --mode training --num-games 500 --evaluation-interval 50
-
-# Headless / CI friendly variant
-cargo run -- --mode training --num-games 500 --offline-training --evaluation-interval 50
-```
-- Generates self-play data and continually fine-tunes policy/value networks
-- Offline mode writes progress to logs and is recommended for dataset farming
-
-## Architecture
-
-### Core Services
-- **SessionManager:** Functional session state management with immutable operations
-- **GameService:** gRPC service handling gameplay, moves, and state queries
-- **GameManager:** Pure functions for game logic, MCTS integration, and state transitions
-- **MCTS Algorithm:** Neural network-guided tree search for optimal moves
-
-### Key Optimizations
-- **Async Mutex:** tokio::sync::Mutex for better async performance
-- **Session Lookup Cache:** Optimized UUID vs code detection
-- **Image Generation Cache:** Static caching for tile image names  
-- **JSON Optimization:** Reduced recreation in hot paths
-
-## Prerequisites
-
-- **Rust 1.70+:** Install from [rust-lang.org](https://www.rust-lang.org/)
-- **PyTorch C++ (libtorch):** Required for neural networks via `tch` crate
-- **Node.js 18+:** For frontend development and building
-
-Configure libtorch before running the binary:
-```bash
-export LD_LIBRARY_PATH="$HOME/libtorch-clean/libtorch/lib:$LD_LIBRARY_PATH"
+# Frontend dependencies
+cd frontend
+npm install
+cd ..
 ```
 
-## Entraînement et comparaison des architectures CNN et GNN
+---
 
-Les poids des modèles sont automatiquement séparés selon l’architecture :
-- **CNN** : `model_weights/cnn/policy/policy.params` et `model_weights/cnn/value/value.params`
-- **GNN** : `model_weights/gnn/policy/policy.params` et `model_weights/gnn/value/value.params`
+## 3. Running the Application
 
-### Entraîner le CNN
+### Option A – One-liner (recommended for dev)
 ```bash
-cargo run --release --bin take_it_easy -- \
-    --mode training --offline-training \
-    --num-games 500 \
-    --num-simulations 150 \
-    --evaluation-interval 50 \
-    --nn-architecture cnn
+make dev
+```
+This starts:
+- the Rust backend (gRPC server on `localhost:50051`)
+- the SolidJS frontend (Vite dev server on `localhost:3000`)
+
+### Option B – Manual terminals
+1. **Backend**
+   ```bash
+   cargo run -- --mode multiplayer --port 50051 --num-simulations 200
+   ```
+2. **Frontend**
+   ```bash
+   cd frontend
+   npm run dev -- --host 0.0.0.0 --port 3000
+   ```
+
+Visit `http://localhost:3000` to play. The frontend talks to the backend through gRPC-Web.
+
+---
+
+## 4. Production Build / Deployment
+
+```bash
+make build
+# Outputs:
+#   - backend binary (release)
+#   - frontend static bundle in frontend/dist
 ```
 
-### Entraîner le GNN
+Run the backend in release mode:
 ```bash
-cargo run --release --bin take_it_easy -- \
-    --mode training --offline-training \
-    --num-games 500 \
-    --num-simulations 150 \
-    --evaluation-interval 50 \
-    --nn-architecture gnn
+./target/release/take_it_easy --mode multiplayer --port 50051 --num-simulations 300 --single-player false
 ```
 
-### Comparer les deux modèles
-Pour comparer les performances, lancez la commande de comparaison en précisant l’architecture :
-```bash
-cargo run --release --bin compare_mcts -- --nn-architecture cnn
-cargo run --release --bin compare_mcts -- --nn-architecture gnn
+Serve the frontend bundle (`frontend/dist`) with any static server (nginx, Vite preview, etc.).
+
+---
+
+## 5. Useful Commands
+
+| Command | Description |
+|---------|-------------|
+| `cargo test` | Run Rust unit + integration tests |
+| `npm test -- --watch=false` | Run frontend tests (Vitest) |
+| `cargo run -- --single-player` | Quick solo game vs MCTS |
+| `cargo run --bin compare_mcts -- --games 50` | Benchmark neural vs pure MCTS |
+| `make fmt` / `cargo fmt` | Apply Rust formatting |
+| `npm run lint` | Lint SolidJS code |
+
+---
+
+## 6. Repository Layout
+
+```
+src/                # Rust backend (game logic, services, MCTS, neural bindings)
+frontend/           # SolidJS app (Vite)
+model_weights/      # CNN weights used in production
+docs/               # Architecture notes, experiment archives
+docs/archive/       # Legacy experiments/scripts (not needed to run)
+scripts/            # Active Python helpers for data analysis
+Makefile            # Common dev + build shortcuts
+dev_start.sh        # Legacy helper (make dev wraps this)
 ```
 
-Chaque architecture utilisera automatiquement ses propres poids.
+---
+
+## 7. Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| **`libtorch` not found** | Ensure `LD_LIBRARY_PATH` points to `libtorch/lib` before launching the backend. |
+| **`protoc` missing`** | Install via package manager (`apt install protobuf-compiler`, `brew install protobuf`). |
+| **Frontend can’t reach backend** | Confirm backend is on `localhost:50051` and run `npm run dev -- --host 0.0.0.0`. |
+| **Slow simulations** | Lower `--num-simulations` (e.g., 150) or build with `cargo run --release`. |
+
+---
+
+## 8. Next Steps
+
+- Explore `docs/` for detailed AI/MCTS notes.
+- Run benchmarks with `cargo run --bin compare_mcts`.
+- Contribute fixes via pull requests (use `cargo fmt && cargo clippy && cargo test` before pushing).
+
+Have fun playing and hacking on **Take It Easy**! 🦀🎮
