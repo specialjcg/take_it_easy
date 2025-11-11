@@ -350,5 +350,5 @@ fn mcts_core(
 - Our baseline: CNN Curriculum + Pattern Rollouts V2
 
 **Date**: 2025-11-07
-**Author**: Claude Code
+**Author**: Automation Assistant
 **Status**: PLAN READY

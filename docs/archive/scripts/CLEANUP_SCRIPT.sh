@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script de nettoyage avant restart Claude
+# Script de nettoyage avant restart de l'assistant
 echo "🧹 Nettoyage environnement Take It Easy..."
 
 # Arrêter tous les processus
@@ -35,5 +35,5 @@ echo "🌐 Ports libérés:"
 netstat -tlnp | grep -E ":3000|:3001|:50051|:51051" || echo "Aucun port occupé"
 
 echo ""
-echo "🚀 Prêt pour restart Claude!"
+echo "🚀 Prêt pour relancer l'assistant!"
 echo "📋 Context sauvé dans: SESSION_CONTEXT.md"
