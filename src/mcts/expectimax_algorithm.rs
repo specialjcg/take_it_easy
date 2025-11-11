@@ -8,6 +8,10 @@
 //! - Uses Decision nodes for position choices
 //! - Computes expectation over tile probabilities (not just max)
 //! - Integrates CNN for value estimation at Decision nodes
+//!
+//! **Status**: Experimental code - Phase 3 testing in progress
+
+#![allow(dead_code)]
 
 use crate::game::deck::Deck;
 use crate::game::plateau::Plateau;

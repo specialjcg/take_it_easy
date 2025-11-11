@@ -201,6 +201,7 @@ fn play_one_game(
                 num_simulations,
                 turn,
                 19,
+                None,
             )
         };
 

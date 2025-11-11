@@ -6,6 +6,10 @@
 //!
 //! This properly models the stochastic nature of Take It Easy,
 //! where tile draws are random but position placements are decisions.
+//!
+//! **Status**: Experimental code for Expectimax MCTS (Phase 3 testing)
+
+#![allow(dead_code)]
 
 use crate::game::deck::Deck;
 use crate::game::get_legal_moves::get_legal_moves;

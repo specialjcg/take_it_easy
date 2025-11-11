@@ -102,6 +102,14 @@ impl GridConfig {
             weight_rollout: self.weight_rollout,
             weight_heuristic: self.weight_heuristic,
             weight_contextual: self.weight_contextual,
+            // Quick Wins defaults
+            sim_mult_early: 0.67,
+            sim_mult_mid: 1.0,
+            sim_mult_late: 1.67,
+            temp_initial: 1.8,
+            temp_final: 0.5,
+            temp_decay_start: 7,
+            temp_decay_end: 13,
         }
     }
 }

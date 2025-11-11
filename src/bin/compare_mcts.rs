@@ -207,6 +207,7 @@ fn play_game(tiles: &[Tile], num_simulations: usize, strategy: Strategy<'_>) -> 
                 num_simulations,
                 turn,
                 total_turns,
+                None,
             ),
             Strategy::Neural {
                 policy_net,
@@ -220,6 +221,7 @@ fn play_game(tiles: &[Tile], num_simulations: usize, strategy: Strategy<'_>) -> 
                 num_simulations,
                 turn,
                 total_turns,
+                None,
             ),
         };
 

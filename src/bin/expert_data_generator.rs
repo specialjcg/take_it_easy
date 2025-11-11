@@ -16,8 +16,7 @@ use std::fs::File;
 use std::io::BufWriter;
 
 use take_it_easy::game::create_deck::create_deck;
-use take_it_easy::game::get_legal_moves::get_legal_moves;
-use take_it_easy::game::plateau::{create_plateau_empty, Plateau};
+use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::game::tile::Tile;
 use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
@@ -201,7 +200,14 @@ fn generate_expert_game(
         let tile = tile_sequence[turn];
 
         // Store state before move
-        let plateau_before = plateau.tiles.clone();
+        // Encode each tile as: value1*100 + value2*10 + value3, or -1 for empty
+        let plateau_before: Vec<i32> = plateau.tiles.iter().map(|tile| {
+            if tile.0 == 0 && tile.1 == 0 && tile.2 == 0 {
+                -1  // Empty cell
+            } else {
+                tile.0 * 100 + tile.1 * 10 + tile.2
+            }
+        }).collect();
 
         // Use MCTS to find best position
         let mcts_result = mcts_find_best_position_for_tile_with_nn(
@@ -213,6 +219,7 @@ fn generate_expert_game(
             simulations,
             turn,
             19,
+            None,
         );
 
         let best_position = mcts_result.best_position;

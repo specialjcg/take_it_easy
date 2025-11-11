@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::policy_value_net::{PolicyNet, ValueNet};
 use tch::{nn, Device};
 
@@ -12,7 +13,7 @@ fn load_policy() -> Result<(), String> {
     }
 
     let mut vs = nn::VarStore::new(Device::Cpu);
-    let policy_net = PolicyNet::new(&vs, EXPECTED_DIM);
+    let policy_net = PolicyNet::new(&vs, EXPECTED_DIM, NNArchitecture::CNN);
     policy_net
         .load_model(&mut vs, path.to_str().unwrap())
         .map_err(|err| format!("policy weights mismatch: {:?}", err))
@@ -25,7 +26,7 @@ fn load_value() -> Result<(), String> {
     }
 
     let mut vs = nn::VarStore::new(Device::Cpu);
-    let value_net = ValueNet::new(&vs, EXPECTED_DIM);
+    let value_net = ValueNet::new(&vs, EXPECTED_DIM, NNArchitecture::CNN);
     value_net
         .load_model(&mut vs, path.to_str().unwrap())
         .map_err(|err| format!("value weights mismatch: {:?}", err))

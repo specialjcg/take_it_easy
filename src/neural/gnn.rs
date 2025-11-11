@@ -5,9 +5,6 @@ use tch::{nn, Kind, Tensor};
 // Silver GNN: Increased capacity for better representation learning
 const DEFAULT_HIDDEN: &[i64] = &[128, 128, 64];
 
-// Gold GNN: Maximum capacity for optimal performance
-const GOLD_HIDDEN: &[i64] = &[256, 256, 128, 64];
-
 #[derive(Debug)]
 pub struct GraphLayer {
     w_self: nn::Linear,

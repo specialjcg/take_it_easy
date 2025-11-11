@@ -109,11 +109,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let neural_config = NeuralConfig {
         input_dim: (8, 5, 5),
         nn_architecture: args.nn_architecture.clone().into(),
+        ..Default::default()
     };
 
-    let manager = NeuralManager::new(&neural_config)?;
-    let policy_net: PolicyNet = manager.get_policy_net();
-    let value_net: ValueNet = manager.get_value_net();
+    let manager = NeuralManager::with_config(neural_config)?;
+    let policy_net: &PolicyNet = manager.policy_net();
+    let value_net: &ValueNet = manager.value_net();
 
     log::info!("✅ Neural networks loaded: {:?}", args.nn_architecture);
 
@@ -124,10 +125,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut plateau = create_plateau_empty();
         let mut deck = create_deck();
 
-        let chosen_tiles: Vec<Tile> = deck
-            .tiles
-            .choose_multiple(&mut rng, args.turns)
-            .cloned()
+        let available = get_available_tiles(&deck);
+        let chosen_tiles: Vec<Tile> = available
+            .choose_multiple(&mut rng, args.turns.min(available.len()))
+            .copied()
             .collect();
 
         for (turn_idx, &chosen_tile) in chosen_tiles.iter().enumerate() {
@@ -156,6 +157,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     args.simulations,
                     turn_idx,
                     args.turns,
+                    None,
                 )
             } else {
                 mcts_find_best_position_for_tile_with_nn(
@@ -167,6 +169,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     args.simulations,
                     turn_idx,
                     args.turns,
+                    None,
                 )
             };
 
@@ -198,14 +201,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         / all_scores.len() as f64;
     let std_dev = variance.sqrt();
 
-    log::info!("=" .repeat(60));
+    log::info!("{}", "=".repeat(60));
     log::info!("📊 {} Results:", approach);
     log::info!("   Games: {}", args.games);
     log::info!("   Simulations: {}", args.simulations);
     log::info!("   Average Score: {:.2}", avg_score);
     log::info!("   Std Dev: {:.2}", std_dev);
     log::info!("   Min/Max: {}/{}", all_scores.iter().min().unwrap(), all_scores.iter().max().unwrap());
-    log::info!("=" .repeat(60));
+    log::info!("{}", "=".repeat(60));
 
     // Log to CSV
     if !args.log_path.is_empty() {
