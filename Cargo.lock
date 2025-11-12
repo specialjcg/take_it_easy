@@ -1701,7 +1701,7 @@ dependencies = [
  "tonic",
  "tonic-build",
  "tonic-web",
- "tower 0.4.13",
+ "tower 0.5.2",
  "tower-http 0.6.4",
  "uuid",
 ]
