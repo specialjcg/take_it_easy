@@ -273,6 +273,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -833,12 +839,6 @@ dependencies = [
  "http-body 1.0.1",
  "pin-project-lite",
 ]
-
-[[package]]
-name = "http-range-header"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "add0ab9360ddbd88cfeb3bd9574a1d85cfdfa14db10b3e21d3700dbc4328758f"
 
 [[package]]
 name = "http-range-header"
@@ -1698,11 +1698,11 @@ dependencies = [
  "tokio-stream",
  "tokio-test",
  "tokio-tungstenite",
- "tonic",
+ "tonic 0.10.2",
  "tonic-build",
  "tonic-web",
  "tower 0.5.2",
- "tower-http 0.6.4",
+ "tower-http",
  "uuid",
 ]
 
@@ -1890,7 +1890,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "axum 0.6.20",
- "base64",
+ "base64 0.21.7",
  "bytes",
  "h2",
  "http 0.2.12",
@@ -1903,6 +1903,26 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tower 0.4.13",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
+name = "tonic"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb7613188ce9f7df5bfe185db26c5814347d110db17920415cf2fbcad85e7203"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "http 1.2.0",
+ "http-body 1.0.1",
+ "http-body-util",
+ "percent-encoding",
+ "pin-project",
+ "sync_wrapper 1.0.2",
+ "tokio-stream",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -1923,19 +1943,17 @@ dependencies = [
 
 [[package]]
 name = "tonic-web"
-version = "0.10.2"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fddb2a37b247e6adcb9f239f4e5cefdcc5ed526141a416b943929f13aea2cce"
+checksum = "75214f6b6bd28c19aa752ac09fdf0eea546095670906c21fe3940e180a4c43f2"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
- "http 0.2.12",
- "http-body 0.4.6",
- "hyper 0.14.32",
+ "http 1.2.0",
+ "http-body 1.0.1",
  "pin-project",
  "tokio-stream",
- "tonic",
- "tower-http 0.4.4",
+ "tonic 0.14.2",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -1991,24 +2009,6 @@ dependencies = [
 
 [[package]]
 name = "tower-http"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c5bb1d698276a2443e5ecfabc1008bf15a36c12e6a7176e7bf089ea9131140"
-dependencies = [
- "bitflags 2.6.0",
- "bytes",
- "futures-core",
- "futures-util",
- "http 0.2.12",
- "http-body 0.4.6",
- "http-range-header 0.3.1",
- "pin-project-lite",
- "tower-layer",
- "tower-service",
-]
-
-[[package]]
-name = "tower-http"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fdb0c213ca27a9f57ab69ddb290fd80d970922355b83ae380b395d3986b8a2e"
@@ -2019,7 +2019,7 @@ dependencies = [
  "http 1.2.0",
  "http-body 1.0.1",
  "http-body-util",
- "http-range-header 0.4.2",
+ "http-range-header",
  "httpdate",
  "mime",
  "mime_guess",
