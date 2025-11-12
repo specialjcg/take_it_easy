@@ -356,8 +356,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             config.weight_contextual
         );
 
-        let (avg_score, std_dev, min_score, max_score) =
-            evaluate_config(config, &args, &manager)?;
+        let (avg_score, std_dev, min_score, max_score) = evaluate_config(config, &args, &manager)?;
 
         log::info!(
             "   Result: {:.2} ± {:.2} pts (range: {}-{})",
@@ -407,7 +406,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     log::info!("Results saved to: {}", args.log_path);
     log::info!("");
     log::info!("📊 To analyze results, run:");
-    log::info!("   python3 scripts/analyze_hyperparameters.py {}", args.log_path);
+    log::info!(
+        "   python3 scripts/analyze_hyperparameters.py {}",
+        args.log_path
+    );
 
     Ok(())
 }

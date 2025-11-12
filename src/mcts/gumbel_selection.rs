@@ -159,7 +159,11 @@ mod tests {
 
         // Gumbel(0,1) has mean ≈ 0.577 (Euler-Mascheroni constant)
         let mean: f64 = samples.iter().sum::<f64>() / samples.len() as f64;
-        assert!((mean - 0.577).abs() < 0.1, "Mean should be ~0.577, got {}", mean);
+        assert!(
+            (mean - 0.577).abs() < 0.1,
+            "Mean should be ~0.577, got {}",
+            mean
+        );
     }
 
     #[test]
@@ -191,8 +195,8 @@ mod tests {
 
         let mut visit_counts = HashMap::new();
         visit_counts.insert(0, 100); // Heavily visited
-        visit_counts.insert(1, 0);   // Unvisited
-        visit_counts.insert(2, 50);  // Moderately visited
+        visit_counts.insert(1, 0); // Unvisited
+        visit_counts.insert(2, 50); // Moderately visited
 
         let selector = GumbelSelector::new(1.0);
 
@@ -205,7 +209,11 @@ mod tests {
 
         // Position 1 should have most selections due to visit bonus
         let pos1_count = selections.get(&1).unwrap_or(&0);
-        assert!(*pos1_count > 30, "Unvisited node should be selected often, got {}", pos1_count);
+        assert!(
+            *pos1_count > 30,
+            "Unvisited node should be selected often, got {}",
+            pos1_count
+        );
     }
 
     #[test]
@@ -239,7 +247,9 @@ mod tests {
         let selector_high = GumbelSelector::new(2.0);
         let mut selections_high = HashMap::new();
         for _ in 0..100 {
-            let s = selector_high.select_action(&q_values, &visit_counts, 3).unwrap();
+            let s = selector_high
+                .select_action(&q_values, &visit_counts, 3)
+                .unwrap();
             *selections_high.entry(s).or_insert(0) += 1;
         }
 
@@ -247,7 +257,9 @@ mod tests {
         let selector_low = GumbelSelector::new(0.1);
         let mut selections_low = HashMap::new();
         for _ in 0..100 {
-            let s = selector_low.select_action(&q_values, &visit_counts, 3).unwrap();
+            let s = selector_low
+                .select_action(&q_values, &visit_counts, 3)
+                .unwrap();
             *selections_low.entry(s).or_insert(0) += 1;
         }
 
@@ -255,8 +267,11 @@ mod tests {
         let low_temp_best = selections_low.get(&0).unwrap_or(&0);
         let high_temp_best = selections_high.get(&0).unwrap_or(&0);
 
-        assert!(*low_temp_best > *high_temp_best,
+        assert!(
+            *low_temp_best > *high_temp_best,
             "Low temp should be more greedy: low={}, high={}",
-            low_temp_best, high_temp_best);
+            low_temp_best,
+            high_temp_best
+        );
     }
 }

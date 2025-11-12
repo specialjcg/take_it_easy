@@ -21,14 +21,17 @@ echo "🔧 Building Rust backend..."
 cargo build --release
 
 # Build frontend
+GRPC_PORT=50051
+GRPC_WEB_PORT=$((GRPC_PORT + 1))
+
 echo "🔧 Building frontend..."
-cd frontend && npm run build && cd ..
+cd frontend && VITE_GRPC_WEB_BASE_URL="http://localhost:${GRPC_WEB_PORT}" npm run build && cd ..
 
 echo "✅ Build completed!"
 
 # Start backend in background
-echo "🤖 Starting backend (gRPC port 50051)..."
-./target/release/take_it_easy --mode multiplayer > backend.log 2>&1 &
+echo "🤖 Starting backend (gRPC port ${GRPC_PORT}, gRPC-Web port ${GRPC_WEB_PORT})..."
+./target/release/take_it_easy --mode multiplayer --port ${GRPC_PORT} > backend.log 2>&1 &
 BACKEND_PID=$!
 
 # Wait a moment for backend to start
@@ -36,13 +39,13 @@ sleep 2
 
 # Start frontend in background
 echo "🌐 Starting frontend (http://localhost:3000)..."
-cd frontend && npm run dev > ../frontend.log 2>&1 &
+cd frontend && VITE_GRPC_WEB_BASE_URL="http://localhost:${GRPC_WEB_PORT}" npm run dev > ../frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..
 
 echo "✅ All services started!"
 echo "📋 Services running:"
-echo "   🤖 Backend:  gRPC on port 50051 (PID: $BACKEND_PID)"
+echo "   🤖 Backend:  gRPC on port ${GRPC_PORT} (gRPC-Web ${GRPC_WEB_PORT}) (PID: $BACKEND_PID)"
 echo "   🌐 Frontend: http://localhost:3000 (PID: $FRONTEND_PID)"
 echo ""
 echo "📝 Logs:"

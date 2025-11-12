@@ -27,12 +27,12 @@ pub async fn send_websocket_message(
     message: String,
     listener: &TcpListener,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Err(e) = write.send(Message::Text(message.clone())).await {
+    if let Err(e) = write.send(Message::Text(message.clone().into())).await {
         log::error!("WebSocket error: {:?}. Attempting to reconnect...", e);
 
         if let Some(new_write) = reconnect_websocket(listener).await {
             *write = new_write;
-            write.send(Message::Text(message)).await?;
+            write.send(Message::Text(message.into())).await?;
         } else {
             return Err("Failed to reconnect WebSocket".into());
         }

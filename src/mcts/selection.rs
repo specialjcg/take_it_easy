@@ -27,12 +27,8 @@ pub fn select_best_child(node: &MCTSNode, c_puct: f64) -> Option<usize> {
     }
 
     match &node.node_type {
-        NodeType::Chance { probabilities, .. } => {
-            select_chance_child(node, probabilities, c_puct)
-        }
-        NodeType::Decision { .. } => {
-            select_decision_child(node, c_puct)
-        }
+        NodeType::Chance { probabilities, .. } => select_chance_child(node, probabilities, c_puct),
+        NodeType::Decision { .. } => select_decision_child(node, c_puct),
     }
 }
 
@@ -212,11 +208,7 @@ mod tests {
 
     fn create_test_deck() -> Deck {
         Deck {
-            tiles: vec![
-                Tile(1, 5, 9),
-                Tile(2, 6, 7),
-                Tile(3, 4, 8),
-            ],
+            tiles: vec![Tile(1, 5, 9), Tile(2, 6, 7), Tile(3, 4, 8)],
         }
     }
 

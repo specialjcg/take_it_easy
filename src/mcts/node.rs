@@ -87,10 +87,7 @@ impl MCTSNode {
         let total = available_tiles.len() as f64;
 
         // Uniform probability for each tile
-        let probabilities: Vec<f64> = available_tiles
-            .iter()
-            .map(|_| 1.0 / total)
-            .collect();
+        let probabilities: Vec<f64> = available_tiles.iter().map(|_| 1.0 / total).collect();
 
         MCTSNode {
             node_type: NodeType::Chance {
@@ -156,12 +153,12 @@ impl MCTSNode {
     /// Checks if this node is fully expanded
     pub fn is_fully_expanded(&self) -> bool {
         match &self.node_type {
-            NodeType::Chance { available_tiles, .. } => {
-                self.children.len() >= available_tiles.len()
-            }
-            NodeType::Decision { legal_positions, .. } => {
-                self.children.len() >= legal_positions.len()
-            }
+            NodeType::Chance {
+                available_tiles, ..
+            } => self.children.len() >= available_tiles.len(),
+            NodeType::Decision {
+                legal_positions, ..
+            } => self.children.len() >= legal_positions.len(),
         }
     }
 
@@ -180,7 +177,10 @@ impl MCTSNode {
     /// # Panics
     /// Panics if called on a Decision Node
     pub fn expand_chance_node(&mut self) {
-        if let NodeType::Chance { available_tiles, .. } = &self.node_type {
+        if let NodeType::Chance {
+            available_tiles, ..
+        } = &self.node_type
+        {
             for &tile in available_tiles {
                 let child = MCTSNode::new_decision_node(
                     self.plateau.clone(),
@@ -201,7 +201,11 @@ impl MCTSNode {
     /// # Panics
     /// Panics if called on a Chance Node
     pub fn expand_decision_node(&mut self) {
-        if let NodeType::Decision { tile, legal_positions } = &self.node_type {
+        if let NodeType::Decision {
+            tile,
+            legal_positions,
+        } = &self.node_type
+        {
             for &position in legal_positions {
                 // Apply the move
                 let mut new_plateau = self.plateau.clone();
@@ -233,7 +237,9 @@ impl MCTSNode {
         }
 
         match &self.node_type {
-            NodeType::Chance { available_tiles, .. } => {
+            NodeType::Chance {
+                available_tiles, ..
+            } => {
                 let next_index = self.children.len();
                 if next_index < available_tiles.len() {
                     let tile = available_tiles[next_index];
@@ -250,7 +256,10 @@ impl MCTSNode {
                     false
                 }
             }
-            NodeType::Decision { tile, legal_positions } => {
+            NodeType::Decision {
+                tile,
+                legal_positions,
+            } => {
                 let next_index = self.children.len();
                 if next_index < legal_positions.len() {
                     let position = legal_positions[next_index];
@@ -279,23 +288,46 @@ impl MCTSNode {
     pub fn stats(&self) -> HashMap<String, String> {
         let mut stats = HashMap::new();
 
-        stats.insert("type".to_string(), match &self.node_type {
-            NodeType::Chance { .. } => "Chance".to_string(),
-            NodeType::Decision { .. } => "Decision".to_string(),
-        });
+        stats.insert(
+            "type".to_string(),
+            match &self.node_type {
+                NodeType::Chance { .. } => "Chance".to_string(),
+                NodeType::Decision { .. } => "Decision".to_string(),
+            },
+        );
 
         stats.insert("visits".to_string(), self.visit_count.to_string());
-        stats.insert("avg_value".to_string(), format!("{:.3}", self.average_value()));
+        stats.insert(
+            "avg_value".to_string(),
+            format!("{:.3}", self.average_value()),
+        );
         stats.insert("children".to_string(), self.children.len().to_string());
-        stats.insert("turn".to_string(), format!("{}/{}", self.current_turn, self.total_turns));
+        stats.insert(
+            "turn".to_string(),
+            format!("{}/{}", self.current_turn, self.total_turns),
+        );
 
         match &self.node_type {
-            NodeType::Chance { available_tiles, .. } => {
-                stats.insert("tiles_available".to_string(), available_tiles.len().to_string());
+            NodeType::Chance {
+                available_tiles, ..
+            } => {
+                stats.insert(
+                    "tiles_available".to_string(),
+                    available_tiles.len().to_string(),
+                );
             }
-            NodeType::Decision { legal_positions, tile } => {
-                stats.insert("positions_available".to_string(), legal_positions.len().to_string());
-                stats.insert("tile".to_string(), format!("({},{},{})", tile.0, tile.1, tile.2));
+            NodeType::Decision {
+                legal_positions,
+                tile,
+            } => {
+                stats.insert(
+                    "positions_available".to_string(),
+                    legal_positions.len().to_string(),
+                );
+                stats.insert(
+                    "tile".to_string(),
+                    format!("({},{},{})", tile.0, tile.1, tile.2),
+                );
             }
         }
 
@@ -310,11 +342,7 @@ mod tests {
 
     fn create_test_deck() -> Deck {
         Deck {
-            tiles: vec![
-                Tile(1, 5, 9),
-                Tile(2, 6, 7),
-                Tile(3, 4, 8),
-            ],
+            tiles: vec![Tile(1, 5, 9), Tile(2, 6, 7), Tile(3, 4, 8)],
         }
     }
 
@@ -329,10 +357,14 @@ mod tests {
         assert_eq!(node.total_value, 0.0);
         assert_eq!(node.children.len(), 0);
 
-        if let NodeType::Chance { available_tiles, probabilities } = &node.node_type {
+        if let NodeType::Chance {
+            available_tiles,
+            probabilities,
+        } = &node.node_type
+        {
             assert_eq!(available_tiles.len(), 3);
             assert_eq!(probabilities.len(), 3);
-            assert!((probabilities[0] - 1.0/3.0).abs() < 1e-6);
+            assert!((probabilities[0] - 1.0 / 3.0).abs() < 1e-6);
         }
     }
 
@@ -347,7 +379,11 @@ mod tests {
         assert_eq!(node.visit_count, 0);
         assert_eq!(node.children.len(), 0);
 
-        if let NodeType::Decision { tile: t, legal_positions } = &node.node_type {
+        if let NodeType::Decision {
+            tile: t,
+            legal_positions,
+        } = &node.node_type
+        {
             assert_eq!(*t, tile);
             assert_eq!(legal_positions.len(), 19); // All positions empty
         }

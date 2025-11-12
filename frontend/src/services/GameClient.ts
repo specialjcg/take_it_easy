@@ -17,6 +17,9 @@ import {
 } from '../generated/game_service';
 import type { GameState } from '../generated/common';
 
+const DEFAULT_GRPC_WEB_URL =
+    (import.meta.env && import.meta.env.VITE_GRPC_WEB_BASE_URL) || 'http://localhost:50052';
+
 export class GameClient {
     private sessionClient: SessionServiceClient;
     private gameClient: GameServiceClient;
@@ -25,7 +28,7 @@ export class GameClient {
 
     constructor() {
         this.transport = new GrpcWebFetchTransport({
-            baseUrl: 'http://localhost:50051',
+            baseUrl: DEFAULT_GRPC_WEB_URL,
             fetchInit: {
                 mode: 'cors',
                 credentials: 'omit'

@@ -5,18 +5,18 @@
 //!
 //! Utilise un beam search avec heuristiques pour trouver des placements quasi-optimaux.
 
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use take_it_easy::game::plateau::{create_plateau_empty, Plateau};
 use take_it_easy::game::tile::Tile;
 use take_it_easy::scoring::scoring::result;
-use std::collections::BinaryHeap;
-use std::cmp::Ordering;
 
 /// État partiel d'une solution en cours de construction
 #[derive(Clone)]
 struct PartialSolution {
     plateau: Plateau,
     remaining_tiles: Vec<Tile>,
-    score_estimate: f64,  // Score heuristique pour guider la recherche
+    score_estimate: f64, // Score heuristique pour guider la recherche
 }
 
 impl PartialSolution {
@@ -92,7 +92,8 @@ fn get_lines_for_position(position: usize) -> Vec<Vec<usize>> {
         vec![13, 17],
     ];
 
-    all_lines.into_iter()
+    all_lines
+        .into_iter()
         .filter(|line| line.contains(&position))
         .collect()
 }
@@ -104,17 +105,24 @@ fn evaluate_line_potential(plateau: &Plateau, tile: Tile, line: &[usize]) -> f64
     // Déterminer quelle valeur de la tuile correspond à cette ligne
     let tile_value = match line.len() {
         4 | 5 => {
-            if line.iter().all(|&p| p < 5 || (p >= 5 && p < 10) || (p >= 10 && p < 15) || p >= 15) {
-                values[1]  // Ligne horizontale → value2
+            if line
+                .iter()
+                .all(|&p| p < 5 || (p >= 5 && p < 10) || (p >= 10 && p < 15) || p >= 15)
+            {
+                values[1] // Ligne horizontale → value2
             } else if line[0] < line[line.len() - 1] {
-                values[0]  // Ligne montante → value1
+                values[0] // Ligne montante → value1
             } else {
-                values[2]  // Ligne descendante → value3
+                values[2] // Ligne descendante → value3
             }
         }
         _ => {
             if line[0] < line[line.len() - 1] {
-                if line[1] - line[0] == 5 { values[0] } else { values[2] }
+                if line[1] - line[0] == 5 {
+                    values[0]
+                } else {
+                    values[2]
+                }
             } else {
                 values[2]
             }
@@ -124,7 +132,13 @@ fn evaluate_line_potential(plateau: &Plateau, tile: Tile, line: &[usize]) -> f64
     // Compter les tuiles déjà placées sur cette ligne
     let mut filled_count = 0;
     let mut has_conflict = false;
-    let line_value_idx = if tile_value == tile.0 { 0 } else if tile_value == tile.1 { 1 } else { 2 };
+    let line_value_idx = if tile_value == tile.0 {
+        0
+    } else if tile_value == tile.1 {
+        1
+    } else {
+        2
+    };
 
     for &pos in line {
         let existing = plateau.tiles[pos];
@@ -142,11 +156,11 @@ fn evaluate_line_potential(plateau: &Plateau, tile: Tile, line: &[usize]) -> f64
     }
 
     if has_conflict {
-        return 0.0;  // Éviter les conflits
+        return 0.0; // Éviter les conflits
     }
 
     let line_length = line.len();
-    let positions_left = line_length - filled_count - 1;  // -1 pour la tuile qu'on place
+    let positions_left = line_length - filled_count - 1; // -1 pour la tuile qu'on place
     let completion_ratio = (filled_count + 1) as f64 / line_length as f64;
 
     // Score potentiel si ligne complète
@@ -235,8 +249,8 @@ fn main() {
     println!("🎯 Optimal Solver - Beam Search avec Heuristiques\n");
 
     let mut rng = StdRng::seed_from_u64(2025);
-    let num_tests = 50;  // 50 parties pour statistiques robustes
-    let beam_width = 1000;  // Largeur maximale pour approcher l'optimal
+    let num_tests = 50; // 50 parties pour statistiques robustes
+    let beam_width = 1000; // Largeur maximale pour approcher l'optimal
 
     println!("Configuration:");
     println!("  Nombre de parties : {}", num_tests);
@@ -250,13 +264,33 @@ fn main() {
     for game_idx in 0..num_tests {
         // Générer une séquence aléatoire de tuiles
         let mut all_tiles: Vec<Tile> = vec![
-            Tile(1, 2, 3), Tile(1, 6, 8), Tile(1, 7, 3), Tile(1, 6, 3),
-            Tile(1, 2, 8), Tile(1, 2, 4), Tile(1, 7, 4), Tile(1, 6, 4),
-            Tile(1, 7, 8), Tile(5, 2, 3), Tile(5, 6, 8), Tile(5, 7, 3),
-            Tile(5, 6, 3), Tile(5, 2, 8), Tile(5, 2, 4), Tile(5, 7, 4),
-            Tile(5, 6, 4), Tile(5, 7, 8), Tile(9, 2, 3), Tile(9, 6, 8),
-            Tile(9, 7, 3), Tile(9, 6, 3), Tile(9, 2, 8), Tile(9, 2, 4),
-            Tile(9, 7, 4), Tile(9, 6, 4), Tile(9, 7, 8),
+            Tile(1, 2, 3),
+            Tile(1, 6, 8),
+            Tile(1, 7, 3),
+            Tile(1, 6, 3),
+            Tile(1, 2, 8),
+            Tile(1, 2, 4),
+            Tile(1, 7, 4),
+            Tile(1, 6, 4),
+            Tile(1, 7, 8),
+            Tile(5, 2, 3),
+            Tile(5, 6, 8),
+            Tile(5, 7, 3),
+            Tile(5, 6, 3),
+            Tile(5, 2, 8),
+            Tile(5, 2, 4),
+            Tile(5, 7, 4),
+            Tile(5, 6, 4),
+            Tile(5, 7, 8),
+            Tile(9, 2, 3),
+            Tile(9, 6, 8),
+            Tile(9, 7, 3),
+            Tile(9, 6, 3),
+            Tile(9, 2, 8),
+            Tile(9, 2, 4),
+            Tile(9, 7, 4),
+            Tile(9, 6, 4),
+            Tile(9, 7, 8),
         ];
         all_tiles.shuffle(&mut rng);
         let tiles: Vec<Tile> = all_tiles.iter().take(19).copied().collect();
@@ -278,7 +312,10 @@ fn main() {
 
         println!("  Score IA (Pattern Rollouts V2): {} pts", ai_score);
         println!("  Score quasi-optimal (beam):     {} pts", optimal_score);
-        println!("  Gap:                            {} pts ({:.1}%)\n", gap, gap_percent);
+        println!(
+            "  Gap:                            {} pts ({:.1}%)\n",
+            gap, gap_percent
+        );
 
         total_ai_score += ai_score;
         total_optimal_score += optimal_score;
@@ -286,9 +323,16 @@ fn main() {
     }
 
     println!("=== Résumé sur {} parties ===", num_tests);
-    println!("Score IA moyen:            {:.1} pts", total_ai_score as f64 / num_tests as f64);
-    println!("Score quasi-optimal moyen: {:.1} pts", total_optimal_score as f64 / num_tests as f64);
-    println!("Gap moyen:                 {:.1} pts ({:.1}%)",
+    println!(
+        "Score IA moyen:            {:.1} pts",
+        total_ai_score as f64 / num_tests as f64
+    );
+    println!(
+        "Score quasi-optimal moyen: {:.1} pts",
+        total_optimal_score as f64 / num_tests as f64
+    );
+    println!(
+        "Gap moyen:                 {:.1} pts ({:.1}%)",
         total_gap as f64 / num_tests as f64,
         (total_gap as f64 / total_optimal_score as f64) * 100.0
     );

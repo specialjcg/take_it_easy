@@ -207,7 +207,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     log::info!("   Simulations: {}", args.simulations);
     log::info!("   Average Score: {:.2}", avg_score);
     log::info!("   Std Dev: {:.2}", std_dev);
-    log::info!("   Min/Max: {}/{}", all_scores.iter().min().unwrap(), all_scores.iter().max().unwrap());
+    log::info!(
+        "   Min/Max: {}/{}",
+        all_scores.iter().min().unwrap(),
+        all_scores.iter().max().unwrap()
+    );
     log::info!("{}", "=".repeat(60));
 
     // Log to CSV
@@ -215,10 +219,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let path = Path::new(&args.log_path);
         let needs_header = !path.exists();
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
 
         if needs_header {
             writeln!(

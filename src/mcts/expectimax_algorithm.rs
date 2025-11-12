@@ -69,12 +69,7 @@ impl<'a> ExpectimaxMCTS<'a> {
     ///
     /// # Returns
     /// The best position to place the next drawn tile
-    pub fn search(
-        &mut self,
-        plateau: &Plateau,
-        deck: &Deck,
-        num_simulations: usize,
-    ) -> MCTSResult {
+    pub fn search(&mut self, plateau: &Plateau, deck: &Deck, num_simulations: usize) -> MCTSResult {
         // Create root Chance node (models tile draw)
         let mut root = MCTSNode::new_chance_node(
             plateau.clone(),
@@ -173,13 +168,9 @@ impl<'a> ExpectimaxMCTS<'a> {
     fn evaluate_with_cnn(&self, plateau: &Plateau, tile: &Tile, deck: &Deck) -> f64 {
         // Create input tensor based on architecture
         let board_tensor = match self.policy_net.arch {
-            NNArchitecture::CNN => convert_plateau_to_tensor(
-                plateau,
-                tile,
-                deck,
-                self.current_turn,
-                self.total_turns,
-            ),
+            NNArchitecture::CNN => {
+                convert_plateau_to_tensor(plateau, tile, deck, self.current_turn, self.total_turns)
+            }
             NNArchitecture::GNN => {
                 convert_plateau_for_gnn(plateau, self.current_turn, self.total_turns)
             }
@@ -209,12 +200,7 @@ impl<'a> ExpectimaxMCTS<'a> {
     /// 2. Find the best position (Decision node children)
     /// 3. Weight by tile probability
     /// 4. Return position with highest expected value
-    fn extract_best_move(
-        &self,
-        root: &MCTSNode,
-        plateau: &Plateau,
-        deck: &Deck,
-    ) -> MCTSResult {
+    fn extract_best_move(&self, root: &MCTSNode, plateau: &Plateau, deck: &Deck) -> MCTSResult {
         // Get policy distribution from CNN
         let policy_distribution = self.get_policy_distribution(plateau, deck);
 
@@ -222,9 +208,16 @@ impl<'a> ExpectimaxMCTS<'a> {
         let mut position_values: std::collections::HashMap<usize, (f64, usize)> =
             std::collections::HashMap::new();
 
-        if let NodeType::Chance { probabilities, available_tiles } = &root.node_type {
+        if let NodeType::Chance {
+            probabilities,
+            available_tiles,
+        } = &root.node_type
+        {
             for (tile_idx, child) in root.children.iter().enumerate() {
-                if let NodeType::Decision { legal_positions, .. } = &child.node_type {
+                if let NodeType::Decision {
+                    legal_positions, ..
+                } = &child.node_type
+                {
                     let tile_prob = if tile_idx < probabilities.len() {
                         probabilities[tile_idx]
                     } else {
@@ -298,11 +291,7 @@ impl<'a> ExpectimaxMCTS<'a> {
 
     /// Gets policy distribution from CNN for current board state
     fn get_policy_distribution(&self, plateau: &Plateau, deck: &Deck) -> Tensor {
-        let first_tile = deck
-            .tiles
-            .get(0)
-            .copied()
-            .unwrap_or(Tile(0, 0, 0));
+        let first_tile = deck.tiles.get(0).copied().unwrap_or(Tile(0, 0, 0));
 
         let input_tensor = match self.policy_net.arch {
             NNArchitecture::CNN => convert_plateau_to_tensor(
@@ -364,11 +353,7 @@ mod tests {
 
     fn create_test_deck() -> Deck {
         Deck {
-            tiles: vec![
-                Tile(1, 5, 9),
-                Tile(2, 6, 7),
-                Tile(3, 4, 8),
-            ],
+            tiles: vec![Tile(1, 5, 9), Tile(2, 6, 7), Tile(3, 4, 8)],
         }
     }
 

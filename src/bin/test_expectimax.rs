@@ -60,7 +60,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("========================");
     println!("Games: {}", args.games);
     println!("Simulations per move: {}", args.simulations);
-    println!("Algorithm: {}", if args.use_expectimax { "Expectimax MCTS" } else { "Baseline (Pattern Rollouts V2)" });
+    println!(
+        "Algorithm: {}",
+        if args.use_expectimax {
+            "Expectimax MCTS"
+        } else {
+            "Baseline (Pattern Rollouts V2)"
+        }
+    );
     println!("Architecture: {:?}", arch);
     println!("Seed: {}", args.seed);
     println!();

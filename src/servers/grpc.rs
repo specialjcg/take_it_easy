@@ -10,13 +10,21 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tonic::body::BoxBody;
-use tonic::transport::Body;
+use tokio::try_join;
+use tonic::body::Body as TonicBody;
 use tonic::transport::Server;
 use tonic_web::GrpcWebLayer;
 use tower::{Layer, Service};
 
-// CORS middleware for gRPC-Web
+#[derive(Debug, Clone)]
+pub struct GrpcConfig {
+    pub port: u16,
+    pub web_port: u16,
+    pub host: String,
+    pub enable_web_layer: bool,
+    pub enable_cors: bool,
+}
+
 #[derive(Clone)]
 pub struct SimpleCors<S> {
     inner: S,
@@ -28,9 +36,12 @@ impl<S> SimpleCors<S> {
     }
 }
 
-impl<S> Service<http::Request<Body>> for SimpleCors<S>
+impl<S> Service<http::Request<TonicBody>> for SimpleCors<S>
 where
-    S: Service<http::Request<Body>, Response = http::Response<BoxBody>> + Clone + Send + 'static,
+    S: Service<http::Request<TonicBody>, Response = http::Response<TonicBody>>
+        + Clone
+        + Send
+        + 'static,
     S::Future: Send + 'static,
 {
     type Response = S::Response;
@@ -41,27 +52,26 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: http::Request<Body>) -> Self::Future {
+    fn call(&mut self, req: http::Request<TonicBody>) -> Self::Future {
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
-            // Handle preflight OPTIONS requests
             if req.method() == Method::OPTIONS {
                 let response = http::Response::builder()
                     .status(StatusCode::OK)
                     .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                     .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS")
-                    .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding")
+                    .header(
+                        header::ACCESS_CONTROL_ALLOW_HEADERS,
+                        "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding",
+                    )
                     .header(header::ACCESS_CONTROL_MAX_AGE, "86400")
-                    .body(BoxBody::default())
+                    .body(TonicBody::empty())
                     .unwrap();
-
                 return Ok(response);
             }
 
-            // Process normal request and add CORS headers to response
             let mut response = inner.call(req).await?;
-
             let headers = response.headers_mut();
             headers.insert(
                 header::ACCESS_CONTROL_ALLOW_ORIGIN,
@@ -87,9 +97,14 @@ where
     }
 }
 
-// Layer for the middleware
 #[derive(Clone)]
 pub struct SimpleCorsLayer;
+
+impl SimpleCorsLayer {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 impl<S> Layer<S> for SimpleCorsLayer {
     type Service = SimpleCors<S>;
@@ -99,18 +114,11 @@ impl<S> Layer<S> for SimpleCorsLayer {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct GrpcConfig {
-    pub port: u16,
-    pub host: String,
-    pub enable_web_layer: bool,
-    pub enable_cors: bool,
-}
-
 impl Default for GrpcConfig {
     fn default() -> Self {
         Self {
             port: 50051,
+            web_port: 8080,
             host: "0.0.0.0".to_string(),
             enable_web_layer: true,
             enable_cors: true,
@@ -164,7 +172,9 @@ impl GrpcServer {
 
     /// Start the gRPC server
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let addr: SocketAddr = format!("{}:{}", self.config.host, self.config.port).parse()?;
+        let grpc_addr: SocketAddr = format!("{}:{}", self.config.host, self.config.port).parse()?;
+        let grpc_web_addr: SocketAddr =
+            format!("{}:{}", self.config.host, self.config.web_port).parse()?;
 
         // Initialize single-player session if needed
         self.init_single_player_session().await?;
@@ -193,45 +203,61 @@ impl GrpcServer {
                 self.num_simulations
             );
         }
+        let web_layer_info = if self.config.enable_web_layer {
+            format!(
+                "enabled on port {} (CORS {})",
+                self.config.web_port,
+                if self.config.enable_cors {
+                    "default tonic-web"
+                } else {
+                    "disabled"
+                }
+            )
+        } else {
+            "disabled".to_string()
+        };
         log::info!(
-            "🔗 gRPC server starting on {}:{}",
+            "🔗 gRPC server starting on {}:{}, web layer {}",
             self.config.host,
-            self.config.port
+            self.config.port,
+            web_layer_info
         );
 
-        // Start the server with different configurations
-        if self.config.enable_cors && self.config.enable_web_layer {
-            Server::builder()
-                .accept_http1(true)
-                .layer(SimpleCorsLayer)
-                .layer(GrpcWebLayer::new())
-                .add_service(SessionServiceServer::new(session_service))
-                .add_service(GameServiceServer::new(game_service))
-                .serve(addr)
-                .await?;
-        } else if self.config.enable_cors {
-            Server::builder()
-                .accept_http1(true)
-                .layer(SimpleCorsLayer)
-                .add_service(SessionServiceServer::new(session_service))
-                .add_service(GameServiceServer::new(game_service))
-                .serve(addr)
-                .await?;
-        } else if self.config.enable_web_layer {
-            Server::builder()
-                .accept_http1(true)
-                .layer(GrpcWebLayer::new())
-                .add_service(SessionServiceServer::new(session_service))
-                .add_service(GameServiceServer::new(game_service))
-                .serve(addr)
-                .await?;
+        let grpc_session_service = session_service.clone();
+        let grpc_game_service = game_service.clone();
+
+        let grpc_server = Server::builder()
+            .add_service(SessionServiceServer::new(grpc_session_service))
+            .add_service(GameServiceServer::new(grpc_game_service))
+            .serve(grpc_addr);
+
+        if self.config.enable_web_layer {
+            let web_server: Pin<
+                Box<dyn Future<Output = Result<(), tonic::transport::Error>> + Send>,
+            > = if self.config.enable_cors {
+                Box::pin(
+                    Server::builder()
+                        .accept_http1(true)
+                        .layer(SimpleCorsLayer::new())
+                        .layer(GrpcWebLayer::new())
+                        .add_service(SessionServiceServer::new(session_service))
+                        .add_service(GameServiceServer::new(game_service))
+                        .serve(grpc_web_addr),
+                )
+            } else {
+                Box::pin(
+                    Server::builder()
+                        .accept_http1(true)
+                        .layer(GrpcWebLayer::new())
+                        .add_service(SessionServiceServer::new(session_service))
+                        .add_service(GameServiceServer::new(game_service))
+                        .serve(grpc_web_addr),
+                )
+            };
+
+            try_join!(grpc_server, web_server)?;
         } else {
-            Server::builder()
-                .accept_http1(true)
-                .add_service(SessionServiceServer::new(session_service))
-                .add_service(GameServiceServer::new(game_service))
-                .serve(addr)
-                .await?;
+            grpc_server.await?;
         }
 
         Ok(())
@@ -246,6 +272,7 @@ mod tests {
     fn test_grpc_config_default() {
         let config = GrpcConfig::default();
         assert_eq!(config.port, 50051);
+        assert_eq!(config.web_port, 8080);
         assert_eq!(config.host, "0.0.0.0");
         assert!(config.enable_web_layer);
         assert!(config.enable_cors);
@@ -255,11 +282,13 @@ mod tests {
     fn test_grpc_config_custom() {
         let config = GrpcConfig {
             port: 8080,
+            web_port: 18080,
             host: "127.0.0.1".to_string(),
             enable_web_layer: false,
             enable_cors: false,
         };
         assert_eq!(config.port, 8080);
+        assert_eq!(config.web_port, 18080);
         assert_eq!(config.host, "127.0.0.1");
         assert!(!config.enable_web_layer);
         assert!(!config.enable_cors);
@@ -280,6 +309,7 @@ mod tests {
         let config = GrpcConfig::default();
         let server = GrpcServer::new(config, policy_net, value_net, 300, true);
         assert_eq!(server.config().port, 50051);
+        assert_eq!(server.config().web_port, 8080);
         assert_eq!(server.config().host, "0.0.0.0");
         assert!(server.single_player);
         assert_eq!(server.num_simulations, 300);
@@ -299,6 +329,7 @@ mod tests {
 
         let config = GrpcConfig {
             port: 9000,
+            web_port: 19000,
             host: "localhost".to_string(),
             enable_web_layer: true,
             enable_cors: true,
@@ -307,6 +338,7 @@ mod tests {
         let server = GrpcServer::new(config, policy_net, value_net, 500, false);
         let server_config = server.config();
         assert_eq!(server_config.port, 9000);
+        assert_eq!(server_config.web_port, 19000);
         assert_eq!(server_config.host, "localhost");
         assert!(server_config.enable_web_layer);
         assert!(server_config.enable_cors);

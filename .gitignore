@@ -55,6 +55,7 @@ coverage/
 # Environment
 .env
 .env.localworkspace_snapshot.tar
+.cargo-home/
 
 # Local assistant/config artifacts
 .claude/

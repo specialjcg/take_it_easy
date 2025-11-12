@@ -1,6 +1,7 @@
 // components/ui/MCTSInterface.tsx - Interface spécialisée MCTS
-import { Component, Show, createMemo } from 'solid-js';
+import { Component, For, Show, createMemo } from 'solid-js';
 import { useGameState } from '../../hooks/useGameState';
+import { SessionState } from '../../generated/common';
 
 interface MCTSInterfaceProps {
     sessionCode: () => string;
@@ -17,16 +18,49 @@ export const MCTSInterface: Component<MCTSInterfaceProps> = (props) => {
     const gameState = useGameState();
 
     // Informations sur le MCTS depuis le state de la session
+    const state = createMemo(() => gameState.gameState());
+    const finalScores = gameState.finalScores;
+
+    const derivedPlayers = createMemo(() => {
+        const players = state()?.players;
+        if (players && players.length) {
+            return players;
+        }
+        const scores = finalScores();
+        if (!scores) return [];
+        return Object.entries(scores).map(([id, score]) => ({
+            id,
+            name: id === 'mcts_ai' ? '🤖 MCTS IA' : `Joueur ${id.slice(0, 4)}`,
+            score,
+            isReady: true,
+            isConnected: true,
+            joinedAt: ''
+        }));
+    });
+
+    const sortedPlayers = createMemo(() => {
+        const players = derivedPlayers();
+        return [...players].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    });
+
     const mctsInfo = createMemo(() => {
-        const state = gameState.gameState();
-        const mctsPlayer = state?.players?.find(p => p.id === 'mcts_ai');
+        const mctsPlayer =
+            sortedPlayers().find((p) => p.id === 'mcts_ai') ||
+            sortedPlayers().find((p) => p.name?.toLowerCase().includes('mcts'));
+
         return {
-            name: mctsPlayer?.name || '🤖 MCTS IA',
-            score: mctsPlayer?.score || 0,
-            isReady: mctsPlayer?.isReady || false,
-            isConnected: mctsPlayer?.isConnected || false
+            name: mctsPlayer?.name ?? '🤖 MCTS IA',
+            score:
+                typeof mctsPlayer?.score === 'number'
+                    ? mctsPlayer.score
+                    : finalScores()?.['mcts_ai'] ?? null,
+            isConnected: mctsPlayer?.isConnected ?? true,
         };
     });
+
+    const isMctsTurn = createMemo(() => state()?.currentTurn === 'mcts_ai');
+
+    const gameFinished = createMemo(() => state()?.state === SessionState.FINISHED);
 
     return (
         <div class="mcts-interface">
@@ -38,11 +72,32 @@ export const MCTSInterface: Component<MCTSInterfaceProps> = (props) => {
                 </div>
                 <div class="mcts-player-info">
                     <span>Joueur: <strong>{mctsInfo().name}</strong></span>
-                    <span>Score: <strong>{mctsInfo().score} points</strong></span>
+                    <Show when={mctsInfo().score !== null} fallback={<span>Score: <strong>…</strong></span>}>
+                        <span>Score: <strong>{mctsInfo().score} points</strong></span>
+                    </Show>
                     <span class={mctsInfo().isConnected ? 'status-connected' : 'status-disconnected'}>
                         {mctsInfo().isConnected ? '🟢 Connecté' : '🔴 Déconnecté'}
                     </span>
                 </div>
+            </div>
+            <div class="mcts-scoreboard glass-container">
+                <h3>🏆 Scores en temps réel</h3>
+                <Show when={sortedPlayers().length > 0} fallback={<p>Aucun score disponible pour le moment.</p>}>
+                    <For each={sortedPlayers()}>
+                        {(player) => (
+                            <div
+                                class={`score-item ${
+                                    player.id === 'mcts_ai' ? 'player-score-ai' : ''
+                                } ${player.id === gameState.session()?.playerId ? 'player-score-self' : ''}`}
+                            >
+                                <span class="player-name">
+                                    {player.id === 'mcts_ai' ? '🤖 IA' : player.name}
+                                </span>
+                                <span class="player-score">{player.score} pts</span>
+                            </div>
+                        )}
+                    </For>
+                </Show>
             </div>
 
             <div class="viewer-info">
@@ -56,7 +111,7 @@ export const MCTSInterface: Component<MCTSInterfaceProps> = (props) => {
             </div>
 
             <div class="mcts-status">
-                <Show when={props.myTurn()}>
+                <Show when={isMctsTurn()}>
                     <div class="mcts-thinking">
                         <span class="thinking-icon">🧠</span>
                         <span>MCTS calcule le meilleur mouvement...</span>
@@ -67,9 +122,13 @@ export const MCTSInterface: Component<MCTSInterfaceProps> = (props) => {
                         </div>
                     </div>
                 </Show>
-                <Show when={!props.myTurn()}>
+                <Show when={!isMctsTurn()}>
                     <div class="mcts-waiting">
-                        <span>⏳ En attente du tour de MCTS...</span>
+                        <span>
+                            {gameFinished()
+                                ? '✅ Partie terminée'
+                                : '⏳ En attente du tour de MCTS...'}
+                        </span>
                     </div>
                 </Show>
             </div>

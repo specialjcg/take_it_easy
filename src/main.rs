@@ -1,14 +1,7 @@
 // main.rs - Version corrigée avec les bonnes compatibilités
 use clap::Parser;
 use flexi_logger::Logger;
-use http::{header, Method, StatusCode};
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 use tokio::net::TcpListener;
-use tonic::body::BoxBody;
-use tonic::transport::Body;
-use tower::{Layer, Service};
 
 use crate::neural::{NeuralConfig, NeuralManager};
 use crate::training::session::{train_and_evaluate, train_and_evaluate_offline};
@@ -122,90 +115,6 @@ async fn start_web_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // ============================================================================
-// SIMPLE CORS LAYER FOR WEB SERVICES
-// ============================================================================
-#[derive(Clone)]
-pub struct SimpleCors<S> {
-    inner: S,
-}
-
-impl<S> SimpleCors<S> {
-    pub fn new(inner: S) -> Self {
-        Self { inner }
-    }
-}
-
-impl<S> Service<http::Request<Body>> for SimpleCors<S>
-where
-    S: Service<http::Request<Body>, Response = http::Response<BoxBody>> + Clone + Send + 'static,
-    S::Future: Send + 'static,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, req: http::Request<Body>) -> Self::Future {
-        let mut inner = self.inner.clone();
-
-        Box::pin(async move {
-            // Handle preflight OPTIONS requests
-            if req.method() == Method::OPTIONS {
-                let response = http::Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                    .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS")
-                    .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding")
-                    .header(header::ACCESS_CONTROL_MAX_AGE, "86400")
-                    .body(BoxBody::default())
-                    .unwrap();
-
-                return Ok(response);
-            }
-
-            // Process normal request and add CORS headers to response
-            let mut response = inner.call(req).await?;
-
-            let headers = response.headers_mut();
-            headers.insert(
-                header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                header::HeaderValue::from_static("*"),
-            );
-            headers.insert(
-                header::ACCESS_CONTROL_ALLOW_METHODS,
-                header::HeaderValue::from_static("GET, POST, OPTIONS"),
-            );
-            headers.insert(
-                header::ACCESS_CONTROL_ALLOW_HEADERS,
-                header::HeaderValue::from_static(
-                    "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding",
-                ),
-            );
-            headers.insert(
-                header::ACCESS_CONTROL_EXPOSE_HEADERS,
-                header::HeaderValue::from_static("grpc-status, grpc-message"),
-            );
-
-            Ok(response)
-        })
-    }
-}
-
-// Layer pour le middleware
-#[derive(Clone)]
-pub struct SimpleCorsLayer;
-
-impl<S> Layer<S> for SimpleCorsLayer {
-    type Service = SimpleCors<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        SimpleCors::new(inner)
-    }
-}
-// ============================================================================
 // SERVEUR GRPC AVEC GRPC-WEB
 // ============================================================================
 
@@ -219,6 +128,7 @@ async fn start_multiplayer_server(
 
     let grpc_config = servers::GrpcConfig {
         port,
+        web_port: port + 1,
         host: "0.0.0.0".to_string(),
         enable_web_layer: true,
         enable_cors: true,

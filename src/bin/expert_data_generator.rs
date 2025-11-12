@@ -201,13 +201,17 @@ fn generate_expert_game(
 
         // Store state before move
         // Encode each tile as: value1*100 + value2*10 + value3, or -1 for empty
-        let plateau_before: Vec<i32> = plateau.tiles.iter().map(|tile| {
-            if tile.0 == 0 && tile.1 == 0 && tile.2 == 0 {
-                -1  // Empty cell
-            } else {
-                tile.0 * 100 + tile.1 * 10 + tile.2
-            }
-        }).collect();
+        let plateau_before: Vec<i32> = plateau
+            .tiles
+            .iter()
+            .map(|tile| {
+                if tile.0 == 0 && tile.1 == 0 && tile.2 == 0 {
+                    -1 // Empty cell
+                } else {
+                    tile.0 * 100 + tile.1 * 10 + tile.2
+                }
+            })
+            .collect();
 
         // Use MCTS to find best position
         let mcts_result = mcts_find_best_position_for_tile_with_nn(
