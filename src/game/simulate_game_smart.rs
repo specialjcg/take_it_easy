@@ -31,7 +31,11 @@ const LINES: &[(&[usize], usize, usize)] = &[
 
 /// Smart rollout using heuristics instead of pure random play
 /// This should dramatically improve MCTS evaluation quality
-pub fn simulate_games_smart(plateau: Plateau, deck: Deck, _policy_net: Option<&crate::neural::policy_value_net::PolicyNet>) -> i32 {
+pub fn simulate_games_smart(
+    plateau: Plateau,
+    deck: Deck,
+    _policy_net: Option<&crate::neural::policy_value_net::PolicyNet>,
+) -> i32 {
     let (score, _positions) = simulate_games_smart_with_trace(plateau, deck, _policy_net);
     score
 }

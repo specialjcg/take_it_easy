@@ -103,6 +103,7 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
         gameState.setMyTurn,
         gameState.setIsGameStarted,
         gameState.setStatusMessage,
+        gameState.setFinalScores,
         updatePlateauFunction(), // ✅ Fonction adaptée
         GameStateManager.convertSessionState,
     );
@@ -428,19 +429,48 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
                     <div class="game-finished">
                         <h2>🎉 Partie terminée !</h2>
                         <div class="final-scores">
-                            <h3>🏆 Votre score final</h3>
-                            <Show when={gameState.gameState()?.players}>
-                                {(() => {
-                                    const currentSession = gameState.session();
-                                    const currentPlayer = gameState.gameState()?.players?.find(p => p.id === currentSession?.playerId);
-                                    return currentPlayer ? (
-                                        <div class="score-item">
-                                            <span class="player-name">{currentPlayer.name}</span>
-                                            <span class="player-score">{currentPlayer.score} points</span>
-                                        </div>
-                                    ) : null;
-                                })()}
-                            </Show>
+                            <h3>🏆 Classement final</h3>
+                            {(() => {
+                                const currentSession = gameState.session();
+                                const players = gameState.gameState()?.players;
+                                let finalList =
+                                    players && players.length
+                                        ? [...players]
+                                        : (() => {
+                                              const scores = gameState.finalScores();
+                                              if (!scores) return [];
+                                              return Object.entries(scores).map(([id, score]) => ({
+                                                  id,
+                                                  name: id === 'mcts_ai' ? '🤖 IA' : `Joueur ${id.slice(0, 4)}`,
+                                                  score,
+                                              }));
+                                          })();
+
+                                finalList.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+                                return finalList.length ? (
+                                    <div class="score-list">
+                                        {finalList.map((player) => (
+                                            <div
+                                                class={`score-item ${
+                                                    player.id === currentSession?.playerId
+                                                        ? 'player-score-self'
+                                                        : ''
+                                                } ${player.id === 'mcts_ai' ? 'player-score-ai' : ''}`}
+                                            >
+                                                <span class="player-name">
+                                                    {player.id === 'mcts_ai' ? '🤖 IA' : player.name}
+                                                </span>
+                                                <span class="player-score">
+                                                    {player.score ?? 0} points
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p>Aucun score disponible.</p>
+                                );
+                            })()}
                         </div>
                     </div>
                 </Show>
@@ -554,4 +584,3 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
 };
 
 export default MultiplayerApp;
-

@@ -1,6 +1,7 @@
 // hooks/usePolling.ts - VERSION CORRIGÉE - Sans generateTileImagePath
 import { gameClient } from '../services/GameClient';
 import { onCleanup, batch } from 'solid-js';
+import { SessionState } from '../generated/common';
 
 /**
  * Hook pour la gestion du polling de l'état du jeu
@@ -16,6 +17,7 @@ export const usePolling = (
     setMyTurn: (turn: boolean) => void,
     setIsGameStarted: (started: boolean) => void,
     setStatusMessage: (message: string) => void,
+    setFinalScores: (scores: Record<string, number> | null) => void,
     updatePlateauTiles: (gameState: any) => void,
     convertSessionState: (sessionState: any) => any,
 ) => {
@@ -133,11 +135,18 @@ export const usePolling = (
                                     
                                     // ✅ METTRE À JOUR LE MESSAGE DE STATUT AVEC LE NOUVEAU SCORE
                                     const currentSession = session();
+                                    const mctsScore = parsedState.scores?.['mcts_ai'];
                                     if (currentSession) {
                                         const currentPlayer = updatedPlayers.find(p => p.id === currentSession.playerId);
                                         if (currentPlayer && currentPlayer.score > 0) {
                                             console.log('🏆 Score mis à jour frontend:', currentPlayer.score);
-                                            setStatusMessage(`🎯 Votre score actuel: ${currentPlayer.score} points`);
+                                            const iaSegment =
+                                                typeof mctsScore === 'number'
+                                                    ? ` | 🤖 IA: ${mctsScore} pts`
+                                                    : '';
+                                            setStatusMessage(
+                                                `🎯 Votre score actuel: ${currentPlayer.score} points${iaSegment}`
+                                            );
                                         }
                                     }
                                     
@@ -180,6 +189,7 @@ export const usePolling = (
                         
                         setStatusMessage(scoreMessage);
                         setIsGameStarted(false);
+                        setFinalScores(scores);
                         console.log('🏁 Partie terminée avec scores:', scores);
                     } catch (e) {
                         setStatusMessage(`🏁 Jeu terminé !`);
@@ -214,6 +224,9 @@ export const usePolling = (
             if (sessionResult.success && sessionResult.sessionState) {
                 const convertedState = convertSessionState(sessionResult.sessionState);
                 setGameState(convertedState);
+                if (convertedState.state !== SessionState.FINISHED) {
+                    setFinalScores(null);
+                }
                 // ✅ AUCUN LOG - Session polling silencieux
             }
         } catch (error) {

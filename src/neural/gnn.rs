@@ -9,7 +9,7 @@ const DEFAULT_HIDDEN: &[i64] = &[128, 128, 64];
 pub struct GraphLayer {
     w_self: nn::Linear,
     w_neigh: nn::Linear,
-    ln: nn::LayerNorm,  // LayerNorm instead of BatchNorm for graph-friendly normalization
+    ln: nn::LayerNorm, // LayerNorm instead of BatchNorm for graph-friendly normalization
     use_residual: bool,
 }
 

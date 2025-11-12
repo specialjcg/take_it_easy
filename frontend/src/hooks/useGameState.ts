@@ -53,6 +53,7 @@ export const useGameState = () => {
     const [isGameStarted, setIsGameStarted] = createSignal(false);
     const [currentTurnNumber, setCurrentTurnNumber] = createSignal(0);
     const [mctsLastMove, setMctsLastMove] = createSignal<string>('');
+    const [finalScores, setFinalScores] = createSignal<Record<string, number> | null>(null);
     
     // État debug
 
@@ -76,6 +77,7 @@ export const useGameState = () => {
         setIsGameStarted(false);
         setCurrentTurnNumber(0);
         setMctsLastMove('');
+        setFinalScores(null);
         setImageCache(null);
         setLastTileHash('');
     };
@@ -142,6 +144,7 @@ export const useGameState = () => {
         isGameStarted, setIsGameStarted,
         currentTurnNumber, setCurrentTurnNumber,
         mctsLastMove, setMctsLastMove,
+        finalScores, setFinalScores,
         
         // Cache images
         imageCache, setImageCache,

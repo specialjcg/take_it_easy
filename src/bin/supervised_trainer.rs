@@ -136,8 +136,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // Calculate average expert score
-        let avg_score: f64 =
-            expert_games.iter().map(|g| g.final_score as f64).sum::<f64>() / expert_games.len() as f64;
+        let avg_score: f64 = expert_games
+            .iter()
+            .map(|g| g.final_score as f64)
+            .sum::<f64>()
+            / expert_games.len() as f64;
         log::info!("📊 Expert average score: {:.2} pts", avg_score);
 
         // Split into train/validation
@@ -150,23 +153,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // Train on this phase
-        train_phase(
-            &mut manager,
-            train_games,
-            val_games,
-            &args,
-            phase_num,
-        )?;
+        train_phase(&mut manager, train_games, val_games, &args, phase_num)?;
 
         // Save checkpoint after each phase
         let checkpoint_path = format!("{}/phase{}", args.checkpoint_dir, phase_num);
         std::fs::create_dir_all(&checkpoint_path)?;
         manager.save_models()?;
-        log::info!("💾 Phase {} checkpoint saved to {}", phase_num, checkpoint_path);
+        log::info!(
+            "💾 Phase {} checkpoint saved to {}",
+            phase_num,
+            checkpoint_path
+        );
     }
 
     log::info!("\n🎉 Training Complete!");
-    log::info!("Final weights saved to: {}/phase{}", args.checkpoint_dir, data_files.len());
+    log::info!(
+        "Final weights saved to: {}/phase{}",
+        args.checkpoint_dir,
+        data_files.len()
+    );
 
     Ok(())
 }
@@ -185,7 +190,11 @@ fn train_phase(
     args: &Args,
     phase_num: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    log::info!("\n🏋️ Training Phase {} for {} epochs...", phase_num, args.epochs);
+    log::info!(
+        "\n🏋️ Training Phase {} for {} epochs...",
+        phase_num,
+        args.epochs
+    );
 
     // TODO: Implement training with the current NeuralManager architecture
     // The current PolicyNet/ValueNet don't expose VarStore for optimizer creation
@@ -294,8 +303,7 @@ fn train_epoch(
 
     for batch_moves in moves.chunks(batch_size) {
         // Prepare batch tensors
-        let (state_tensors, policy_targets, value_targets) =
-            prepare_batch(batch_moves, device)?;
+        let (state_tensors, policy_targets, value_targets) = prepare_batch(batch_moves, device)?;
 
         // Train policy network
         let policy_loss = if train_policy {

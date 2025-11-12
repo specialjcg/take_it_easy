@@ -205,10 +205,7 @@ fn evaluate_line_potential(plateau: &Plateau, tile: Tile, line: &[usize]) -> f64
 }
 
 /// Génère une partie avec beam search et reconstruit l'historique APRÈS
-fn generate_expert_game(
-    tiles: &[Tile],
-    beam_width: usize,
-) -> (Vec<TrainingExample>, i32) {
+fn generate_expert_game(tiles: &[Tile], beam_width: usize) -> (Vec<TrainingExample>, i32) {
     let mut beam: BinaryHeap<PartialSolution> = BinaryHeap::new();
     beam.push(PartialSolution::new(tiles.to_vec()));
 
@@ -384,7 +381,11 @@ fn main() {
         tiles.shuffle(&mut rng);
         tiles.truncate(19);
 
-        print!("Partie {}/{} - Beam search... ", game_id + 1, args.num_games);
+        print!(
+            "Partie {}/{} - Beam search... ",
+            game_id + 1,
+            args.num_games
+        );
         std::io::stdout().flush().unwrap();
 
         let (examples, score) = generate_expert_game(&tiles, args.beam_width);
