@@ -139,11 +139,11 @@ packages:
     resolution: {integrity: sha512-Z/yiTPj+lDVnF7lWeKCIJzaIkI0vYO87dMpZ4bg4TDrFe4XXLFWL1TbXU27gBP3QccxV9mZICCrnjnYlJjXHOA==}
     engines: {node: '>=6.9.0'}
 
-  '@bufbuild/protobuf@2.10.0':
-    resolution: {integrity: sha512-fdRs9PSrBF7QUntpZpq6BTw58fhgGJojgg39m9oFOJGZT+nip9b0so5cYY1oWl5pvemDLr0cPPsH46vwThEbpQ==}
+  '@bufbuild/protobuf@2.10.1':
+    resolution: {integrity: sha512-ckS3+vyJb5qGpEYv/s1OebUHDi/xSNtfgw1wqKZo7MR9F2z+qXr0q5XagafAG/9O0QPVIUfST0smluYSTpYFkg==}
 
-  '@bufbuild/protoplugin@2.10.0':
-    resolution: {integrity: sha512-GPJOZ1Gp9/Ci3MXP3yI7+q4G7IhB5cSpbLjsfnBILxtNx69I9+ix3r9P7JfewHvqMjtPe6L+YWX1LPBGNfZMGw==}
+  '@bufbuild/protoplugin@2.10.1':
+    resolution: {integrity: sha512-imB8dKEjrOnG5+XqVS+CeYn924WGLU/g3wogKhk11XtX9y9NJ7432OS6h24asuBbLrQcPdEZ6QkfM7KeOCeeyQ==}
 
   '@esbuild/aix-ppc64@0.24.0':
     resolution: {integrity: sha512-WtKdFM7ls47zkKHFVzMz8opM7LkcsIp9amDUBIAWirg70RM71WRSjdILPsY5Uv1D42ZpUfaPILDlfactHgsRkw==}
@@ -1198,11 +1198,11 @@ snapshots:
       '@babel/helper-string-parser': 7.25.9
       '@babel/helper-validator-identifier': 7.25.9
 
-  '@bufbuild/protobuf@2.10.0': {}
+  '@bufbuild/protobuf@2.10.1': {}
 
-  '@bufbuild/protoplugin@2.10.0':
+  '@bufbuild/protoplugin@2.10.1':
     dependencies:
-      '@bufbuild/protobuf': 2.10.0
+      '@bufbuild/protobuf': 2.10.1
       '@typescript/vfs': 1.6.2(typescript@5.4.5)
       typescript: 5.4.5
     transitivePeerDependencies:
@@ -1304,8 +1304,8 @@ snapshots:
 
   '@protobuf-ts/plugin@2.11.1':
     dependencies:
-      '@bufbuild/protobuf': 2.10.0
-      '@bufbuild/protoplugin': 2.10.0
+      '@bufbuild/protobuf': 2.10.1
+      '@bufbuild/protoplugin': 2.10.1
       '@protobuf-ts/protoc': 2.11.1
       '@protobuf-ts/runtime': 2.11.1
       '@protobuf-ts/runtime-rpc': 2.11.1
