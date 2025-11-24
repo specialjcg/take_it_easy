@@ -19,7 +19,7 @@
     "jsdom": "^27.2.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.0",
-    "vite-plugin-solid": "2.11.2",
+    "vite-plugin-solid": "2.11.10",
     "vitest": "^4.0.8"
   },
   "dependencies": {
