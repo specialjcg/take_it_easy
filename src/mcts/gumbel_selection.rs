@@ -65,8 +65,9 @@ impl GumbelSelector {
             // Sample Gumbel noise
             let gumbel_noise = sample_gumbel(&mut rng_instance);
 
-            // Gumbel score = Q(s,a) + Gumbel / temperature
-            let gumbel_score = q_value + (gumbel_noise / self.temperature);
+            // Gumbel score = Q(s,a) + temperature * Gumbel
+            // Higher temperature = more noise = more exploration
+            let gumbel_score = q_value + (self.temperature * gumbel_noise);
 
             // Optional: Add visit count bonus for unvisited nodes
             let visit_bonus = if let Some(&visits) = visit_counts.get(&position) {
@@ -243,10 +244,13 @@ mod tests {
         visit_counts.insert(1, 10);
         visit_counts.insert(2, 10);
 
+        // Use larger sample size to reduce variance
+        let sample_size = 1000;
+
         // High temperature (more random)
         let selector_high = GumbelSelector::new(2.0);
         let mut selections_high = HashMap::new();
-        for _ in 0..100 {
+        for _ in 0..sample_size {
             let s = selector_high
                 .select_action(&q_values, &visit_counts, 3)
                 .unwrap();
@@ -256,7 +260,7 @@ mod tests {
         // Low temperature (more greedy)
         let selector_low = GumbelSelector::new(0.1);
         let mut selections_low = HashMap::new();
-        for _ in 0..100 {
+        for _ in 0..sample_size {
             let s = selector_low
                 .select_action(&q_values, &visit_counts, 3)
                 .unwrap();

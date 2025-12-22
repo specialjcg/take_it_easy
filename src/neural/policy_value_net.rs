@@ -439,7 +439,8 @@ mod tests {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (8, 5, 5); // 8 features, 19 nœuds attendus côté GNN
         let net = PolicyNet::new(&vs, input_dim, NNArchitecture::GNN);
-        let input = Tensor::rand(&[1, 8, 19], (tch::Kind::Float, Device::Cpu));
+        // GNN expects [batch, nodes, features] = [1, 19, 8]
+        let input = Tensor::rand(&[1, 19, 8], (tch::Kind::Float, Device::Cpu));
         let out = net.forward(&input, false);
         assert_eq!(out.size()[0], 1);
     }
