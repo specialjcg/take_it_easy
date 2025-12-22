@@ -205,6 +205,17 @@ pub fn apply_player_move(
 }
 
 // Dans game_manager.rs - AMÉLIORER process_mcts_turn avec vos fonctions
+///
+/// # Async Safety Note
+///
+/// This function performs CPU-intensive MCTS computation while holding async mutex locks.
+/// This is necessary because PyTorch tensors (used in PolicyNet/ValueNet) are not Send+Sync
+/// and cannot be safely moved to tokio::task::spawn_blocking.
+///
+/// This blocking is acceptable because:
+/// - This function is called from background tasks (see async_move_handler.rs:105)
+/// - It does not block the main request handler
+/// - The neural networks are already protected by Arc<Mutex<>> for thread-safety
 pub async fn process_mcts_turn(
     mut game_state: TakeItEasyGameState,
     policy_net: &Mutex<PolicyNet>,
@@ -234,7 +245,8 @@ pub async fn process_mcts_turn(
     }
     let mut deck_clone = game_state.deck.clone();
 
-    // Utiliser MCTS pour choisir la position
+    // Acquire locks for neural network inference
+    // Note: This blocks the async context but is necessary due to PyTorch constraints
     let policy_locked = policy_net.lock().await;
     let value_locked = value_net.lock().await;
 

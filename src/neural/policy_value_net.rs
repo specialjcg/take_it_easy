@@ -4,6 +4,24 @@ use tch::{nn, Tensor};
 
 use crate::neural::res_net_block::ResNetBlock;
 
+/// Trait for policy evaluation to enable dependency inversion and testability
+/// Note: Not Sync due to PyTorch's raw pointer usage. Use Mutex for thread-safety.
+pub trait PolicyEvaluator: Send {
+    /// Evaluate the policy for a given board state
+    fn forward(&self, input: &Tensor, train: bool) -> Tensor;
+    /// Get the neural network architecture type
+    fn arch(&self) -> &NNArchitecture;
+}
+
+/// Trait for value evaluation to enable dependency inversion and testability
+/// Note: Not Sync due to PyTorch's raw pointer usage. Use Mutex for thread-safety.
+pub trait ValueEvaluator: Send {
+    /// Evaluate the value for a given board state
+    fn forward(&self, input: &Tensor, train: bool) -> Tensor;
+    /// Get the neural network architecture type
+    fn arch(&self) -> &NNArchitecture;
+}
+
 pub struct PolicyNet {
     pub arch: NNArchitecture,
     net: PolicyNetImpl,
@@ -41,6 +59,16 @@ impl PolicyNet {
     }
     pub fn load_model(&self, vs: &mut tch::nn::VarStore, path: &str) -> tch::Result<()> {
         vs.load(path)
+    }
+}
+
+impl PolicyEvaluator for PolicyNet {
+    fn forward(&self, input: &Tensor, train: bool) -> Tensor {
+        self.forward(input, train)
+    }
+
+    fn arch(&self) -> &NNArchitecture {
+        &self.arch
     }
 }
 
@@ -233,6 +261,16 @@ impl ValueNet {
     }
     pub fn load_model(&self, vs: &mut tch::nn::VarStore, path: &str) -> tch::Result<()> {
         vs.load(path)
+    }
+}
+
+impl ValueEvaluator for ValueNet {
+    fn forward(&self, input: &Tensor, train: bool) -> Tensor {
+        self.forward(input, train)
+    }
+
+    fn arch(&self) -> &NNArchitecture {
+        &self.arch
     }
 }
 
@@ -443,5 +481,35 @@ mod tests {
         let input = Tensor::rand(&[1, 19, 8], (tch::Kind::Float, Device::Cpu));
         let out = net.forward(&input, false);
         assert_eq!(out.size()[0], 1);
+    }
+
+    #[test]
+    fn test_policy_evaluator_trait() {
+        let vs = nn::VarStore::new(Device::Cpu);
+        let input_dim = (8, 5, 5);
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
+
+        // Use the trait interface
+        let evaluator: &dyn PolicyEvaluator = &policy_net;
+        let input = Tensor::rand(&[1, 8, 5, 5], (tch::Kind::Float, Device::Cpu));
+        let output = evaluator.forward(&input, false);
+
+        assert_eq!(output.size(), vec![1, 19]);
+        assert_eq!(*evaluator.arch(), NNArchitecture::CNN);
+    }
+
+    #[test]
+    fn test_value_evaluator_trait() {
+        let vs = nn::VarStore::new(Device::Cpu);
+        let input_dim = (8, 5, 5);
+        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::CNN);
+
+        // Use the trait interface
+        let evaluator: &dyn ValueEvaluator = &value_net;
+        let input = Tensor::rand(&[1, 8, 5, 5], (tch::Kind::Float, Device::Cpu));
+        let output = evaluator.forward(&input, false);
+
+        assert_eq!(output.size(), vec![1, 1]);
+        assert_eq!(*evaluator.arch(), NNArchitecture::CNN);
     }
 }
