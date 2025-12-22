@@ -3,6 +3,9 @@
 # start_all.sh - Lancer backend et frontend ensemble
 set -e
 
+# Add protoc to PATH
+export PATH="$HOME/.local/bin:$PATH"
+
 echo "🚀 Starting Take It Easy - Backend + Frontend"
 
 # Function to kill background processes on exit
