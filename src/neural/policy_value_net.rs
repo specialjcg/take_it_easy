@@ -5,7 +5,21 @@ use tch::{nn, Tensor};
 use crate::neural::res_net_block::ResNetBlock;
 
 /// Trait for policy evaluation to enable dependency inversion and testability
+///
+/// This trait provides an abstraction layer for policy networks, enabling:
+/// - Mock implementations for testing without PyTorch dependencies
+/// - Support for alternative neural architectures
+/// - Dependency injection in MCTS and service layers
+///
 /// Note: Not Sync due to PyTorch's raw pointer usage. Use Mutex for thread-safety.
+///
+/// # Future Integration
+/// This trait is part of the P1 dependency inversion refactoring.
+/// It will be integrated into:
+/// - `NeuralManager` for polymorphic network handling
+/// - MCTS algorithm for testability
+/// - Service layer for flexible AI opponents
+#[allow(dead_code)]
 pub trait PolicyEvaluator: Send {
     /// Evaluate the policy for a given board state
     fn forward(&self, input: &Tensor, train: bool) -> Tensor;
@@ -14,7 +28,21 @@ pub trait PolicyEvaluator: Send {
 }
 
 /// Trait for value evaluation to enable dependency inversion and testability
+///
+/// This trait provides an abstraction layer for value networks, enabling:
+/// - Mock implementations for testing without PyTorch dependencies
+/// - Support for alternative neural architectures
+/// - Dependency injection in MCTS and service layers
+///
 /// Note: Not Sync due to PyTorch's raw pointer usage. Use Mutex for thread-safety.
+///
+/// # Future Integration
+/// This trait is part of the P1 dependency inversion refactoring.
+/// It will be integrated into:
+/// - `NeuralManager` for polymorphic network handling
+/// - MCTS algorithm for testability
+/// - Service layer for flexible AI opponents
+#[allow(dead_code)]
 pub trait ValueEvaluator: Send {
     /// Evaluate the value for a given board state
     fn forward(&self, input: &Tensor, train: bool) -> Tensor;
