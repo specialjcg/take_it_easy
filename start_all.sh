@@ -6,7 +6,13 @@ set -e
 # Add protoc to PATH
 export PATH="$HOME/.local/bin:$PATH"
 
+# Load NVM and use compatible Node.js version
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+nvm use 22.12.0 > /dev/null 2>&1 || nvm use default > /dev/null 2>&1
+
 echo "🚀 Starting Take It Easy - Backend + Frontend"
+echo "📦 Using Node.js version: $(node --version)"
 
 # Function to kill background processes on exit
 cleanup() {
