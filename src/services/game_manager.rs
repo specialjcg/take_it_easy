@@ -519,3 +519,185 @@ pub fn player_move_from_json(move_data: &str, player_id: &str) -> Result<PlayerM
 pub fn mcts_move_to_json(mcts_move: &MctsMove) -> Result<String, String> {
     serde_json::to_string(mcts_move).map_err(|e| format!("Failed to serialize MCTS move: {}", e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::create_deck::create_deck;
+    use crate::game::plateau::create_plateau_empty;
+
+    fn create_test_game_state() -> TakeItEasyGameState {
+        let mut player_plateaus = HashMap::new();
+        player_plateaus.insert("player1".to_string(), create_plateau_empty());
+        player_plateaus.insert("player2".to_string(), create_plateau_empty());
+
+        TakeItEasyGameState {
+            session_id: "test_session".to_string(),
+            deck: create_deck(),
+            player_plateaus,
+            current_tile: Some(Tile(1, 2, 3)),
+            current_turn: 1,
+            total_turns: 19,
+            game_status: GameStatus::InProgress,
+            scores: HashMap::new(),
+            waiting_for_players: vec!["player1".to_string(), "player2".to_string()],
+        }
+    }
+
+    #[test]
+    fn test_is_game_finished_in_progress() {
+        let game_state = create_test_game_state();
+        assert!(!is_game_finished(&game_state));
+    }
+
+    #[test]
+    fn test_is_game_finished_status_finished() {
+        let mut game_state = create_test_game_state();
+        game_state.game_status = GameStatus::Finished;
+        assert!(is_game_finished(&game_state));
+    }
+
+    #[test]
+    fn test_is_game_finished_turns_exceeded() {
+        let mut game_state = create_test_game_state();
+        game_state.current_turn = 19;
+        game_state.total_turns = 19;
+        assert!(is_game_finished(&game_state));
+    }
+
+    #[test]
+    fn test_get_available_positions_empty_plateau() {
+        let game_state = create_test_game_state();
+        let positions = get_available_positions(&game_state, "player1");
+        assert_eq!(positions.len(), 19); // All positions available
+    }
+
+    #[test]
+    fn test_get_available_positions_partial_plateau() {
+        let mut game_state = create_test_game_state();
+        // Fill some positions
+        game_state.player_plateaus.get_mut("player1").unwrap().tiles[0] = Tile(1, 2, 3);
+        game_state.player_plateaus.get_mut("player1").unwrap().tiles[5] = Tile(4, 5, 6);
+
+        let positions = get_available_positions(&game_state, "player1");
+        assert_eq!(positions.len(), 17); // 19 - 2 filled
+        assert!(!positions.contains(&0));
+        assert!(!positions.contains(&5));
+    }
+
+    #[test]
+    fn test_get_available_positions_missing_player() {
+        let game_state = create_test_game_state();
+        let positions = get_available_positions(&game_state, "nonexistent_player");
+        assert_eq!(positions.len(), 0);
+    }
+
+    #[test]
+    fn test_get_player_status_can_play() {
+        let game_state = create_test_game_state();
+        let status = get_player_status(&game_state, "player1");
+        assert!(matches!(status, PlayerStatus::CanPlay));
+    }
+
+    #[test]
+    fn test_get_player_status_waiting_for_others() {
+        let mut game_state = create_test_game_state();
+        game_state.waiting_for_players = vec!["player2".to_string()]; // player1 already played
+
+        let status = get_player_status(&game_state, "player1");
+        assert!(matches!(status, PlayerStatus::WaitingForOthers));
+    }
+
+    #[test]
+    fn test_get_player_status_waiting_for_new_tile() {
+        let mut game_state = create_test_game_state();
+        game_state.current_tile = None;
+
+        let status = get_player_status(&game_state, "player1");
+        assert!(matches!(status, PlayerStatus::WaitingForNewTile));
+    }
+
+    #[test]
+    fn test_get_player_status_game_finished() {
+        let mut game_state = create_test_game_state();
+        game_state.game_status = GameStatus::Finished;
+
+        let status = get_player_status(&game_state, "player1");
+        assert!(matches!(status, PlayerStatus::GameFinished));
+    }
+
+    #[test]
+    fn test_player_move_from_json_valid() {
+        let json = r#"{"position": 5}"#;
+        let result = player_move_from_json(json, "player1");
+
+        assert!(result.is_ok());
+        let player_move = result.unwrap();
+        assert_eq!(player_move.player_id, "player1");
+        assert_eq!(player_move.position, 5);
+        assert_eq!(player_move.tile, Tile(0, 0, 0)); // Will be replaced by current tile
+    }
+
+    #[test]
+    fn test_player_move_from_json_invalid() {
+        let json = r#"{"invalid": "data"}"#;
+        let result = player_move_from_json(json, "player1");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid move format"));
+    }
+
+    #[test]
+    fn test_mcts_move_to_json() {
+        let mcts_move = MctsMove {
+            position: 10,
+            tile: Tile(1, 2, 3),
+            evaluation_score: 42.5,
+            search_depth: 150,
+            variations_considered: 150,
+        };
+
+        let result = mcts_move_to_json(&mcts_move);
+        assert!(result.is_ok());
+
+        let json = result.unwrap();
+        assert!(json.contains("\"position\":10"));
+        assert!(json.contains("\"evaluation_score\":42.5"));
+    }
+
+    #[test]
+    fn test_create_take_it_easy_game_single_player() {
+        let game = create_take_it_easy_game("session1".to_string(), vec!["player1".to_string()]);
+
+        assert_eq!(game.session_id, "session1");
+        assert_eq!(game.player_plateaus.len(), 2); // player1 + mcts_ai
+        assert!(game.player_plateaus.contains_key("player1"));
+        assert!(game.player_plateaus.contains_key("mcts_ai"));
+        assert_eq!(game.total_turns, 19);
+        assert_eq!(game.current_turn, 0);
+        assert!(matches!(game.game_status, GameStatus::InProgress));
+    }
+
+    #[test]
+    fn test_create_take_it_easy_game_multiplayer() {
+        let players = vec!["player1".to_string(), "player2".to_string(), "player3".to_string()];
+        let game = create_take_it_easy_game("session2".to_string(), players);
+
+        assert_eq!(game.session_id, "session2");
+        assert_eq!(game.player_plateaus.len(), 4); // 3 players + mcts_ai
+        assert!(game.player_plateaus.contains_key("player1"));
+        assert!(game.player_plateaus.contains_key("player2"));
+        assert!(game.player_plateaus.contains_key("player3"));
+        assert!(game.player_plateaus.contains_key("mcts_ai")); // MCTS always added
+    }
+
+    #[test]
+    fn test_get_all_players_status() {
+        let game_state = create_test_game_state();
+        let all_status = get_all_players_status(&game_state);
+
+        assert_eq!(all_status.len(), 2);
+        assert!(matches!(all_status.get("player1"), Some(PlayerStatus::CanPlay)));
+        assert!(matches!(all_status.get("player2"), Some(PlayerStatus::CanPlay)));
+    }
+}
