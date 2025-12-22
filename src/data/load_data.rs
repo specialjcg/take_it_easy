@@ -46,28 +46,64 @@ pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MC
 
     println!("🚀 Loading game data from .pt files...");
 
-    // Load the saved tensors
-    let state_tensor = Tensor::load(states_path).expect("Failed to load states");
-    let position_tensor = Tensor::load(positions_path).expect("Failed to load positions");
-    let subscore_tensor = Tensor::load(subscores_path).expect("Failed to load subscores");
+    // Load the saved tensors (with error handling)
+    let state_tensor = match Tensor::load(&states_path) {
+        Ok(tensor) => tensor,
+        Err(e) => {
+            eprintln!("⚠️  Error loading states from '{}': {}. Returning empty dataset.", states_path, e);
+            return Vec::new();
+        }
+    };
+    let position_tensor = match Tensor::load(&positions_path) {
+        Ok(tensor) => tensor,
+        Err(e) => {
+            eprintln!("⚠️  Error loading positions from '{}': {}. Returning empty dataset.", positions_path, e);
+            return Vec::new();
+        }
+    };
+    let subscore_tensor = match Tensor::load(&subscores_path) {
+        Ok(tensor) => tensor,
+        Err(e) => {
+            eprintln!("⚠️  Error loading subscores from '{}': {}. Returning empty dataset.", subscores_path, e);
+            return Vec::new();
+        }
+    };
     let policy_raw_path = format!("{}_policy_raw.pt", prefixed_path);
     let policy_boosted_path = format!("{}_policy_boosted.pt", prefixed_path);
     let boosts_path = format!("{}_boosts.pt", prefixed_path);
 
     let policy_raw_tensor = if Path::new(&policy_raw_path).exists() {
-        Some(Tensor::load(&policy_raw_path).expect("Failed to load policy_raw"))
+        match Tensor::load(&policy_raw_path) {
+            Ok(tensor) => Some(tensor),
+            Err(e) => {
+                eprintln!("⚠️  Warning: Failed to load policy_raw from '{}': {}. Skipping.", policy_raw_path, e);
+                None
+            }
+        }
     } else {
         None
     };
 
     let policy_boosted_tensor = if Path::new(&policy_boosted_path).exists() {
-        Some(Tensor::load(&policy_boosted_path).expect("Failed to load policy_boosted"))
+        match Tensor::load(&policy_boosted_path) {
+            Ok(tensor) => Some(tensor),
+            Err(e) => {
+                eprintln!("⚠️  Warning: Failed to load policy_boosted from '{}': {}. Skipping.", policy_boosted_path, e);
+                None
+            }
+        }
     } else {
         None
     };
 
     let boosts_tensor = if Path::new(&boosts_path).exists() {
-        Some(Tensor::load(&boosts_path).expect("Failed to load boost tensor"))
+        match Tensor::load(&boosts_path) {
+            Ok(tensor) => Some(tensor),
+            Err(e) => {
+                eprintln!("⚠️  Warning: Failed to load boost tensor from '{}': {}. Skipping.", boosts_path, e);
+                None
+            }
+        }
     } else {
         None
     };

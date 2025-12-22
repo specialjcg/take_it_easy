@@ -67,7 +67,7 @@ where
                     )
                     .header(header::ACCESS_CONTROL_MAX_AGE, "86400")
                     .body(TonicBody::empty())
-                    .unwrap();
+                    .expect("CORS preflight response construction should never fail with valid static headers");
                 return Ok(response);
             }
 

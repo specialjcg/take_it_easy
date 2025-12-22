@@ -329,7 +329,9 @@ pub async fn train_and_evaluate(
 
             // Append results to the file
             let avg_score = total_score as f64 / games_played as f64;
-            append_to_results_file(results_file, avg_score);
+            if let Err(e) = append_to_results_file(results_file, avg_score) {
+                eprintln!("⚠️  Warning: Failed to append results to '{}': {}", results_file, e);
+            }
 
             // Calculate and display averages
             let mut averages: Vec<(usize, f64)> = scores_by_position
@@ -573,7 +575,9 @@ pub async fn train_and_evaluate_offline(
         games_played += batch_games_played;
 
         let avg_score = total_score as f64 / games_played as f64;
-        append_to_results_file(results_file, avg_score);
+        if let Err(e) = append_to_results_file(results_file, avg_score) {
+            eprintln!("⚠️  Warning: Failed to append results to '{}': {}", results_file, e);
+        }
 
         let mut averages: Vec<(usize, f64)> = scores_by_position
             .iter()
