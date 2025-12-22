@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use tch::{nn, nn::OptimizerConfig, Device, Tensor};
+use tch::{nn, Device, Tensor};
 
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
@@ -184,9 +184,9 @@ fn load_expert_data(path: &str) -> Result<Vec<ExpertGame>, Box<dyn std::error::E
 }
 
 fn train_phase(
-    manager: &mut NeuralManager,
-    train_games: &[ExpertGame],
-    val_games: &[ExpertGame],
+    _manager: &mut NeuralManager,
+    _train_games: &[ExpertGame],
+    _val_games: &[ExpertGame],
     args: &Args,
     phase_num: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {

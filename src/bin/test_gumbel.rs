@@ -6,7 +6,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::error::Error;
 use std::fmt;
-use std::fs::{self, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 
@@ -127,7 +127,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let available = get_available_tiles(&deck);
         let chosen_tiles: Vec<Tile> = available
-            .choose_multiple(&mut rng, args.turns.min(available.len()))
+            .sample(&mut rng, args.turns.min(available.len()))
             .copied()
             .collect();
 

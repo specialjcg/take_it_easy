@@ -97,8 +97,8 @@ impl<'a> ExpectimaxMCTS<'a> {
     fn simulate(&mut self, root: &mut MCTSNode) {
         // 1. Selection - find leaf node
         let mut path = Vec::new();
-        let mut current = root;
-        let mut node_stack: Vec<&mut MCTSNode> = vec![current];
+        let current = root;
+        let _node_stack: Vec<&mut MCTSNode> = vec![current];
 
         loop {
             if current.is_terminal() || current.is_leaf() {
