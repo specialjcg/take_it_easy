@@ -182,7 +182,7 @@ pub fn apply_player_move(
         .get(&player_move.player_id)
         .ok_or_else(|| "PLAYER_NOT_FOUND".to_string())?;
 
-    let legal_moves = get_legal_moves(player_plateau.clone());
+    let legal_moves = get_legal_moves(player_plateau);
     if !legal_moves.contains(&player_move.position) {
         return Err("ILLEGAL_MOVE".to_string());
     }
@@ -239,7 +239,7 @@ pub async fn process_mcts_turn(
         .ok_or("MCTS_PLAYER_NOT_FOUND")?;
 
     // ✅ VÉRIFICATION: Mouvements légaux
-    let legal_moves = get_legal_moves(mcts_plateau.clone());
+    let legal_moves = get_legal_moves(mcts_plateau);
     if legal_moves.is_empty() {
         return Err("NO_LEGAL_MOVES_FOR_MCTS".to_string());
     }

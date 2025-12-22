@@ -167,11 +167,11 @@ pub(crate) mod tests {
     #[test]
     fn test_get_legal_moves_main() {
         let mut plateau = create_plateau_empty();
-        let legal_moves = get_legal_moves(plateau.clone());
+        let legal_moves = get_legal_moves(&plateau);
         assert_eq!(legal_moves.len(), plateau.tiles.len()); // All positions should be legal initially
 
         plateau.tiles[0] = Tile(1, 2, 3); // Fill one position
-        let legal_moves = get_legal_moves(plateau.clone());
+        let legal_moves = get_legal_moves(&plateau);
         assert_eq!(legal_moves.len(), plateau.tiles.len() - 1); // One less legal move
         assert!(!legal_moves.contains(&0)); // Position 0 should no longer be legal
     }
@@ -466,7 +466,7 @@ pub(crate) mod tests {
         placer_tile(&mut state.plateau, state.deck.tiles[2].clone(), 6);
         placer_tile(&mut state.plateau, state.deck.tiles[3].clone(), 11);
         // At the beginning, all positions are empty
-        let moves: Vec<usize> = get_legal_moves(state.plateau.clone());
+        let moves: Vec<usize> = get_legal_moves(&state.plateau);
         let expectedly: usize = state
             .plateau
             .tiles
@@ -507,7 +507,7 @@ pub(crate) mod tests {
         // Randomly choose and place tiles until the plateau is full
         // Randomly choose and place tiles until the plateau is full
         while simulated_state.plateau.tiles.contains(&Tile(0, 0, 0)) {
-            let legal_moves = get_legal_moves(simulated_state.plateau.clone());
+            let legal_moves = get_legal_moves(&simulated_state.plateau);
             if legal_moves.is_empty() {
                 break; // No more moves possible
             }
@@ -757,7 +757,7 @@ pub(crate) mod tests {
             }
 
             // Expansion
-            let legal_moves = get_legal_moves(selected_node.state.plateau.clone());
+            let legal_moves = get_legal_moves(&selected_node.state.plateau);
             if !legal_moves.is_empty() {
                 let mut rng = rand::rng();
                 let position = legal_moves[rng.random_range(0..legal_moves.len())];

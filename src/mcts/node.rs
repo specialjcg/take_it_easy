@@ -123,7 +123,7 @@ impl MCTSNode {
         current_turn: usize,
         total_turns: usize,
     ) -> Self {
-        let legal_positions = get_legal_moves(plateau.clone());
+        let legal_positions = get_legal_moves(&plateau);
 
         MCTSNode {
             node_type: NodeType::Decision {

@@ -10,7 +10,7 @@ use rand::Rng;
 pub fn simulate_games(plateau: Plateau, deck: Deck) -> i32 {
     let mut simulated_plateau = plateau.clone();
     let simulated_deck = deck.clone();
-    let mut legal_moves = get_legal_moves(simulated_plateau.clone());
+    let mut legal_moves = get_legal_moves(&simulated_plateau);
 
     // Filter out invalid tiles (0, 0, 0)
     let mut valid_tiles: Vec<Tile> = simulated_deck

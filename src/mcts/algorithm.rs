@@ -129,7 +129,7 @@ fn mcts_core(
     total_turns: usize,
     hyperparams: &MCTSHyperparameters,
 ) -> MCTSResult {
-    let legal_moves = get_legal_moves(plateau.clone());
+    let legal_moves = get_legal_moves(plateau);
     if legal_moves.is_empty() {
         let distribution_len = plateau.tiles.len() as i64;
         let policy_distribution =
@@ -181,7 +181,7 @@ fn mcts_core(
         ),
     };
 
-    let legal_moves = get_legal_moves(plateau.clone());
+    let legal_moves = get_legal_moves(plateau);
     if legal_moves.is_empty() {
         let distribution_len = plateau.tiles.len() as i64;
         let policy_distribution =
@@ -430,7 +430,7 @@ fn mcts_core(
                 let tile2 = lookahead_deck.tiles[tile2_index];
 
                 // 🔍 Étape 1.2 — Simuler tous les placements possibles de cette tuile
-                let second_moves = get_legal_moves(lookahead_plateau.clone());
+                let second_moves = get_legal_moves(&lookahead_plateau);
 
                 let mut best_score_for_tile2: f64 = 0.0;
 
@@ -516,7 +516,7 @@ fn mcts_core(
         let tile_index = random_index(final_deck.tiles.len());
         let random_tile = final_deck.tiles[tile_index];
 
-        let available_moves = get_legal_moves(final_plateau.clone());
+        let available_moves = get_legal_moves(&final_plateau);
         if available_moves.is_empty() {
             break;
         }
@@ -601,7 +601,7 @@ fn mcts_core_gumbel(
 ) -> MCTSResult {
     use crate::mcts::gumbel_selection::{gumbel_select, GumbelSelector};
 
-    let legal_moves = get_legal_moves(plateau.clone());
+    let legal_moves = get_legal_moves(plateau);
     if legal_moves.is_empty() {
         let distribution_len = plateau.tiles.len() as i64;
         let policy_distribution =
@@ -814,7 +814,7 @@ fn mcts_core_gumbel(
             let tile2_index = random_index(lookahead_deck.tiles.len());
             let tile2 = lookahead_deck.tiles[tile2_index];
 
-            let second_moves = get_legal_moves(lookahead_plateau.clone());
+            let second_moves = get_legal_moves(&lookahead_plateau);
             let mut best_score_for_tile2: f64 = 0.0;
 
             for &pos2 in &second_moves {
@@ -879,7 +879,7 @@ fn mcts_core_gumbel(
         let tile_index = random_index(final_deck.tiles.len());
         let random_tile = final_deck.tiles[tile_index];
 
-        let available_moves = get_legal_moves(final_plateau.clone());
+        let available_moves = get_legal_moves(&final_plateau);
         if available_moves.is_empty() {
             break;
         }

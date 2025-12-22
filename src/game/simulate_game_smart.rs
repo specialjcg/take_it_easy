@@ -62,7 +62,7 @@ pub fn simulate_games_smart_with_trace(
     let mut rng = rand::rng();
 
     while !is_plateau_full(&simulated_plateau) {
-        let legal_moves = get_legal_moves(simulated_plateau.clone());
+        let legal_moves = get_legal_moves(&simulated_plateau);
 
         if legal_moves.is_empty() || valid_tiles.is_empty() {
             break;
