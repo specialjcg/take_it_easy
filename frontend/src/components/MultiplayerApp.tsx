@@ -494,7 +494,55 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
                 />
             </Show>
 
-            {/* Interface normale pour les joueurs humains */}
+            {/* ✅ Interface de connexion - AVANT d'avoir une session */}
+            <Show when={!gameState.session() && !isMctsViewer()}>
+                <div class="header-section">
+                    <div class="title-with-back">
+                        <button
+                            class="back-button"
+                            onClick={props.onBackToModeSelection}
+                            title="Retour à la sélection de mode"
+                        >
+                            ← Retour
+                        </button>
+                        <h1>{gameTitle()}</h1>
+                    </div>
+                    <p class="mode-description">{props.gameMode.description}</p>
+                    <Show when={props.gameMode.simulations}>
+                        <p class="mode-tech-info">🧠 MCTS : {props.gameMode.simulations} simulations par coup</p>
+                    </Show>
+                </div>
+
+                {/* Messages d'état */}
+                <StatusMessages
+                    error={gameState.error}
+                    statusMessage={gameState.statusMessage}
+                />
+
+                {/* Interface de connexion - Masquée en mode solo auto-connect */}
+                <Show when={!props.autoConnectSolo}>
+                    <ConnectionInterface
+                        playerName={gameState.playerName}
+                        setPlayerName={gameState.setPlayerName}
+                        sessionCode={gameState.sessionCode}
+                        setSessionCode={gameState.setSessionCode}
+                        loading={gameState.loadingManager.isAnyLoading}
+                        onCreateSession={handleCreateSession}
+                        onJoinSession={handleJoinSession}
+                    />
+                </Show>
+
+                {/* Message de chargement en mode solo */}
+                <Show when={props.autoConnectSolo}>
+                    <div class="loading-solo glass-container">
+                        <h3>🤖 Préparation de la partie solo...</h3>
+                        <p>Connexion automatique en cours...</p>
+                        <div class="loading-spinner">⚡</div>
+                    </div>
+                </Show>
+            </Show>
+
+            {/* ✅ Interface de jeu - APRÈS avoir une session */}
             <Show when={gameState.session() && gameState.session()?.playerId !== 'mcts_ai' && !isMctsViewer()}>
                 <div class="header-section">
                     <div class="title-with-back">
@@ -513,72 +561,45 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
                     </Show>
                 </div>
 
-
-
                 {/* Messages d'état */}
                 <StatusMessages
                     error={gameState.error}
                     statusMessage={gameState.statusMessage}
                 />
 
-                {/* Interface de connexion - Masquée en mode solo auto-connect */}
-                <Show when={!gameState.session() && !props.autoConnectSolo}>
-                    <ConnectionInterface
-                        playerName={gameState.playerName}
-                        setPlayerName={gameState.setPlayerName}
-                        sessionCode={gameState.sessionCode}
-                        setSessionCode={gameState.setSessionCode}
-                        loading={gameState.loadingManager.isAnyLoading}
-                        onCreateSession={handleCreateSession}
-                        onJoinSession={handleJoinSession}
-                    />
-                </Show>
-
-                {/* Message de chargement en mode solo */}
-                <Show when={!gameState.session() && props.autoConnectSolo}>
-                    <div class="loading-solo glass-container">
-                        <h3>🤖 Préparation de la partie solo...</h3>
-                        <p>Connexion automatique en cours...</p>
-                        <div class="loading-spinner">⚡</div>
+                <div class="session-info glass-container">
+                    <div class="session-details">
+                        <h2>🎮 Session: {gameState.session()?.sessionCode}</h2>
+                        <p>Joueur: <strong>{gameState.playerName()}</strong></p>
+                        <p class="player-id">ID: {gameState.session()?.playerId}</p>
                     </div>
-                </Show>
-
-                {/* Interface de jeu */}
-                <Show when={gameState.session()}>
-                    <div class="session-info glass-container">
-                        <div class="session-details">
-                            <h2>🎮 Session: {gameState.session()?.sessionCode}</h2>
-                            <p>Joueur: <strong>{gameState.playerName()}</strong></p>
-                            <p class="player-id">ID: {gameState.session()?.playerId}</p>
-                        </div>
-                        <div class="session-actions">
-                            {/* Tuile courante compacte */}
-                            <Show when={gameState.currentTile() && gameState.currentTileImage()}>
-                                <div class="compact-tile-display">
-                                    <img 
-                                        class="compact-tile-image" 
-                                        src={gameState.currentTileImage() || ''}
-                                        alt={`Tuile ${gameState.currentTile()}`}
-                                    />
-                                </div>
-                            </Show>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <button
-                                    class="open-mcts-button"
-                                    onClick={handleOpenMctsSession}
-                                    disabled={!gameState.session()}
-                                >
-                                    🤖 Voir session MCTS
-                                </button>
-                                <button onClick={handleLeaveSession} class="leave-button">
-                                    Quitter la session
-                                </button>
+                    <div class="session-actions">
+                        {/* Tuile courante compacte */}
+                        <Show when={gameState.currentTile() && gameState.currentTileImage()}>
+                            <div class="compact-tile-display">
+                                <img
+                                    class="compact-tile-image"
+                                    src={gameState.currentTileImage() || ''}
+                                    alt={`Tuile ${gameState.currentTile()}`}
+                                />
                             </div>
+                        </Show>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                                class="open-mcts-button"
+                                onClick={handleOpenMctsSession}
+                                disabled={!gameState.session()}
+                            >
+                                🤖 Voir session MCTS
+                            </button>
+                            <button onClick={handleLeaveSession} class="leave-button">
+                                Quitter la session
+                            </button>
                         </div>
                     </div>
+                </div>
 
-                    {renderGameBoard()}
-                </Show>
+                {renderGameBoard()}
             </Show>
         </div>
     );
