@@ -41,7 +41,8 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
     // Détecter le mode MCTS viewer depuis l'URL
     const [isMctsViewer, setIsMctsViewer] = createSignal(false);
 
-    const updatePlateauFunction = () => {
+    // ✅ MÉMORISÉ : Évite de recréer la fonction à chaque rendu
+    const updatePlateauFunction = createMemo(() => {
         const currentSession = gameState.session();
         const isViewer = currentSession && currentSession.playerId.includes('viewer');
         const isMctsMode = isMctsViewer();
@@ -78,7 +79,7 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
                 gameState.session,
             );
         }
-    };
+    });
     const gameActions = useGameActions(
         gameState.session,
         gameState.loadingManager,

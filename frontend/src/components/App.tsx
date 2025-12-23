@@ -27,7 +27,7 @@ const App: Component = () => {
   });
 
   const handleModeSelected = (mode: GameMode) => {
-    console.log('🎮 Mode sélectionné:', mode);
+    console.log('🎮 Mode sélectionné:', mode.id, '-', mode.name);
     setSelectedMode(mode);
 
 
