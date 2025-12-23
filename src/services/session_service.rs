@@ -263,10 +263,11 @@ async fn join_session_logic(
     if player_name.contains("Viewer") || player_name.contains("Observer") {
         log::info!("👁️ Viewer {} rejoint session {}", player_name, session_code);
 
-        // Permettre les viewers pour les sessions solo (selon game_mode)
+        // ✅ Permettre les viewers pour TOUS les modes (solo ET multiplayer)
         if service.single_player_mode
             || session.game_mode.starts_with("single-player")
             || session.game_mode == "training"
+            || session.game_mode == "multiplayer"
         {
             let viewer_id = format!("viewer_{}", &uuid::Uuid::new_v4().to_string()[0..8]);
             let viewer_player = Player {
