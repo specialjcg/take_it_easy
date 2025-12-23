@@ -177,6 +177,19 @@ pub fn set_player_ready_in_session_with_min(
         Some(player) => {
             player.is_ready = ready;
 
+            // ✅ En mode multiplayer: mettre automatiquement MCTS prêt quand un joueur humain est prêt
+            if new_session.game_mode == "multiplayer"
+                && player_id != "mcts_ai"
+                && ready
+            {
+                if let Some(mcts_player) = new_session.players.get_mut("mcts_ai") {
+                    if !mcts_player.is_ready {
+                        mcts_player.is_ready = true;
+                        log::info!("🤖 MCTS automatiquement mis prêt en mode multiplayer");
+                    }
+                }
+            }
+
             let game_started =
                 if all_players_ready(&new_session) && new_session.players.len() >= min_players {
                     new_session = start_game(new_session);

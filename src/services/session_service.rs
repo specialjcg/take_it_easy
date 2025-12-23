@@ -135,11 +135,14 @@ async fn create_session_logic_with_manager(
                             || updated_session.game_mode == "training"
                             || updated_session.game_mode == "multiplayer"
                         {
+                            // ✅ En multiplayer, MCTS attend que d'autres joueurs rejoignent
+                            let mcts_is_ready = updated_session.game_mode != "multiplayer";
+
                             let mcts_player = Player {
                                 id: "mcts_ai".to_string(),
                                 name: "🤖 MCTS IA".to_string(),
                                 score: 0,
-                                is_ready: true, // MCTS toujours prêt
+                                is_ready: mcts_is_ready, // Prêt en solo, pas prêt en multi
                                 is_connected: true,
                                 joined_at: chrono::Utc::now().timestamp(),
                             };
