@@ -130,9 +130,10 @@ async fn create_session_logic_with_manager(
                 // Ajouter le joueur humain
                 match add_player_to_session(session.clone(), player_name.clone()) {
                     Ok((mut updated_session, player_id)) => {
-                        // 🤖 AJOUTER MCTS AUTOMATIQUEMENT POUR LES MODES SINGLE-PLAYER
+                        // 🤖 AJOUTER MCTS AUTOMATIQUEMENT POUR LES MODES SINGLE-PLAYER ET MULTIPLAYER
                         if updated_session.game_mode.starts_with("single-player")
                             || updated_session.game_mode == "training"
+                            || updated_session.game_mode == "multiplayer"
                         {
                             let mcts_player = Player {
                                 id: "mcts_ai".to_string(),
