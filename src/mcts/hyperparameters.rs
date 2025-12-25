@@ -123,6 +123,14 @@ pub struct MCTSHyperparameters {
     /// Turn at which temperature reaches minimum
     /// Default: 15
     pub temp_decay_end: usize,
+
+    // ========== RAVE (Rapid Action Value Estimation) ==========
+    /// RAVE blending constant k for adaptive β calculation
+    /// Formula: β = sqrt(k / (3*N + k)) where N = visit count
+    /// Higher values = more influence from RAVE (All-Moves-As-First heuristic)
+    /// Lower values = faster convergence to pure MCTS values
+    /// Default: 10 (conservative, avoids early RAVE dominance)
+    pub rave_k: f64,
 }
 
 impl Default for MCTSHyperparameters {
@@ -165,6 +173,9 @@ impl Default for MCTSHyperparameters {
             temp_final: 0.5,     // confirmed optimal
             temp_decay_start: 7, // was 5 → delayed start
             temp_decay_end: 13,  // was 15 → earlier finish
+
+            // RAVE (Sprint 3)
+            rave_k: 10.0, // Conservative constant to avoid early RAVE dominance
         }
     }
 }

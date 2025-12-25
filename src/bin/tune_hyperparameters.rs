@@ -191,6 +191,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         temp_final: 0.5,
         temp_decay_start: 7,
         temp_decay_end: 13,
+        // Sprint 3: RAVE (not tunable via CLI in this binary)
+        rave_k: 10.0,
     };
 
     // Validate hyperparameters

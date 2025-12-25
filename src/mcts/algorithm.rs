@@ -10,7 +10,7 @@ use crate::game::plateau::Plateau;
 use crate::game::plateau_cow::PlateauCoW;
 use crate::game::plateau_is_full::is_plateau_full;
 use crate::game::remove_tile_from_deck::{replace_tile_in_deck, replace_tile_in_deck_cow};
-use crate::game::simulate_game_smart::simulate_games_smart;
+use crate::game::simulate_game_smart::{simulate_games_smart, simulate_games_smart_with_trace};
 use crate::game::tile::Tile;
 use crate::mcts::hyperparameters::MCTSHyperparameters;
 use crate::mcts::mcts_result::MCTSResult;
@@ -797,11 +797,17 @@ fn mcts_core_cow(
     let mut ucb_scores: HashMap<usize, f64> = HashMap::new();
     let mut ucb_scores_raw: HashMap<usize, f64> = HashMap::new();
 
+    // RAVE statistics (Sprint 3: Rapid Action Value Estimation)
+    let mut rave_visits: HashMap<usize, usize> = HashMap::new();
+    let mut rave_scores: HashMap<usize, f64> = HashMap::new();
+
     let mut total_visits: i32 = 0;
     for &position in &legal_moves {
         visit_counts.insert(position, 0);
         total_scores.insert(position, 0.0);
         ucb_scores.insert(position, f64::NEG_INFINITY);
+        rave_visits.insert(position, 0);
+        rave_scores.insert(position, 0.0);
     }
 
     let mean_value = if value_estimates.is_empty() {
@@ -919,14 +925,22 @@ fn mcts_core_cow(
                     plateau2_cow.set_tile(pos2, tile2);
                     let deck2_cow = replace_tile_in_deck_cow(&deck2_cow, &tile2);
 
-                    // Convert to owned values only when passing to simulate_games_smart
-                    // This is acceptable because it happens at the leaf of the tree
-                    let score = simulate_games_smart(
+                    // RAVE: Use with_trace to get positions played during rollout
+                    let (score, positions_played) = simulate_games_smart_with_trace(
                         plateau2_cow.into_inner(),  // ✅ Consumes CoW wrapper
                         deck2_cow.into_inner(),      // ✅ Consumes CoW wrapper
                         None,
-                    ) as f64;
+                    );
+                    let score = score as f64;
                     best_score_for_tile2 = best_score_for_tile2.max(score);
+
+                    // RAVE: Update statistics for all positions in rollout (All-Moves-As-First heuristic)
+                    for &played_pos in &positions_played {
+                        if legal_moves.contains(&played_pos) {
+                            *rave_visits.entry(played_pos).or_insert(0) += 1;
+                            *rave_scores.entry(played_pos).or_insert(0.0) += score;
+                        }
+                    }
                 }
 
                 total_simulated_score += best_score_for_tile2;
@@ -967,7 +981,29 @@ fn mcts_core_cow(
                 + hyperparams.weight_heuristic * normalized_heuristic
                 + hyperparams.weight_contextual * contextual;
 
-            let ucb_score = combined_eval + exploration_param * prior_prob.max(1e-6).sqrt();
+            // RAVE: Adaptive blending with All-Moves-As-First statistics
+            // Formula: β = sqrt(k / (3*N + k)) where N = visits, k = rave_k
+            // As visits increase, β → 0 and we rely more on MCTS values
+            let final_eval = if let Some(&rave_visit_count) = rave_visits.get(&position) {
+                if rave_visit_count > 0 {
+                    let rave_avg = rave_scores[&position] / rave_visit_count as f64;
+                    let rave_normalized = ((rave_avg / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+
+                    // Adaptive β: high early (more RAVE), low later (more MCTS)
+                    let n = *visits as f64;
+                    let k = hyperparams.rave_k;
+                    let beta = (k / (3.0 * n + k)).sqrt();
+
+                    // Blend: (1-β)*MCTS + β*RAVE
+                    (1.0 - beta) * combined_eval + beta * rave_normalized
+                } else {
+                    combined_eval
+                }
+            } else {
+                combined_eval
+            };
+
+            let ucb_score = final_eval + exploration_param * prior_prob.max(1e-6).sqrt();
 
             ucb_scores_raw.insert(position, combined_eval);
             *boost_applied.entry(position).or_insert(0.0) += contextual;
