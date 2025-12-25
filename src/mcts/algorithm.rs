@@ -12,6 +12,7 @@ use crate::game::simulate_game_smart::simulate_games_smart;
 use crate::game::tile::Tile;
 use crate::mcts::hyperparameters::MCTSHyperparameters;
 use crate::mcts::mcts_result::MCTSResult;
+use crate::mcts::progressive_widening::{max_actions_to_explore, ProgressiveWideningConfig};
 use crate::neural::gnn::convert_plateau_for_gnn;
 use crate::neural::manager::NNArchitecture;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
@@ -384,6 +385,16 @@ fn mcts_core(
     // Quick Win #2: Temperature annealing for exploration/exploitation
     let temperature = hyperparams.get_temperature(current_turn);
 
+    // Progressive Widening: Dynamically limit action exploration based on visit count
+    // Formula: k(n) = C × n^α where n = total_visits
+    // Adapts exploration breadth to confidence level (more visits = wider exploration)
+    let pw_config = ProgressiveWideningConfig::adaptive(current_turn, total_turns);
+    let max_actions = max_actions_to_explore(
+        total_visits as usize,
+        legal_moves.len(),
+        &pw_config,
+    );
+
     for _ in 0..adaptive_simulations {
         let mut moves_with_prior: Vec<_> = legal_moves
             .iter()
@@ -393,10 +404,8 @@ fn mcts_core(
 
         moves_with_prior.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        let top_k = usize::min(
-            moves_with_prior.len(),
-            ((total_visits as f64).sqrt() as usize).max(5),
-        );
+        // Progressive Widening: Use adaptive action count instead of fixed sqrt formula
+        let top_k = usize::min(moves_with_prior.len(), max_actions);
 
         let subset_moves: Vec<usize> = moves_with_prior
             .iter()
