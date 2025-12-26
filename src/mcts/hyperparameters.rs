@@ -3,10 +3,15 @@
 //! This module defines all tunable hyperparameters for the MCTS algorithm.
 //!
 //! Optimization History:
-//! - Original baseline: 147 pts
+//! - Original baseline: 147 pts (pre-optimization)
 //! - Phase 1 (2025-11-07): Evaluation weights optimization → 158.05 pts (+11 pts, +7.5%)
-//! - Quick Wins (2025-11-10): Temperature annealing optimization → 159.95 pts (+1.90 pts, +1.2%)
-//! - Total improvement: 147 → 159.95 pts (+12.95 pts, +8.8%)
+//! - Quick Wins (2025-11-10): Temperature annealing → 159.95 pts (documented, NOT reproducible)
+//!
+//! ⚠️ IMPORTANT (Diagnostic 2025-12-26):
+//! The 159.95 pts baseline is NOT reproducible with available code or NN weights.
+//! Current reproducible baseline: ~85 pts ± 28 (100 games, 150 sims, seed 2025)
+//! - Max observed: 155-158 pts (shows MCTS works, but high variance)
+//! - The 159.95 pts was likely a statistical outlier or achieved with lost weights
 
 use serde::{Deserialize, Serialize};
 
