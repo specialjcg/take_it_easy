@@ -981,27 +981,8 @@ fn mcts_core_cow(
                 + hyperparams.weight_heuristic * normalized_heuristic
                 + hyperparams.weight_contextual * contextual;
 
-            // RAVE: Adaptive blending with All-Moves-As-First statistics
-            // Formula: β = sqrt(k / (3*N + k)) where N = visits, k = rave_k
-            // As visits increase, β → 0 and we rely more on MCTS values
-            let final_eval = if let Some(&rave_visit_count) = rave_visits.get(&position) {
-                if rave_visit_count > 0 {
-                    let rave_avg = rave_scores[&position] / rave_visit_count as f64;
-                    let rave_normalized = ((rave_avg / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
-
-                    // Adaptive β: high early (more RAVE), low later (more MCTS)
-                    let n = *visits as f64;
-                    let k = hyperparams.rave_k;
-                    let beta = (k / (3.0 * n + k)).sqrt();
-
-                    // Blend: (1-β)*MCTS + β*RAVE
-                    (1.0 - beta) * combined_eval + beta * rave_normalized
-                } else {
-                    combined_eval
-                }
-            } else {
-                combined_eval
-            };
+            // RAVE: DISABLED for diagnostics - causes variance issues (0-158 pts range)
+            let final_eval = combined_eval; // Force no RAVE contribution
 
             let ucb_score = final_eval + exploration_param * prior_prob.max(1e-6).sqrt();
 
