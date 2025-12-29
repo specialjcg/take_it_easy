@@ -1,4 +1,5 @@
 use crate::game::deck::Deck;
+use crate::game::deck_cow::DeckCoW;
 use crate::game::tile::Tile;
 
 /// Get all non-empty tiles from a deck
@@ -41,6 +42,20 @@ pub fn replace_tile_in_deck(deck: &Deck, tile_to_replace: &Tile) -> Deck {
         .collect();
 
     Deck { tiles: new_tiles } // Return the new deck with replaced tiles
+}
+
+/// CoW version: Replace tile in deck using Copy-on-Write pattern
+/// Only clones underlying data when needed for modification
+pub fn replace_tile_in_deck_cow(deck_cow: &DeckCoW, tile_to_replace: &Tile) -> DeckCoW {
+    let modified = deck_cow.clone_for_modification();
+    modified.write(|deck| {
+        for tile in &mut deck.tiles {
+            if tile == tile_to_replace {
+                *tile = Tile(0, 0, 0);
+            }
+        }
+    });
+    modified
 }
 
 #[cfg(test)]

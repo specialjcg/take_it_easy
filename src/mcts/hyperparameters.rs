@@ -3,10 +3,15 @@
 //! This module defines all tunable hyperparameters for the MCTS algorithm.
 //!
 //! Optimization History:
-//! - Original baseline: 147 pts
+//! - Original baseline: 147 pts (pre-optimization)
 //! - Phase 1 (2025-11-07): Evaluation weights optimization → 158.05 pts (+11 pts, +7.5%)
-//! - Quick Wins (2025-11-10): Temperature annealing optimization → 159.95 pts (+1.90 pts, +1.2%)
-//! - Total improvement: 147 → 159.95 pts (+12.95 pts, +8.8%)
+//! - Quick Wins (2025-11-10): Temperature annealing → 159.95 pts (documented, NOT reproducible)
+//!
+//! ⚠️ IMPORTANT (Diagnostic 2025-12-26):
+//! The 159.95 pts baseline is NOT reproducible with available code or NN weights.
+//! Current reproducible baseline: ~85 pts ± 28 (100 games, 150 sims, seed 2025)
+//! - Max observed: 155-158 pts (shows MCTS works, but high variance)
+//! - The 159.95 pts was likely a statistical outlier or achieved with lost weights
 
 use serde::{Deserialize, Serialize};
 
@@ -123,6 +128,14 @@ pub struct MCTSHyperparameters {
     /// Turn at which temperature reaches minimum
     /// Default: 15
     pub temp_decay_end: usize,
+
+    // ========== RAVE (Rapid Action Value Estimation) ==========
+    /// RAVE blending constant k for adaptive β calculation
+    /// Formula: β = sqrt(k / (3*N + k)) where N = visit count
+    /// Higher values = more influence from RAVE (All-Moves-As-First heuristic)
+    /// Lower values = faster convergence to pure MCTS values
+    /// Default: 10 (conservative, avoids early RAVE dominance)
+    pub rave_k: f64,
 }
 
 impl Default for MCTSHyperparameters {
@@ -147,12 +160,12 @@ impl Default for MCTSHyperparameters {
             rollout_default: 7,
             rollout_weak: 9,
 
-            // Evaluation weights (optimized Phase 1: 2025-11-07)
-            // Phase 1 found: 158.05 pts vs 147 pts baseline (+11 pts, +7.5%)
-            weight_cnn: 0.65,        // was 0.60
-            weight_rollout: 0.25,    // was 0.20
-            weight_heuristic: 0.05,  // was 0.10
-            weight_contextual: 0.05, // was 0.10
+            // Evaluation weights (RESTORED MASTER DEFAULTS: 2025-12-27)
+            // Original optimized weights from Phase 1
+            weight_cnn: 0.65,        // CNN value network (or policy if trained)
+            weight_rollout: 0.25,    // Rollout simulations
+            weight_heuristic: 0.05,  // Domain heuristics
+            weight_contextual: 0.05, // Contextual boost
 
             // Adaptive simulations (Quick Win #1)
             sim_mult_early: 0.67, // 100 sims
@@ -165,6 +178,9 @@ impl Default for MCTSHyperparameters {
             temp_final: 0.5,     // confirmed optimal
             temp_decay_start: 7, // was 5 → delayed start
             temp_decay_end: 13,  // was 15 → earlier finish
+
+            // RAVE (Sprint 3)
+            rave_k: 10.0, // Conservative constant to avoid early RAVE dominance
         }
     }
 }

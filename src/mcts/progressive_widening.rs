@@ -96,19 +96,21 @@ impl ProgressiveWideningConfig {
 ///
 /// # Example
 /// ```
+/// use take_it_easy::mcts::progressive_widening::{ProgressiveWideningConfig, max_actions_to_explore};
+///
 /// let config = ProgressiveWideningConfig::default();
 ///
 /// // First visit: explore min_actions
 /// assert_eq!(max_actions_to_explore(1, 19, &config), 3);
 ///
-/// // After 10 visits: k(10) = 1.5 × 10^0.4 ≈ 3.8 → 3
-/// assert_eq!(max_actions_to_explore(10, 19, &config), 3);
+/// // After 10 visits: k(10) = 1.5 × 10^0.4 ≈ 3.77 → ceil(3.77) = 4
+/// assert_eq!(max_actions_to_explore(10, 19, &config), 4);
 ///
-/// // After 100 visits: k(100) = 1.5 × 100^0.4 ≈ 9.5 → 9
-/// assert_eq!(max_actions_to_explore(100, 19, &config), 9);
+/// // After 100 visits: k(100) = 1.5 × 100^0.4 ≈ 9.48 → ceil(9.48) = 10
+/// assert_eq!(max_actions_to_explore(100, 19, &config), 10);
 ///
-/// // After 1000 visits: k(1000) = 1.5 × 1000^0.4 ≈ 18.9 → 18
-/// assert_eq!(max_actions_to_explore(1000, 19, &config), 18);
+/// // After 1000 visits: k(1000) = 1.5 × 1000^0.4 ≈ 18.9 → ceil(18.9) = 19
+/// assert_eq!(max_actions_to_explore(1000, 19, &config), 19);
 /// ```
 pub fn max_actions_to_explore(
     visits: usize,
@@ -214,16 +216,16 @@ mod tests {
         // k(1) = 1.5 × 1^0.4 = 1.5 → max(3, 1) = 3
         assert_eq!(max_actions_to_explore(1, 19, &config), 3);
 
-        // k(10) = 1.5 × 10^0.4 ≈ 3.77 → max(3, 3) = 3
-        assert_eq!(max_actions_to_explore(10, 19, &config), 3);
+        // k(10) = 1.5 × 10^0.4 ≈ 3.77 → ceil(3.77) = 4
+        assert_eq!(max_actions_to_explore(10, 19, &config), 4);
 
-        // k(100) = 1.5 × 100^0.4 ≈ 9.48 → 9
-        assert_eq!(max_actions_to_explore(100, 19, &config), 9);
+        // k(100) = 1.5 × 100^0.4 ≈ 9.48 → ceil(9.48) = 10
+        assert_eq!(max_actions_to_explore(100, 19, &config), 10);
 
-        // k(500) = 1.5 × 500^0.4 ≈ 17.0 → 17
-        assert_eq!(max_actions_to_explore(500, 19, &config), 17);
+        // k(500) = 1.5 × 500^0.4 ≈ 19.03 → ceil(19.03) = 20 → min(20, 19) = 19
+        assert_eq!(max_actions_to_explore(500, 19, &config), 19);
 
-        // k(1000) = 1.5 × 1000^0.4 ≈ 18.9 → 19 (capped)
+        // k(1000) = 1.5 × 1000^0.4 ≈ 18.9 → ceil(18.9) = 19 (equals total)
         assert_eq!(max_actions_to_explore(1000, 19, &config), 19);
     }
 

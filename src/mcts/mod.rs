@@ -5,4 +5,5 @@ pub mod hyperparameters;
 pub mod mcts_node;
 pub mod mcts_result;
 pub mod node;
+pub mod progressive_widening;
 pub mod selection;
