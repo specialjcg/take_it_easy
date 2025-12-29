@@ -109,10 +109,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let neural_config = NeuralConfig {
         input_dim: (8, 5, 5),
         nn_architecture: nn_arch,
+        policy_lr: args.learning_rate,  // Use argument!
+        value_lr: args.learning_rate,    // Use argument!
         ..Default::default()
     };
     let mut manager = NeuralManager::with_config(neural_config)?;
-    log::info!("✅ Neural network initialized");
+    log::info!("✅ Neural network initialized with LR={}", args.learning_rate);
 
     // Load curriculum phases
     let data_files: Vec<&str> = args.data.split(',').collect();
@@ -184,9 +186,9 @@ fn load_expert_data(path: &str) -> Result<Vec<ExpertGame>, Box<dyn std::error::E
 }
 
 fn train_phase(
-    _manager: &mut NeuralManager,
-    _train_games: &[ExpertGame],
-    _val_games: &[ExpertGame],
+    manager: &mut NeuralManager,
+    train_games: &[ExpertGame],
+    val_games: &[ExpertGame],
     args: &Args,
     phase_num: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -196,20 +198,7 @@ fn train_phase(
         args.epochs
     );
 
-    // TODO: Implement training with the current NeuralManager architecture
-    // The current PolicyNet/ValueNet don't expose VarStore for optimizer creation
-    log::warn!("⚠️ Training not yet implemented for current architecture");
-    log::info!("Skipping training for phase {}", phase_num);
-    return Ok(());
-
-    /*
-    let device = Device::cuda_if_available();
-    let policy_net = manager.policy_net();
-    let value_net = manager.value_net();
-
-    // Create optimizers - NEEDS REFACTORING
-    // let mut policy_opt = nn::Adam::default().build(&policy_net.vs, args.learning_rate)?;
-    // let mut value_opt = nn::Adam::default().build(&value_net.vs, args.learning_rate)?;
+    let device = Device::Cpu; // Using CPU (GPU not available)
 
     let train_moves: Vec<&ExpertMove> = train_games.iter().flat_map(|g| &g.moves).collect();
     let val_moves: Vec<&ExpertMove> = val_games.iter().flat_map(|g| &g.moves).collect();
@@ -225,10 +214,7 @@ fn train_phase(
         // Training
         let (policy_loss, value_loss) = train_epoch(
             &train_moves,
-            policy_net,
-            value_net,
-            &mut policy_opt,
-            &mut value_opt,
+            manager,
             args.batch_size,
             device,
             args.train_policy,
@@ -238,8 +224,7 @@ fn train_phase(
         // Validation
         let (val_policy_loss, val_value_loss) = validate_epoch(
             &val_moves,
-            policy_net,
-            value_net,
+            manager,
             args.batch_size,
             device,
             args.train_policy,
@@ -282,16 +267,11 @@ fn train_phase(
     log::info!("Best validation loss: {:.4}", best_val_loss);
 
     Ok(())
-    */
 }
 
-#[allow(dead_code)]
 fn train_epoch(
     moves: &[&ExpertMove],
-    policy_net: &take_it_easy::neural::policy_value_net::PolicyNet,
-    value_net: &take_it_easy::neural::policy_value_net::ValueNet,
-    policy_opt: &mut nn::Optimizer,
-    value_opt: &mut nn::Optimizer,
+    manager: &mut NeuralManager,
     batch_size: usize,
     device: Device,
     train_policy: bool,
@@ -307,20 +287,26 @@ fn train_epoch(
 
         // Train policy network
         let policy_loss = if train_policy {
+            let policy_net = manager.policy_net();
             let policy_pred = policy_net.forward(&state_tensors, true);
             let loss = policy_pred.cross_entropy_for_logits(&policy_targets);
+
+            let policy_opt = manager.policy_optimizer_mut();
             policy_opt.backward_step(&loss);
-            loss.double_value(&[])
+            f64::try_from(&loss)?
         } else {
             0.0
         };
 
         // Train value network
         let value_loss = if train_value {
+            let value_net = manager.value_net();
             let value_pred = value_net.forward(&state_tensors, true);
             let loss = value_pred.mse_loss(&value_targets, tch::Reduction::Mean);
+
+            let value_opt = manager.value_optimizer_mut();
             value_opt.backward_step(&loss);
-            loss.double_value(&[])
+            f64::try_from(&loss)?
         } else {
             0.0
         };
@@ -336,11 +322,9 @@ fn train_epoch(
     ))
 }
 
-#[allow(dead_code)]
 fn validate_epoch(
     moves: &[&ExpertMove],
-    policy_net: &take_it_easy::neural::policy_value_net::PolicyNet,
-    value_net: &take_it_easy::neural::policy_value_net::ValueNet,
+    manager: &NeuralManager,
     batch_size: usize,
     device: Device,
     validate_policy: bool,
@@ -356,15 +340,17 @@ fn validate_epoch(
                 prepare_batch(batch_moves, device)?;
 
             if validate_policy {
+                let policy_net = manager.policy_net();
                 let policy_pred = policy_net.forward(&state_tensors, false);
                 let loss = policy_pred.cross_entropy_for_logits(&policy_targets);
-                total_policy_loss += loss.double_value(&[]);
+                total_policy_loss += f64::try_from(&loss)?;
             }
 
             if validate_value {
+                let value_net = manager.value_net();
                 let value_pred = value_net.forward(&state_tensors, false);
                 let loss = value_pred.mse_loss(&value_targets, tch::Reduction::Mean);
-                total_value_loss += loss.double_value(&[]);
+                total_value_loss += f64::try_from(&loss)?;
             }
 
             num_batches += 1;

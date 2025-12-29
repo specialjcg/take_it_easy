@@ -124,6 +124,7 @@ impl QuickWinsConfig {
             temp_final: self.temp_final,
             temp_decay_start: self.temp_decay_start,
             temp_decay_end: self.temp_decay_end,
+            rave_k: 10.0,
         }
     }
 

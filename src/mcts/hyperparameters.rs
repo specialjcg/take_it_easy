@@ -160,12 +160,12 @@ impl Default for MCTSHyperparameters {
             rollout_default: 7,
             rollout_weak: 9,
 
-            // Evaluation weights (optimized Phase 1: 2025-11-07)
-            // Phase 1 found: 158.05 pts vs 147 pts baseline (+11 pts, +7.5%)
-            weight_cnn: 0.65,        // was 0.60
-            weight_rollout: 0.25,    // was 0.20
-            weight_heuristic: 0.05,  // was 0.10
-            weight_contextual: 0.05, // was 0.10
+            // Evaluation weights (RESTORED MASTER DEFAULTS: 2025-12-27)
+            // Original optimized weights from Phase 1
+            weight_cnn: 0.65,        // CNN value network (or policy if trained)
+            weight_rollout: 0.25,    // Rollout simulations
+            weight_heuristic: 0.05,  // Domain heuristics
+            weight_contextual: 0.05, // Contextual boost
 
             // Adaptive simulations (Quick Win #1)
             sim_mult_early: 0.67, // 100 sims

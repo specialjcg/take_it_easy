@@ -966,7 +966,7 @@ fn mcts_core_cow(
 
             let normalized_rollout = ((average_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
             let normalized_value = value_estimates[&position];
-            let normalized_heuristic = ((enhanced_eval / 100.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+            let normalized_heuristic = (enhanced_eval / 30.0).clamp(-1.0, 1.0);
 
             let contextual = calculate_contextual_boost_entropy(
                 &temp_plateau,
@@ -1416,6 +1416,190 @@ fn mcts_core_gumbel(
         policy_distribution_boosted,
         boost_intensity: 0.0,
         graph_features,
+        plateau: Some(plateau.clone()),
+        current_turn: Some(current_turn),
+        total_turns: Some(total_turns),
+    }
+}
+
+/// UCT-based MCTS that samples ONE position per simulation (not batch exploration)
+/// This allows the policy network to influence exploration and breaks uniform data generation
+#[allow(clippy::too_many_arguments)]
+pub fn mcts_find_best_position_for_tile_uct(
+    plateau: &mut Plateau,
+    deck: &mut Deck,
+    chosen_tile: Tile,
+    policy_net: &PolicyNet,
+    value_net: &ValueNet,
+    num_simulations: usize,
+    current_turn: usize,
+    total_turns: usize,
+    hyperparams: Option<&MCTSHyperparameters>,
+) -> MCTSResult {
+    let default_hyperparams = MCTSHyperparameters::default();
+    let hyperparams = hyperparams.unwrap_or(&default_hyperparams);
+
+    let legal_moves = get_legal_moves(plateau);
+    if legal_moves.is_empty() {
+        let distribution_len = plateau.tiles.len() as i64;
+        let policy_distribution =
+            Tensor::zeros([distribution_len], (Kind::Float, tch::Device::Cpu));
+        return MCTSResult {
+            best_position: 0,
+            board_tensor: convert_plateau_to_tensor(
+                plateau,
+                &chosen_tile,
+                deck,
+                current_turn,
+                total_turns,
+            ),
+            subscore: 0.0,
+            policy_distribution: policy_distribution.shallow_clone(),
+            policy_distribution_boosted: policy_distribution,
+            boost_intensity: 0.0,
+            graph_features: None,
+            plateau: Some(plateau.clone()),
+            current_turn: Some(current_turn),
+            total_turns: Some(total_turns),
+        };
+    }
+
+    // Get policy and value priors from neural networks
+    let input_tensor = convert_plateau_to_tensor(
+        plateau,
+        &chosen_tile,
+        deck,
+        current_turn,
+        total_turns,
+    );
+
+    let policy_logits = policy_net.forward(&input_tensor, false);
+    let policy_probs = policy_logits.softmax(1, Kind::Float);
+    let value_prior = value_net.forward(&input_tensor, false).double_value(&[0, 0]);
+
+    // Extract policy probabilities for legal moves
+    let mut policy_vec: Vec<f64> = Vec::new();
+    for &pos in &legal_moves {
+        let prob = policy_probs.i((0, pos as i64)).double_value(&[]);
+        policy_vec.push(prob);
+    }
+
+    // Normalize policy probabilities (only over legal moves)
+    let sum: f64 = policy_vec.iter().sum();
+    if sum > 0.0 {
+        for prob in &mut policy_vec {
+            *prob /= sum;
+        }
+    } else {
+        // Uniform if all zero
+        let uniform = 1.0 / legal_moves.len() as f64;
+        policy_vec = vec![uniform; legal_moves.len()];
+    }
+
+    // Initialize UCT statistics
+    let mut visit_counts: HashMap<usize, usize> = HashMap::new();
+    let mut total_values: HashMap<usize, f64> = HashMap::new();
+    
+    for &pos in &legal_moves {
+        visit_counts.insert(pos, 0);
+        total_values.insert(pos, 0.0);
+    }
+
+    let total_simulations = hyperparams.get_adaptive_simulations(current_turn, num_simulations);
+
+    // UCT simulation loop - ONE position per simulation
+    for sim_idx in 0..total_simulations {
+        // Selection: Choose ONE position using UCT formula + policy prior
+        let total_visits = sim_idx + 1;
+        let exploration_const = hyperparams.get_c_puct(current_turn);
+
+        let mut best_ucb = f64::NEG_INFINITY;
+        let mut best_position = legal_moves[0];
+
+        for (idx, &pos) in legal_moves.iter().enumerate() {
+            let visits = visit_counts[&pos];
+            let mean_value = if visits > 0 {
+                total_values[&pos] / visits as f64
+            } else {
+                value_prior  // Use value network as prior
+            };
+
+            // UCT formula: Q(s,a) + c * P(s,a) * sqrt(N) / (1 + n(a))
+            let prior_prob = policy_vec[idx];
+            let ucb_score = mean_value
+                + exploration_const * prior_prob * (total_visits as f64).sqrt()
+                    / (1.0 + visits as f64);
+
+            if ucb_score > best_ucb {
+                best_ucb = ucb_score;
+                best_position = pos;
+            }
+        }
+
+        // Simulate this position
+        let mut temp_plateau = plateau.clone();
+        let mut temp_deck = deck.clone();
+
+        temp_plateau.tiles[best_position] = chosen_tile;
+        temp_deck = replace_tile_in_deck(&temp_deck, &chosen_tile);
+
+        // Run rollouts to estimate value
+        let rollout_count = 5; // Fixed for simplicity
+        let mut rollout_sum = 0.0;
+
+        for _ in 0..rollout_count {
+            let score = simulate_games_smart(
+                temp_plateau.clone(),
+                temp_deck.clone(),
+                None,  // Pure rollout, no policy
+            );
+            rollout_sum += score as f64;
+        }
+
+        let rollout_value = rollout_sum / rollout_count as f64;
+        
+        // Normalize to [-1, 1]
+        let normalized_value = ((rollout_value / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+
+        // Update statistics
+        *visit_counts.get_mut(&best_position).unwrap() += 1;
+        *total_values.get_mut(&best_position).unwrap() += normalized_value;
+    }
+
+    // Select best move based on visit counts (most explored)
+    let mut best_position = legal_moves[0];
+    let mut max_visits = 0;
+
+    for &pos in &legal_moves {
+        let visits = visit_counts[&pos];
+        if visits > max_visits {
+            max_visits = visits;
+            best_position = pos;
+        }
+    }
+
+    // Create distribution based on visit counts
+    let mut distribution = vec![0.0f32; plateau.tiles.len()];
+    let total_visits: usize = visit_counts.values().sum();
+    
+    if total_visits > 0 {
+        for &pos in &legal_moves {
+            let visits = visit_counts[&pos];
+            distribution[pos] = visits as f32 / total_visits as f32;
+        }
+    }
+
+    let policy_distribution = Tensor::from_slice(&distribution);
+    let avg_value = total_values[&best_position] / visit_counts[&best_position].max(1) as f64;
+
+    MCTSResult {
+        best_position,
+        board_tensor: input_tensor,
+        subscore: avg_value,
+        policy_distribution: policy_distribution.shallow_clone(),
+        policy_distribution_boosted: policy_distribution,
+        boost_intensity: 0.0,
+        graph_features: None,
         plateau: Some(plateau.clone()),
         current_turn: Some(current_turn),
         total_turns: Some(total_turns),

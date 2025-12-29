@@ -110,6 +110,7 @@ impl GridConfig {
             temp_final: 0.5,
             temp_decay_start: 7,
             temp_decay_end: 13,
+            rave_k: 10.0,
         }
     }
 }
