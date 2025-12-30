@@ -13,9 +13,11 @@ use flexi_logger::Logger;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rand::prelude::IndexedRandom;
+use rand_distr::{Distribution, Gamma};
 use std::fs::File;
 use std::io::Write;
 use take_it_easy::game::create_deck::create_deck;
+use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_uct;
@@ -245,7 +247,39 @@ fn generate_self_play_games(
             let chosen_tile = *available.choose(&mut rng).unwrap();
             deck = replace_tile_in_deck(&deck, &chosen_tile);
 
+            // ====================================================================
+            // DIRICHLET NOISE - AlphaGo Zero exploration technique
+            // ====================================================================
+            // Add Dirichlet noise to encourage exploration during self-play
+            // This breaks the circular learning problem where uniform policy
+            // leads to uniform MCTS priors, which generate uniform training data
+            let legal_moves = get_legal_moves(&plateau);
+            let epsilon = 0.25;  // Mix ratio: 75% policy + 25% noise
+            let alpha = 0.3;     // Dirichlet concentration (lower = more uniform)
+
+            // Generate Dirichlet noise for exploration
+            // Dirichlet is sampled using Gamma distributions: X_i ~ Gamma(alpha, 1)
+            // Then normalize: Y_i = X_i / sum(X_i)
+            let gamma = Gamma::new(alpha, 1.0)
+                .expect("Failed to create Gamma distribution");
+            let mut noise: Vec<f64> = (0..legal_moves.len())
+                .map(|_| gamma.sample(&mut rng))
+                .collect();
+            let sum: f64 = noise.iter().sum();
+            for val in &mut noise {
+                *val /= sum;
+            }
+
+            // Convert noise to exploration_priors (map position -> noise value)
+            let mut exploration_priors = vec![0.0; 19]; // 19 positions on plateau
+            for (idx, &pos) in legal_moves.iter().enumerate() {
+                // Mix: (1-ε) * policy_prior + ε * noise
+                // For now, we apply noise directly as MCTS will mix with policy
+                exploration_priors[pos] = (noise[idx] * epsilon) as f32;
+            }
+
             // Use UCT MCTS with current network to find best position
+            // The exploration_priors will be mixed with network policy
             let mcts_result = mcts_find_best_position_for_tile_uct(
                 &mut plateau,
                 &mut deck,
@@ -256,6 +290,7 @@ fn generate_self_play_games(
                 turn,
                 turns_per_game,
                 None, // Use default hyperparameters
+                Some(exploration_priors), // Pass Dirichlet noise for exploration
             );
 
             // Record training example
@@ -397,6 +432,7 @@ fn benchmark_performance(
                 turn,
                 turns_per_game,
                 None,
+                None, // No exploration noise for pure benchmarking
             );
 
             plateau.tiles[mcts_result.best_position] = chosen_tile;

@@ -259,7 +259,8 @@ pub async fn process_mcts_turn(
         num_simulations,
         game_state.current_turn,
         game_state.total_turns,
-        None,
+        None, // Use default hyperparameters
+        None, // No exploration noise (only for self-play training)
     );
 
     // ✅ VALIDATION: Position légale

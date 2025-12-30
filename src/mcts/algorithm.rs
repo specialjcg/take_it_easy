@@ -1424,6 +1424,11 @@ fn mcts_core_gumbel(
 
 /// UCT-based MCTS that samples ONE position per simulation (not batch exploration)
 /// This allows the policy network to influence exploration and breaks uniform data generation
+///
+/// # Dirichlet Noise Support
+/// The `exploration_priors` parameter allows adding Dirichlet noise for exploration
+/// during self-play (AlphaGo Zero technique). This breaks circular learning where
+/// uniform policy → uniform MCTS → uniform training data → uniform policy.
 #[allow(clippy::too_many_arguments)]
 pub fn mcts_find_best_position_for_tile_uct(
     plateau: &mut Plateau,
@@ -1435,6 +1440,7 @@ pub fn mcts_find_best_position_for_tile_uct(
     current_turn: usize,
     total_turns: usize,
     hyperparams: Option<&MCTSHyperparameters>,
+    exploration_priors: Option<Vec<f32>>, // Dirichlet noise for self-play exploration
 ) -> MCTSResult {
     let default_hyperparams = MCTSHyperparameters::default();
     let hyperparams = hyperparams.unwrap_or(&default_hyperparams);
@@ -1494,6 +1500,26 @@ pub fn mcts_find_best_position_for_tile_uct(
         // Uniform if all zero
         let uniform = 1.0 / legal_moves.len() as f64;
         policy_vec = vec![uniform; legal_moves.len()];
+    }
+
+    // ====================================================================
+    // MIX DIRICHLET NOISE WITH POLICY (AlphaGo Zero technique)
+    // ====================================================================
+    // If exploration_priors provided, mix them with network policy:
+    // mixed_prior = (1 - ε) * policy_prior + ε * dirichlet_noise
+    if let Some(ref noise_vec) = exploration_priors {
+        let epsilon = 0.25; // Mix ratio: 75% policy + 25% noise
+        for (idx, &pos) in legal_moves.iter().enumerate() {
+            let noise_value = noise_vec.get(pos).copied().unwrap_or(0.0) as f64;
+            policy_vec[idx] = (1.0 - epsilon) * policy_vec[idx] + epsilon * noise_value;
+        }
+        // Re-normalize after mixing
+        let sum_after_mix: f64 = policy_vec.iter().sum();
+        if sum_after_mix > 0.0 {
+            for prob in &mut policy_vec {
+                *prob /= sum_after_mix;
+            }
+        }
     }
 
     // Initialize UCT statistics

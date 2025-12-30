@@ -641,6 +641,34 @@ button:disabled {
   border: 1px solid var(--glass-border);
 }
 
+/* Style pour le gagnant */
+.score-item.winner {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 215, 0, 0.1) 100%);
+  border: 2px solid rgba(255, 215, 0, 0.6);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+  animation: pulse-winner 2s ease-in-out infinite;
+}
+
+.score-item.winner .player-name {
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.score-item.winner .player-score {
+  font-weight: bold;
+  color: #ffd700;
+}
+
+@keyframes pulse-winner {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+  }
+}
+
 /* =============================================================================
    CLASSIC GAME BOARD STYLES
    ============================================================================= */

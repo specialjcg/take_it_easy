@@ -106,6 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 turn,
                 19,
                 Some(&hyperparams),
+                None, // No exploration noise for comparison benchmarks
             );
 
             plateau_uct.tiles[mcts_result.best_position] = chosen_tile;

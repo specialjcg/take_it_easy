@@ -80,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 turn,
                 19,
                 Some(&hyperparams),
+                None, // No exploration noise for distribution testing
             );
 
             let position = mcts_result.best_position;

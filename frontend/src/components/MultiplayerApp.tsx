@@ -161,22 +161,32 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
     });
 
     // Auto-démarrage du premier tour en mode solo
+    // ✅ Signal pour éviter les démarrages multiples
+    const [hasAutoStarted, setHasAutoStarted] = createSignal(false);
+
     createEffect(() => {
         const state = gameState.gameState();
         const currentSession = gameState.session();
 
-        // En mode solo, démarrer automatiquement le premier tour
+        // En mode solo, démarrer automatiquement le premier tour SEULEMENT UNE FOIS
         if (props.autoConnectSolo &&
             currentSession &&
             state &&
             state.state === SessionState.IN_PROGRESS &&
             gameState.currentTurnNumber() === 0 &&
-            !gameState.currentTile()) {
+            !gameState.currentTile() &&
+            !hasAutoStarted()) { // ✅ Empêche les démarrages multiples
 
             console.log('🎲 Auto-démarrage du premier tour en mode solo...');
+            setHasAutoStarted(true);
             setTimeout(() => {
                 handleStartGameTurn();
             }, 1000); // Délai pour laisser le temps au backend de s'initialiser
+        }
+
+        // ✅ Réinitialiser le flag si on quitte la session
+        if (!currentSession) {
+            setHasAutoStarted(false);
         }
     });
 
@@ -449,24 +459,34 @@ const MultiplayerApp: Component<MultiplayerAppProps> = (props) => {
 
                                 finalList.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
+                                // ✅ DÉTERMINER LE GAGNANT (score le plus élevé)
+                                const maxScore = finalList.length > 0 ? finalList[0].score : 0;
+
                                 return finalList.length ? (
                                     <div class="score-list">
-                                        {finalList.map((player) => (
-                                            <div
-                                                class={`score-item ${
-                                                    player.id === currentSession?.playerId
-                                                        ? 'player-score-self'
-                                                        : ''
-                                                } ${player.id === 'mcts_ai' ? 'player-score-ai' : ''}`}
-                                            >
-                                                <span class="player-name">
-                                                    {player.id === 'mcts_ai' ? '🤖 IA' : player.name}
-                                                </span>
-                                                <span class="player-score">
-                                                    {player.score ?? 0} points
-                                                </span>
-                                            </div>
-                                        ))}
+                                        {finalList.map((player, index) => {
+                                            const isWinner = (player.score ?? 0) === maxScore;
+                                            return (
+                                                <div
+                                                    class={`score-item ${
+                                                        player.id === currentSession?.playerId
+                                                            ? 'player-score-self'
+                                                            : ''
+                                                    } ${player.id === 'mcts_ai' ? 'player-score-ai' : ''} ${
+                                                        isWinner ? 'winner' : ''
+                                                    }`}
+                                                >
+                                                    <span class="player-name">
+                                                        {isWinner && index === 0 ? '🏆 ' : ''}
+                                                        {player.id === 'mcts_ai' ? '🤖 IA' : player.name}
+                                                        {isWinner && index === 0 ? ' - GAGNANT' : ''}
+                                                    </span>
+                                                    <span class="player-score">
+                                                        {player.score ?? 0} points
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <p>Aucun score disponible.</p>

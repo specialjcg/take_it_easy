@@ -185,6 +185,13 @@ async fn process_mcts_in_background(
                 // Sauvegarder l'état final
                 session.board_state = serde_json::to_string(&final_state).unwrap_or_default();
 
+                // ✅ METTRE À JOUR L'ÉTAT DE LA SESSION QUAND LE JEU EST TERMINÉ
+                use crate::services::game_manager::is_game_finished;
+                if is_game_finished(&final_state) {
+                    session.state = 2; // SessionState::FINISHED
+                    log::info!("🏁 Session {} marquée comme FINISHED", session_id);
+                }
+
                 // Synchroniser les scores
                 for (player_id, score) in &final_state.scores {
                     if let Some(player) = session.players.get_mut(player_id) {

@@ -132,11 +132,14 @@ export const useGameActions = (
                     }, 500);
                 }
 
-                // ✅ Tour suivant en différé
-                if (!result.isGameOver) {
+                // ✅ Tour suivant en différé - VÉRIFIER AUSSI LE NUMÉRO DE TOUR
+                const currentTurn = result.newGameState?.turnNumber ?? 0;
+                if (!result.isGameOver && currentTurn < 19) {
                     setTimeout(() => {
                         startGameTurn();
                     }, 2000);
+                } else if (result.isGameOver || currentTurn >= 19) {
+                    console.log('🏁 Jeu terminé détecté - Pas de nouveau tour');
                 }
 
                 return; // ✅ SORTIR ICI - SUCCÈS TRAITÉ
