@@ -9,7 +9,15 @@ export PATH="$HOME/.local/bin:$PATH"
 # Load NVM and use compatible Node.js version
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-nvm use 22.12.0 > /dev/null 2>&1 || nvm use default > /dev/null 2>&1
+# Ensure we have Node.js 22.12.0 installed and use it
+if ! nvm ls 22.12.0 > /dev/null 2>&1; then
+    echo "📦 Installing Node.js v22.12.0..."
+    nvm install 22.12.0
+fi
+nvm use 22.12.0 > /dev/null 2>&1 || {
+    echo "❌ Failed to activate Node.js v22.12.0. Please install NVM and Node.js v22.12.0"
+    exit 1
+}
 
 echo "🚀 Starting Take It Easy - Backend + Frontend"
 echo "📦 Using Node.js version: $(node --version)"
@@ -33,6 +41,12 @@ cargo build --release
 GRPC_PORT=50051
 GRPC_WEB_PORT=$((GRPC_PORT + 1))
 
+# Install frontend dependencies if needed
+if [ ! -d "frontend/node_modules" ]; then
+    echo "📦 Installing frontend dependencies..."
+    cd frontend && npm install && cd ..
+fi
+
 echo "🔧 Building frontend..."
 cd frontend && VITE_GRPC_WEB_BASE_URL="http://localhost:${GRPC_WEB_PORT}" npm run build && cd ..
 
@@ -46,11 +60,10 @@ BACKEND_PID=$!
 # Wait a moment for backend to start
 sleep 2
 
-# Start frontend in background
+# Start frontend in background (from project root)
 echo "🌐 Starting frontend (http://localhost:3000)..."
-cd frontend && VITE_GRPC_WEB_BASE_URL="http://localhost:${GRPC_WEB_PORT}" npm run dev > ../frontend.log 2>&1 &
+(cd frontend && VITE_GRPC_WEB_BASE_URL="http://localhost:${GRPC_WEB_PORT}" npm run dev > ../frontend.log 2>&1) &
 FRONTEND_PID=$!
-cd ..
 
 echo "✅ All services started!"
 echo "📋 Services running:"

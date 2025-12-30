@@ -12,7 +12,7 @@ use crate::game::plateau::{create_plateau_empty, Plateau};
 use crate::game::plateau_is_full::is_plateau_full;
 use crate::game::remove_tile_from_deck::replace_tile_in_deck;
 use crate::game::tile::Tile;
-use crate::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
+use crate::mcts::algorithm::mcts_find_best_position_for_tile_uct;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::scoring::scoring::result;
 use rand::Rng;
@@ -250,7 +250,7 @@ pub async fn process_mcts_turn(
     let policy_locked = policy_net.lock().await;
     let value_locked = value_net.lock().await;
 
-    let mcts_result = mcts_find_best_position_for_tile_with_nn(
+    let mcts_result = mcts_find_best_position_for_tile_uct(
         mcts_plateau,
         &mut deck_clone,
         current_tile,
