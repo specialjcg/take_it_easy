@@ -27,8 +27,8 @@ pub enum NnArchitectureCli {
 impl From<NnArchitectureCli> for take_it_easy::neural::manager::NNArchitecture {
     fn from(cli: NnArchitectureCli) -> Self {
         match cli {
-            NnArchitectureCli::Cnn => take_it_easy::neural::manager::NNArchitecture::CNN,
-            NnArchitectureCli::Gnn => take_it_easy::neural::manager::NNArchitecture::GNN,
+            NnArchitectureCli::Cnn => take_it_easy::neural::manager::NNArchitecture::Cnn,
+            NnArchitectureCli::Gnn => take_it_easy::neural::manager::NNArchitecture::Gnn,
         }
     }
 }
@@ -130,7 +130,7 @@ fn generate_phase1_grid() -> Vec<GridConfig> {
 
                 // Only include if contextual weight is in valid range [0.04, 0.16]
                 // (with small tolerance for floating point)
-                if w_ctx >= 0.04 && w_ctx <= 0.16 {
+                if (0.04..=0.16).contains(&w_ctx) {
                     configs.push(GridConfig {
                         weight_cnn: w_cnn,
                         weight_rollout: w_roll,
@@ -332,7 +332,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize neural network
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
+        input_dim: (9, 5, 5),
         nn_architecture: args.nn_architecture.clone().into(),
         ..Default::default()
     };

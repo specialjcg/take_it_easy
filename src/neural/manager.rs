@@ -10,16 +10,16 @@ use tch::{nn, Device};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NNArchitecture {
-    CNN,
-    GNN,
+    Cnn,
+    Gnn,
 }
 
 impl std::str::FromStr for NNArchitecture {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "cnn" => Ok(NNArchitecture::CNN),
-            "gnn" => Ok(NNArchitecture::GNN),
+            "cnn" => Ok(NNArchitecture::Cnn),
+            "gnn" => Ok(NNArchitecture::Gnn),
             _ => Err(format!("Unknown architecture: {}", s)),
         }
     }
@@ -28,8 +28,8 @@ impl std::str::FromStr for NNArchitecture {
 impl std::fmt::Display for NNArchitecture {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NNArchitecture::CNN => write!(f, "cnn"),
-            NNArchitecture::GNN => write!(f, "gnn"),
+            NNArchitecture::Cnn => write!(f, "cnn"),
+            NNArchitecture::Gnn => write!(f, "gnn"),
         }
     }
 }
@@ -56,13 +56,13 @@ pub struct NeuralConfig {
 impl Default for NeuralConfig {
     fn default() -> Self {
         Self {
-            input_dim: (8, 5, 5), // Enhanced channels × 5×5 spatial grid
+            input_dim: (9, 5, 5), // 9 channels (tile values + empty mask + current tile + turn + position ID) × 5×5 spatial grid
             device: Device::Cpu,
             model_path: "model_weights".to_string(),
             policy_lr: 1e-3,
             value_lr: 2e-4,
             value_wd: 1e-6,
-            nn_architecture: NNArchitecture::CNN,
+            nn_architecture: NNArchitecture::Cnn,
         }
     }
 }
@@ -112,8 +112,8 @@ impl NeuralManager {
 
             // Utiliser le sous-dossier correspondant à l'architecture
             let arch_dir = match config.nn_architecture {
-                NNArchitecture::CNN => "cnn",
-                NNArchitecture::GNN => "gnn",
+                NNArchitecture::Cnn => "cnn",
+                NNArchitecture::Gnn => "gnn",
             };
 
             let policy_path = format!("{}/{}/policy/policy.params", config.model_path, arch_dir);
@@ -240,8 +240,8 @@ impl NeuralManager {
     /// Save the current model weights to disk
     pub fn save_models(&self) -> Result<(), Box<dyn std::error::Error>> {
         let arch_dir = match self.config.nn_architecture {
-            NNArchitecture::CNN => "cnn",
-            NNArchitecture::GNN => "gnn",
+            NNArchitecture::Cnn => "cnn",
+            NNArchitecture::Gnn => "gnn",
         };
         let model_path = format!("{}/{}", self.config.model_path, arch_dir);
         log::info!("💾 Saving neural network models to {}", model_path);
@@ -337,7 +337,7 @@ mod tests {
         assert_eq!(config.policy_lr, 1e-3);
         assert_eq!(config.value_lr, 2e-4);
         assert_eq!(config.value_wd, 1e-6);
-        assert_eq!(config.nn_architecture, NNArchitecture::CNN);
+        assert_eq!(config.nn_architecture, NNArchitecture::Cnn);
     }
 
     #[test]
@@ -349,13 +349,13 @@ mod tests {
             policy_lr: 1e-4,
             value_lr: 1e-5,
             value_wd: 1e-7,
-            nn_architecture: NNArchitecture::GNN,
+            nn_architecture: NNArchitecture::Gnn,
         };
 
         assert_eq!(config.input_dim, (3, 64, 64));
         assert_eq!(config.model_path, "test_models");
         assert_eq!(config.policy_lr, 1e-4);
-        assert_eq!(config.nn_architecture, NNArchitecture::GNN);
+        assert_eq!(config.nn_architecture, NNArchitecture::Gnn);
     }
 
     #[test]
@@ -366,7 +366,7 @@ mod tests {
         let manager = manager.unwrap();
         assert_eq!(manager.config().input_dim, (8, 5, 5));
         assert_eq!(manager.config().model_path, "model_weights");
-        assert_eq!(manager.config().nn_architecture, NNArchitecture::CNN);
+        assert_eq!(manager.config().nn_architecture, NNArchitecture::Cnn);
     }
 
     #[test]
@@ -378,7 +378,7 @@ mod tests {
             policy_lr: 5e-4,
             value_lr: 1e-4,
             value_wd: 5e-7,
-            nn_architecture: NNArchitecture::GNN,
+            nn_architecture: NNArchitecture::Gnn,
         };
 
         let manager = NeuralManager::with_config(config);
@@ -388,7 +388,7 @@ mod tests {
         assert_eq!(manager.config().input_dim, (1, 32, 32));
         assert_eq!(manager.config().policy_lr, 5e-4);
         assert_eq!(manager.config().model_path, "test_path");
-        assert_eq!(manager.config().nn_architecture, NNArchitecture::GNN);
+        assert_eq!(manager.config().nn_architecture, NNArchitecture::Gnn);
     }
 
     #[test]

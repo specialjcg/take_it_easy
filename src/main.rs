@@ -34,8 +34,8 @@ pub enum NnArchitectureCli {
 impl From<NnArchitectureCli> for neural::manager::NNArchitecture {
     fn from(cli: NnArchitectureCli) -> Self {
         match cli {
-            NnArchitectureCli::Cnn => neural::manager::NNArchitecture::CNN,
-            NnArchitectureCli::Gnn => neural::manager::NNArchitecture::GNN,
+            NnArchitectureCli::Cnn => neural::manager::NNArchitecture::Cnn,
+            NnArchitectureCli::Gnn => neural::manager::NNArchitecture::Gnn,
         }
     }
 }
@@ -162,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize neural network manager with configuration
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5), // Enhanced feature stack: 8 channels × 5×5 spatial grid
+        input_dim: (9, 5, 5), // Enhanced feature stack: 8 channels × 5×5 spatial grid
         model_path: "model_weights".to_string(),
         policy_lr: 1e-3,
         value_lr: 2e-4,

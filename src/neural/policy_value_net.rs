@@ -56,29 +56,29 @@ pub struct PolicyNet {
 }
 
 pub enum PolicyNetImpl {
-    CNN(Box<PolicyNetCNN>),
-    GNN(GraphPolicyNet),
+    Cnn(Box<PolicyNetCNN>),
+    Gnn(GraphPolicyNet),
 }
 
 impl PolicyNet {
     // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
     pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64), arch: NNArchitecture) -> Self {
         match arch {
-            NNArchitecture::CNN => Self {
+            NNArchitecture::Cnn => Self {
                 arch,
-                net: PolicyNetImpl::CNN(Box::new(PolicyNetCNN::new(vs, input_dim))),
+                net: PolicyNetImpl::Cnn(Box::new(PolicyNetCNN::new(vs, input_dim))),
             },
-            NNArchitecture::GNN => Self {
+            NNArchitecture::Gnn => Self {
                 arch,
-                net: PolicyNetImpl::GNN(GraphPolicyNet::new(vs, input_dim.0, &[64, 64, 64], 0.1)),
+                net: PolicyNetImpl::Gnn(GraphPolicyNet::new(vs, input_dim.0, &[64, 64, 64], 0.1)),
             },
         }
     }
 
     pub fn forward(&self, input: &Tensor, train: bool) -> Tensor {
         match &self.net {
-            PolicyNetImpl::CNN(net) => net.forward(input, train),
-            PolicyNetImpl::GNN(net) => net.forward(input, train),
+            PolicyNetImpl::Cnn(net) => net.forward(input, train),
+            PolicyNetImpl::Gnn(net) => net.forward(input, train),
         }
     }
 
@@ -104,13 +104,14 @@ pub struct PolicyNetCNN {
     conv1: nn::Conv2D,
     gn1: nn::GroupNorm,
     res_blocks: Vec<ResNetBlock>,
-    flatten: nn::Linear,
-    fc1: nn::Linear,
-    policy_head: nn::Linear,
+    // SPATIAL POLICY HEAD: Maintains spatial correspondence 5×5 → 19 positions
+    policy_conv: nn::Conv2D,  // 1×1 conv: 64→1 channel (keeps 5×5 spatial structure)
     dropout_rate: f64,
 }
-const INITIAL_CONV_CHANNELS: i64 = 160;
-const POLICY_STAGE_CHANNELS: &[i64] = &[160, 128, 128, 96, 96, 64];
+// AlphaZero architecture with ResNet blocks
+const INITIAL_CONV_CHANNELS: i64 = 128;
+// RESTORED: AlphaZero-style architecture with 3 ResNet blocks for deeper learning
+const POLICY_STAGE_CHANNELS: &[i64] = &[128, 128, 96]; // 3 ResNet blocks for pattern learning
 
 const INITIAL_CONV_CHANNELS_VALUE: i64 = 160;
 const VALUE_STAGE_CHANNELS: &[i64] = &[160, 128, 128, 96, 96, 64];
@@ -141,27 +142,25 @@ impl PolicyNetCNN {
             in_channels = out_channels;
         }
 
-        // After conv operations, spatial dimensions remain 5×5 (with padding=1)
-        let flatten_size = in_channels * height * width;
-        log::info!(
-            "🔧 PolicyNet flatten_size: {} (channels={}, height={}, width={})",
-            flatten_size,
-            in_channels,
-            height,
-            width
-        );
-        let flatten = nn::linear(
-            &p / "policy_flatten",
-            flatten_size,
-            2048,
+        // SPATIAL POLICY HEAD: 1×1 conv to maintain spatial structure
+        // No ResNet blocks - directly from conv1
+        let final_channels = if POLICY_STAGE_CHANNELS.is_empty() {
+            INITIAL_CONV_CHANNELS
+        } else {
+            *POLICY_STAGE_CHANNELS.last().unwrap()
+        };
+        let policy_conv = nn::conv2d(
+            &p / "policy_conv",
+            final_channels,  // 160 channels directly from conv1
+            1,               // Output 1 channel (policy logit per spatial position)
+            1,               // 1×1 kernel (no spatial mixing)
             Default::default(),
         );
+
         log::info!(
-            "✅ PolicyNet flatten layer created with input size {}",
-            flatten_size
+            "🔧 Simple CNN PolicyNet: {}×{}×{} → conv1({}) → GN → LeakyReLU → policy_conv → 1×{}×{} → 19 logits",
+            channels, height, width, INITIAL_CONV_CHANNELS, height, width
         );
-        let fc1 = nn::linear(&p / "policy_fc1", 2048, 512, Default::default());
-        let policy_head = nn::linear(&p / "policy_head", 512, 19, nn::LinearConfig::default());
 
         initialize_weights(vs);
 
@@ -169,9 +168,7 @@ impl PolicyNetCNN {
             conv1,
             gn1,
             res_blocks,
-            flatten,
-            fc1,
-            policy_head,
+            policy_conv,
             dropout_rate: 0.3,
         }
     }
@@ -185,32 +182,23 @@ impl PolicyNetCNN {
         vs.load(path)
     }
     pub fn forward(&self, x: &Tensor, train: bool) -> Tensor {
+        // AlphaZero architecture: conv1 → GroupNorm → LeakyReLU → ResNet blocks → policy_conv
         let mut h = x.apply(&self.conv1).apply_t(&self.gn1, train).leaky_relu();
 
-        for block in &self.res_blocks {
-            h = block.forward(&h, train);
-        }
-        // In PolicyNet::forward and ValueNet::forward:
-        let expected_flatten_size = {
-            let size = h.size();
-            (size[1], size[2], size[3]) // Extract dimensions as a tuple
-        };
-        let flattened_size =
-            expected_flatten_size.0 * expected_flatten_size.1 * expected_flatten_size.2;
-
-        h = h.view([-1, flattened_size]);
-
-        h = h.apply(&self.flatten).relu();
-        if train {
-            h = h.dropout(self.dropout_rate, train);
+        // Pass through ResNet blocks for deeper feature learning
+        for res_block in &self.res_blocks {
+            h = res_block.forward(&h, train);
         }
 
-        h = h.apply(&self.fc1).relu();
-        if train {
-            h = h.dropout(self.dropout_rate, train);
-        }
+        // Spatial policy head: 1×1 conv maintains 5×5 structure
+        h = h.apply(&self.policy_conv);  // → [batch, 1, 5, 5]
 
-        h.apply(&self.policy_head).softmax(-1, tch::Kind::Float)
+        // Flatten 5×5 spatial map to 25 logits
+        let batch_size = h.size()[0];
+        h = h.view([batch_size, 25]);  // [batch, 25]
+
+        // Extract first 19 positions (valid game positions 0-18)
+        h.narrow(1, 0, 19)  // Return [batch, 19] logits
     }
 }
 
@@ -225,7 +213,8 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             let fan_out = (size[0] * size[2] * size[3]) as f64;
             let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                let _ = param.f_uniform_(-bound, bound).unwrap();
+                param.f_uniform_(-bound, bound)
+                    .expect("Xavier initialization should not fail for conv weights");
             });
         } else if size.len() == 2 {
             // Xavier initialization for linear layers
@@ -233,12 +222,14 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             let fan_out = size[0] as f64;
             let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                let _ = param.f_uniform_(-bound, bound).unwrap();
+                param.f_uniform_(-bound, bound)
+                    .expect("Xavier initialization should not fail for conv weights");
             });
         } else if size.len() == 1 {
             // Zero initialization for biases
             tch::no_grad(|| {
-                let _ = param.f_zero_().unwrap();
+                param.f_zero_()
+                    .expect("Zero initialization should not fail for bias");
             });
         }
 
@@ -258,29 +249,29 @@ pub struct ValueNet {
 }
 
 pub enum ValueNetImpl {
-    CNN(Box<ValueNetCNN>),
-    GNN(GraphValueNet),
+    Cnn(Box<ValueNetCNN>),
+    Gnn(GraphValueNet),
 }
 
 impl ValueNet {
     // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
     pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64), arch: NNArchitecture) -> Self {
         match arch {
-            NNArchitecture::CNN => Self {
+            NNArchitecture::Cnn => Self {
                 arch,
-                net: ValueNetImpl::CNN(Box::new(ValueNetCNN::new(vs, input_dim))),
+                net: ValueNetImpl::Cnn(Box::new(ValueNetCNN::new(vs, input_dim))),
             },
-            NNArchitecture::GNN => Self {
+            NNArchitecture::Gnn => Self {
                 arch,
-                net: ValueNetImpl::GNN(GraphValueNet::new(vs, input_dim.0, &[64, 64, 64], 0.1)),
+                net: ValueNetImpl::Gnn(GraphValueNet::new(vs, input_dim.0, &[64, 64, 64], 0.1)),
             },
         }
     }
 
     pub fn forward(&self, input: &Tensor, train: bool) -> Tensor {
         match &self.net {
-            ValueNetImpl::CNN(net) => net.forward(input, train),
-            ValueNetImpl::GNN(net) => net.forward(input, train),
+            ValueNetImpl::Cnn(net) => net.forward(input, train),
+            ValueNetImpl::Gnn(net) => net.forward(input, train),
         }
     }
 
@@ -349,8 +340,8 @@ impl ValueNetCNN {
         }
 
         let flatten_size = in_channels * height * width; // Adjust if you have downsampling
-        let flatten = nn::linear(&p / "value_flatten", flatten_size, 2048, Default::default()); // Increased size
-        let fc1 = nn::linear(&p / "value_fc1", 2048, 512, Default::default()); // Added FC layer
+        let flatten = nn::linear(&p / "value_flatten", flatten_size, 2048, Default::default());
+        let fc1 = nn::linear(&p / "value_fc1", 2048, 512, Default::default());
         let value_head = nn::linear(&p / "value_head", 512, 1, nn::LinearConfig::default());
 
         initialize_weights(vs); // Use &vs here!
@@ -441,7 +432,8 @@ impl ValueNetCNN {
 fn kaiming_uniform(tensor: &mut Tensor, fan_in: f64) {
     let bound = (6.0f64).sqrt() / fan_in.sqrt();
     tch::no_grad(|| {
-        let _ = tensor.f_uniform_(-bound, bound).unwrap();
+        tensor.f_uniform_(-bound, bound)
+            .expect("Kaiming initialization should not fail");
     });
 }
 
@@ -454,10 +446,10 @@ mod tests {
     fn test_policy_net_creation() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (8, 5, 5); // Enhanced feature stack
-        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::Cnn);
 
         // Assert that the PolicyNet was created correctly
-        assert_eq!(policy_net.arch, NNArchitecture::CNN);
+        assert_eq!(policy_net.arch, NNArchitecture::Cnn);
         // Internal fields are now private within the enum variant
     }
 
@@ -465,7 +457,7 @@ mod tests {
     fn test_policy_net_forward() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (8, 5, 5);
-        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::Cnn);
 
         // Create a dummy input tensor
         let input = Tensor::rand(&[1, 8, 5, 5], (tch::Kind::Float, Device::Cpu));
@@ -479,7 +471,7 @@ mod tests {
     fn test_value_net_creation_and_forward() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (8, 5, 5);
-        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::Cnn);
 
         // Create a dummy input tensor
         let input = Tensor::rand(&[1, 8, 5, 5], (tch::Kind::Float, Device::Cpu));
@@ -487,14 +479,14 @@ mod tests {
 
         // Assert that the output has the expected shape
         assert_eq!(output.size(), vec![1, 1]); // Assuming 1 output value
-        assert_eq!(value_net.arch, NNArchitecture::CNN);
+        assert_eq!(value_net.arch, NNArchitecture::Cnn);
     }
 
     #[test]
     fn test_policy_net_forward_cnn() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (8, 5, 5);
-        let net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let net = PolicyNet::new(&vs, input_dim, NNArchitecture::Cnn);
         let input = Tensor::rand(&[1, 8, 5, 5], (tch::Kind::Float, Device::Cpu));
         let out = net.forward(&input, false);
         assert_eq!(out.size(), vec![1, 19]);
@@ -504,7 +496,7 @@ mod tests {
     fn test_policy_net_forward_gnn() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (8, 5, 5); // 8 features, 19 nœuds attendus côté GNN
-        let net = PolicyNet::new(&vs, input_dim, NNArchitecture::GNN);
+        let net = PolicyNet::new(&vs, input_dim, NNArchitecture::Gnn);
         // GNN expects [batch, nodes, features] = [1, 19, 8]
         let input = Tensor::rand(&[1, 19, 8], (tch::Kind::Float, Device::Cpu));
         let out = net.forward(&input, false);
@@ -515,7 +507,7 @@ mod tests {
     fn test_policy_evaluator_trait() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (8, 5, 5);
-        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::Cnn);
 
         // Use the trait interface
         let evaluator: &dyn PolicyEvaluator = &policy_net;
@@ -523,14 +515,14 @@ mod tests {
         let output = evaluator.forward(&input, false);
 
         assert_eq!(output.size(), vec![1, 19]);
-        assert_eq!(*evaluator.arch(), NNArchitecture::CNN);
+        assert_eq!(*evaluator.arch(), NNArchitecture::Cnn);
     }
 
     #[test]
     fn test_value_evaluator_trait() {
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (8, 5, 5);
-        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::Cnn);
 
         // Use the trait interface
         let evaluator: &dyn ValueEvaluator = &value_net;
@@ -538,6 +530,6 @@ mod tests {
         let output = evaluator.forward(&input, false);
 
         assert_eq!(output.size(), vec![1, 1]);
-        assert_eq!(*evaluator.arch(), NNArchitecture::CNN);
+        assert_eq!(*evaluator.arch(), NNArchitecture::Cnn);
     }
 }

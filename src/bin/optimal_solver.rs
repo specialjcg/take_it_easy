@@ -107,7 +107,7 @@ fn evaluate_line_potential(plateau: &Plateau, tile: Tile, line: &[usize]) -> f64
         4 | 5 => {
             if line
                 .iter()
-                .all(|&p| p < 5 || (p >= 5 && p < 10) || (p >= 10 && p < 15) || p >= 15)
+                .all(|&p| p < 5 || (5..10).contains(&p) || (10..15).contains(&p) || p >= 15)
             {
                 values[1] // Ligne horizontale → value2
             } else if line[0] < line[line.len() - 1] {

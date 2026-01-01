@@ -52,8 +52,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     let arch = match args.nn_architecture.as_str() {
-        "gnn" => NNArchitecture::GNN,
-        _ => NNArchitecture::CNN,
+        "gnn" => NNArchitecture::Gnn,
+        _ => NNArchitecture::Cnn,
     };
 
     println!("🎮 Expectimax MCTS Test");
@@ -75,7 +75,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Load neural networks
     log::info!("Loading neural networks...");
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
+        input_dim: (9, 5, 5),
         nn_architecture: arch,
         ..Default::default()
     };

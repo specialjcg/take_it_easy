@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use tch::{nn, Device, Tensor};
+use tch::{Device, Tensor};
 
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
@@ -99,22 +99,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse architecture
     let nn_arch = match args.nn_architecture.to_uppercase().as_str() {
-        "CNN" => NNArchitecture::CNN,
-        "GNN" => NNArchitecture::GNN,
+        "CNN" => NNArchitecture::Cnn,
+        "GNN" => NNArchitecture::Gnn,
         _ => return Err(format!("Invalid architecture: {}", args.nn_architecture).into()),
     };
 
     // Initialize neural network
     log::info!("Initializing neural network...");
+    let policy_lr = args.learning_rate * 10.0;  // 10x higher for policy network (was stuck)
+    let value_lr = args.learning_rate;          // Keep value LR as-is (it learns fine)
+
+    // Use 9 channels for CNN (with position ID), 8 for GNN (not yet adapted)
+    let input_channels = if nn_arch == NNArchitecture::Gnn { 8 } else { 9 };
+
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
+        input_dim: (input_channels, 5, 5),
         nn_architecture: nn_arch,
-        policy_lr: args.learning_rate,  // Use argument!
-        value_lr: args.learning_rate,    // Use argument!
+        policy_lr,
+        value_lr,
         ..Default::default()
     };
     let mut manager = NeuralManager::with_config(neural_config)?;
-    log::info!("✅ Neural network initialized with LR={}", args.learning_rate);
+    log::info!("✅ Neural network initialized ({} channels) with policy_LR={}, value_LR={}",
+               input_channels, policy_lr, value_lr);
 
     // Load curriculum phases
     let data_files: Vec<&str> = args.data.split(',').collect();
@@ -155,7 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // Train on this phase
-        train_phase(&mut manager, train_games, val_games, &args, phase_num)?;
+        train_phase(&mut manager, train_games, val_games, &args, phase_num, input_channels)?;
 
         // Save checkpoint after each phase
         let checkpoint_path = format!("{}/phase{}", args.checkpoint_dir, phase_num);
@@ -191,6 +198,7 @@ fn train_phase(
     val_games: &[ExpertGame],
     args: &Args,
     phase_num: usize,
+    input_channels: i64,
 ) -> Result<(), Box<dyn std::error::Error>> {
     log::info!(
         "\n🏋️ Training Phase {} for {} epochs...",
@@ -219,6 +227,7 @@ fn train_phase(
             device,
             args.train_policy,
             args.train_value,
+            input_channels,
         )?;
 
         // Validation
@@ -229,6 +238,7 @@ fn train_phase(
             device,
             args.train_policy,
             args.train_value,
+            input_channels,
         )?;
 
         let total_val_loss = val_policy_loss + val_value_loss;
@@ -276,6 +286,7 @@ fn train_epoch(
     device: Device,
     train_policy: bool,
     train_value: bool,
+    input_channels: i64,
 ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
     let mut total_policy_loss = 0.0;
     let mut total_value_loss = 0.0;
@@ -283,7 +294,7 @@ fn train_epoch(
 
     for batch_moves in moves.chunks(batch_size) {
         // Prepare batch tensors
-        let (state_tensors, policy_targets, value_targets) = prepare_batch(batch_moves, device)?;
+        let (state_tensors, policy_targets, value_targets) = prepare_batch(batch_moves, device, input_channels)?;
 
         // Train policy network
         let policy_loss = if train_policy {
@@ -329,6 +340,7 @@ fn validate_epoch(
     device: Device,
     validate_policy: bool,
     validate_value: bool,
+    input_channels: i64,
 ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
     let mut total_policy_loss = 0.0;
     let mut total_value_loss = 0.0;
@@ -337,7 +349,7 @@ fn validate_epoch(
     tch::no_grad(|| {
         for batch_moves in moves.chunks(batch_size) {
             let (state_tensors, policy_targets, value_targets) =
-                prepare_batch(batch_moves, device)?;
+                prepare_batch(batch_moves, device, input_channels)?;
 
             if validate_policy {
                 let policy_net = manager.policy_net();
@@ -366,19 +378,21 @@ fn validate_epoch(
 fn prepare_batch(
     moves: &[&ExpertMove],
     device: Device,
+    input_channels: i64,
 ) -> Result<(Tensor, Tensor, Tensor), Box<dyn std::error::Error>> {
     let batch_size = moves.len();
+    let include_position_id = input_channels == 9;
 
-    // Create state tensors (8 channels × 5 × 5)
-    let mut states = vec![0.0f32; batch_size * 8 * 5 * 5];
+    // Create state tensors (8 or 9 channels × 5 × 5)
+    let mut states = vec![0.0f32; batch_size * input_channels as usize * 5 * 5];
     let mut policy_targets = vec![0i64; batch_size];
     let mut value_targets = vec![0.0f32; batch_size];
 
     for (i, expert_move) in moves.iter().enumerate() {
-        // Encode plateau state into 8 channels
-        let state = encode_state(&expert_move.plateau_before, &expert_move.tile);
-        let offset = i * 8 * 5 * 5;
-        states[offset..offset + 8 * 5 * 5].copy_from_slice(&state);
+        // Encode plateau state
+        let state = encode_state(&expert_move.plateau_before, &expert_move.tile, include_position_id);
+        let offset = i * input_channels as usize * 5 * 5;
+        states[offset..offset + input_channels as usize * 5 * 5].copy_from_slice(&state);
 
         // Policy target: best position
         policy_targets[i] = expert_move.best_position as i64;
@@ -388,7 +402,7 @@ fn prepare_batch(
     }
 
     let state_tensor = Tensor::from_slice(&states)
-        .view([batch_size as i64, 8, 5, 5])
+        .view([batch_size as i64, input_channels, 5, 5])
         .to_device(device);
 
     let policy_tensor = Tensor::from_slice(&policy_targets).to_device(device);
@@ -401,9 +415,10 @@ fn prepare_batch(
 }
 
 #[allow(dead_code)]
-fn encode_state(plateau_before: &[i32], tile: &TileData) -> Vec<f32> {
-    // 8 channels encoding (same as game state encoding)
-    let mut state = vec![0.0f32; 8 * 5 * 5];
+fn encode_state(plateau_before: &[i32], tile: &TileData, include_position_id: bool) -> Vec<f32> {
+    // 8 or 9 channels encoding depending on include_position_id
+    let num_channels = if include_position_id { 9 } else { 8 };
+    let mut state = vec![0.0f32; num_channels * 5 * 5];
 
     // Channel 0: Tile value1 presence
     // Channel 1: Tile value2 presence
@@ -413,6 +428,7 @@ fn encode_state(plateau_before: &[i32], tile: &TileData) -> Vec<f32> {
     // Channel 5: Current tile value2
     // Channel 6: Current tile value3
     // Channel 7: Turn progress (all cells same value)
+    // Channel 8: Position ID (optional - helps network distinguish positions explicitly)
 
     let num_placed = plateau_before.iter().filter(|&&x| x != -1).count();
     let turn_progress = num_placed as f32 / 19.0;
@@ -432,8 +448,8 @@ fn encode_state(plateau_before: &[i32], tile: &TileData) -> Vec<f32> {
             let v2 = ((encoded_tile % 100) / 10) as f32 / 9.0;
             let v3 = (encoded_tile % 10) as f32 / 9.0;
 
-            state[0 * 25 + grid_idx] = v1;
-            state[1 * 25 + grid_idx] = v2;
+            state[grid_idx] = v1;
+            state[25 + grid_idx] = v2;
             state[2 * 25 + grid_idx] = v3;
         }
 
@@ -444,6 +460,12 @@ fn encode_state(plateau_before: &[i32], tile: &TileData) -> Vec<f32> {
 
         // Turn progress
         state[7 * 25 + grid_idx] = turn_progress;
+
+        // Position ID (optional - normalized 0-18 -> 0.0-1.0)
+        // This explicitly tells the network which position each cell represents
+        if include_position_id {
+            state[8 * 25 + grid_idx] = cell_idx as f32 / 18.0;
+        }
     }
 
     state

@@ -24,11 +24,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load neural network
     println!("📂 Loading neural network...");
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::CNN,
+        input_dim: (9, 5, 5),
+        nn_architecture: NNArchitecture::Cnn,
         ..Default::default()
     };
-    let mut manager = NeuralManager::with_config(neural_config)?;
+    let manager = NeuralManager::with_config(neural_config)?;
     println!("   ✅ Network loaded\n");
 
     let num_games = 50;  // Smaller for faster comparison

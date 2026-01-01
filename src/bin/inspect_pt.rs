@@ -136,7 +136,7 @@ fn sample_stats(tensor: &Tensor) -> (f64, f64, f64) {
 fn unique_positions(sample: &Tensor) -> Vec<i64> {
     let flattened = sample.to_kind(Kind::Int64).flatten(0, -1);
     let numel = flattened.numel();
-    let mut buffer = vec![0i64; numel as usize];
+    let mut buffer = vec![0i64; numel];
     flattened.copy_data(&mut buffer, numel);
     let mut set = BTreeSet::new();
     for value in buffer {

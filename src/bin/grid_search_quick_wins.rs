@@ -27,8 +27,8 @@ pub enum NnArchitectureCli {
 impl From<NnArchitectureCli> for take_it_easy::neural::manager::NNArchitecture {
     fn from(cli: NnArchitectureCli) -> Self {
         match cli {
-            NnArchitectureCli::Cnn => take_it_easy::neural::manager::NNArchitecture::CNN,
-            NnArchitectureCli::Gnn => take_it_easy::neural::manager::NNArchitecture::GNN,
+            NnArchitectureCli::Cnn => take_it_easy::neural::manager::NNArchitecture::Cnn,
+            NnArchitectureCli::Gnn => take_it_easy::neural::manager::NNArchitecture::Gnn,
         }
     }
 }
@@ -334,7 +334,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Load neural networks
     let nn_config = NeuralConfig {
-        input_dim: (8, 5, 5),
+        input_dim: (9, 5, 5),
         nn_architecture: args.nn_architecture.clone().into(),
         ..Default::default()
     };

@@ -76,8 +76,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Load neural networks (same for both variants)
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::CNN,
+        input_dim: (9, 5, 5),
+        nn_architecture: NNArchitecture::Cnn,
         ..Default::default()
     };
     let manager = NeuralManager::with_config(neural_config)?;

@@ -63,14 +63,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse architecture
     let nn_arch = match args.nn_architecture.to_uppercase().as_str() {
-        "CNN" => NNArchitecture::CNN,
-        "GNN" => NNArchitecture::GNN,
+        "CNN" => NNArchitecture::Cnn,
+        "GNN" => NNArchitecture::Gnn,
         _ => return Err(format!("Invalid architecture: {}", args.nn_architecture).into()),
     };
 
-    // Initialize neural network
+    // Initialize neural network (9 channels with position ID)
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
+        input_dim: (9, 5, 5),
         nn_architecture: nn_arch,
         ..Default::default()
     };
@@ -142,6 +142,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let chosen_tile = *available.choose(&mut rng).unwrap();
             deck = replace_tile_in_deck(&deck, &chosen_tile);
 
+            // Check plateau BEFORE MCTS
+            let filled_before = plateau.tiles.iter().filter(|&&t| t != take_it_easy::game::tile::Tile(0,0,0)).count();
+
             let mcts_result = mcts_find_best_position_for_tile_with_nn(
                 &mut plateau,
                 &mut deck,
@@ -153,6 +156,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 args.turns,
                 Some(&hyperparams),
             );
+
+            // Check plateau AFTER MCTS
+            let filled_after = plateau.tiles.iter().filter(|&&t| t != take_it_easy::game::tile::Tile(0,0,0)).count();
+
+            if game_idx == 0 && turn < 5 {
+                log::info!("Turn {}: tile={:?}, chose pos={}, filled before={}, after={}",
+                    turn+1, chosen_tile, mcts_result.best_position, filled_before, filled_after);
+            }
 
             plateau.tiles[mcts_result.best_position] = chosen_tile;
         }

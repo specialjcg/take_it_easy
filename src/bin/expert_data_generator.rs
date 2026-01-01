@@ -103,8 +103,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize neural network for MCTS guidance
     log::info!("Loading neural network...");
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::CNN,
+        input_dim: (9, 5, 5),
+        nn_architecture: NNArchitecture::Cnn,
         ..Default::default()
     };
     let manager = NeuralManager::with_config(neural_config)?;
@@ -192,7 +192,7 @@ fn generate_expert_game(
 
     // Shuffle deck
     let available = get_available_tiles(&deck);
-    let mut tile_sequence: Vec<Tile> = available.iter().copied().collect();
+    let mut tile_sequence: Vec<Tile> = available.to_vec();
     tile_sequence.shuffle(rng);
 
     // Play 19 turns

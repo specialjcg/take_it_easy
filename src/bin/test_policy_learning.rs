@@ -17,8 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create fresh network
     println!("📊 Creating fresh policy network...");
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::CNN,
+        input_dim: (9, 5, 5),
+        nn_architecture: NNArchitecture::Cnn,
         policy_lr: 0.1,  // 10x plus élevé!
         value_lr: 0.01,
         ..Default::default()
@@ -59,8 +59,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let idx = row * 5 + col;
 
             // Set some channel values (simulate tiles)
-            state[0 * 25 + idx] = ((i + j) % 10) as f32 / 10.0;  // value1
-            state[1 * 25 + idx] = ((i + j * 2) % 10) as f32 / 10.0;  // value2
+            state[idx] = ((i + j) % 10) as f32 / 10.0;  // value1
+            state[25 + idx] = ((i + j * 2) % 10) as f32 / 10.0;  // value2
             state[2 * 25 + idx] = ((i + j * 3) % 10) as f32 / 10.0;  // value3
             state[3 * 25 + idx] = 1.0;  // occupied
         }
@@ -78,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if i < 80 {
             policy_targets.push(9i64);  // 80% center
         } else {
-            policy_targets.push((i % 19) as i64);  // 20% spread across others
+            policy_targets.push(i % 19);  // 20% spread across others
         }
     }
     let policy_targets = Tensor::from_slice(&policy_targets).to_device(device);

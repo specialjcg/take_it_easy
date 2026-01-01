@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::Read;
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
-use tch::{Device, Kind, Tensor};
+use tch::{Device, Tensor};
 
 #[derive(Serialize, Deserialize)]
 struct ExpertExample {
@@ -34,8 +34,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create neural manager
     println!("\n🧠 Initializing neural networks...");
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::CNN,
+        input_dim: (9, 5, 5),
+        nn_architecture: NNArchitecture::Cnn,
         policy_lr: 0.0,   // No policy training
         value_lr: 0.01,   // Only value training
         ..Default::default()

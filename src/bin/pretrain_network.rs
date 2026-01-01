@@ -198,8 +198,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let weights_path = "model_weights/cnn_current_backup";
 
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::CNN,
+        input_dim: (9, 5, 5),
+        nn_architecture: NNArchitecture::Cnn,
         policy_lr: 0.01,
         value_lr: 0.01,
         ..Default::default()

@@ -8,7 +8,7 @@
 
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
-use tch::{nn, Device, Tensor, Kind};
+use tch::{Device, Tensor, Kind};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🧪 Testing if Network Can Learn Simple Patterns\n");
@@ -16,8 +16,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create network from scratch
     println!("📊 Creating fresh network...");
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::CNN,
+        input_dim: (9, 5, 5),
+        nn_architecture: NNArchitecture::Cnn,
         policy_lr: 0.1,  // VERY HIGH LR for fast learning
         value_lr: 0.1,
         ..Default::default()

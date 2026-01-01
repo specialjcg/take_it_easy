@@ -33,12 +33,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create neural network (with trained weights if available)
     println!("📂 Loading neural network...");
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::CNN,
+        input_dim: (9, 5, 5),
+        nn_architecture: NNArchitecture::Cnn,
         ..Default::default()
     };
 
-    let mut manager = NeuralManager::with_config(neural_config)?;
+    let manager = NeuralManager::with_config(neural_config)?;
     println!("   ✅ Network loaded\n");
 
     // Test parameters

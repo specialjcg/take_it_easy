@@ -11,7 +11,7 @@ use clap::Parser;
 use flexi_logger::Logger;
 use rand::prelude::*;
 use rand::rngs::StdRng;
-use rand::{SeedableRng, thread_rng};
+use rand::{SeedableRng, rng};
 use std::error::Error;
 use tch::{Tensor, Device, Reduction};
 
@@ -87,8 +87,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize neural network
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::CNN,
+        input_dim: (9, 5, 5),
+        nn_architecture: NNArchitecture::Cnn,
         policy_lr: args.learning_rate,
         value_lr: args.learning_rate,
         ..Default::default()
@@ -273,7 +273,7 @@ fn train_iteration(
 
         // Shuffle training data
         let mut indices: Vec<usize> = (0..training_data.len()).collect();
-        indices.shuffle(&mut thread_rng());
+        indices.shuffle(&mut rng());
 
         for batch_indices in indices.chunks(batch_size) {
             // Prepare batch

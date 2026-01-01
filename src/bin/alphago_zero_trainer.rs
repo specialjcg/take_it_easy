@@ -82,7 +82,7 @@ struct Args {
 
 struct TrainingExample {
     state: Tensor,
-    policy_target: i64,
+    policy_target: Vec<f32>,  // FIXED: Use visit distribution instead of argmax
     value_target: f32,
 }
 
@@ -102,14 +102,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse architecture
     let nn_arch = match args.nn_architecture.to_uppercase().as_str() {
-        "CNN" => NNArchitecture::CNN,
-        "GNN" => NNArchitecture::GNN,
+        "CNN" => NNArchitecture::Cnn,
+        "GNN" => NNArchitecture::Gnn,
         _ => return Err(format!("Invalid architecture: {}", args.nn_architecture).into()),
     };
 
     // Initialize neural network
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
+        input_dim: (9, 5, 5),
         nn_architecture: nn_arch,
         policy_lr: args.learning_rate,
         value_lr: args.learning_rate,
@@ -248,14 +248,14 @@ fn generate_self_play_games(
             deck = replace_tile_in_deck(&deck, &chosen_tile);
 
             // ====================================================================
-            // DIRICHLET NOISE - AlphaGo Zero exploration technique
+            // DIRICHLET NOISE - AlphaGo Zero exploration technique (STRENGTHENED)
             // ====================================================================
             // Add Dirichlet noise to encourage exploration during self-play
             // This breaks the circular learning problem where uniform policy
             // leads to uniform MCTS priors, which generate uniform training data
+            // Note: Mixing with epsilon=0.5 happens in MCTS function (src/mcts/algorithm.rs:1507)
             let legal_moves = get_legal_moves(&plateau);
-            let epsilon = 0.25;  // Mix ratio: 75% policy + 25% noise
-            let alpha = 0.3;     // Dirichlet concentration (lower = more uniform)
+            let alpha = 0.15;    // Dirichlet concentration (LOWERED: lower = more peaked/varied distribution)
 
             // Generate Dirichlet noise for exploration
             // Dirichlet is sampled using Gamma distributions: X_i ~ Gamma(alpha, 1)
@@ -273,9 +273,21 @@ fn generate_self_play_games(
             // Convert noise to exploration_priors (map position -> noise value)
             let mut exploration_priors = vec![0.0; 19]; // 19 positions on plateau
             for (idx, &pos) in legal_moves.iter().enumerate() {
-                // Mix: (1-ε) * policy_prior + ε * noise
-                // For now, we apply noise directly as MCTS will mix with policy
-                exploration_priors[pos] = (noise[idx] * epsilon) as f32;
+                // AlphaGo Zero formula: P_noisy = (1-ε)*P_policy + ε*noise
+                // The actual mixing happens in MCTS with epsilon=0.5 (strengthened)
+                exploration_priors[pos] = noise[idx] as f32;  // Store noise for MCTS mixing
+            }
+
+            // DEBUG: Log noise statistics for first game, first turn
+            if game_idx == 0 && turn == 0 {
+                let noise_values: Vec<f64> = legal_moves.iter().map(|&pos| exploration_priors[pos] as f64).collect();
+                let max_noise = noise_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let min_noise = noise_values.iter().cloned().fold(f64::INFINITY, f64::min);
+                let avg_noise: f64 = noise_values.iter().sum::<f64>() / noise_values.len() as f64;
+                log::info!("🔍 DEBUG Dirichlet Noise (game 0, turn 0):");
+                log::info!("   Legal moves: {}", legal_moves.len());
+                log::info!("   Noise range: [{:.4}, {:.4}], avg: {:.4}", min_noise, max_noise, avg_noise);
+                log::info!("   Noise values: {:?}", noise_values.iter().map(|v| format!("{:.3}", v)).collect::<Vec<_>>());
             }
 
             // Use UCT MCTS with current network to find best position
@@ -295,10 +307,39 @@ fn generate_self_play_games(
 
             // Record training example
             let state_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &deck, turn, turns_per_game);
-            let policy_target = mcts_result.best_position as i64;
+
+            // FIXED: Use full visit distribution instead of argmax
+            // This allows the network to learn the full policy, not just winner-takes-all
+            let mut policy_dist: Vec<f32> = mcts_result.policy_distribution
+                .view([-1])
+                .try_into()
+                .expect("Failed to convert policy distribution to Vec<f32>");
+
+            // ====================================================================
+            // TEMPERATURE SCALING - Sharpen visit distribution for stronger learning signal
+            // ====================================================================
+            // Temperature < 1.0 sharpens the distribution (emphasizes top moves)
+            // This creates a stronger gradient signal for the policy network
+            let temperature = 0.5;  // 0.5 = strong sharpening
+
+            // Apply temperature: p_i^(1/T)
+            let inv_temp = 1.0 / temperature;
+            for p in &mut policy_dist {
+                if *p > 0.0 {
+                    *p = p.powf(inv_temp);
+                }
+            }
+
+            // Renormalize to ensure it's a valid probability distribution
+            let sum: f32 = policy_dist.iter().sum();
+            if sum > 0.0 {
+                for p in &mut policy_dist {
+                    *p /= sum;
+                }
+            }
 
             // Store for later (we'll assign value after game ends)
-            training_data.push((state_tensor, policy_target, 0.0));
+            training_data.push((state_tensor, policy_dist, 0.0));
 
             // Execute move
             plateau.tiles[mcts_result.best_position] = chosen_tile;
@@ -353,18 +394,31 @@ fn train_on_data(
             let states: Vec<&Tensor> = batch.iter().map(|ex| &ex.state).collect();
             let states_batch = Tensor::cat(&states, 0).to_device(device);
 
-            let policy_targets: Vec<i64> = batch.iter().map(|ex| ex.policy_target).collect();
-            let policy_targets_batch = Tensor::from_slice(&policy_targets).to_device(device);
+            // FIXED: Policy targets are now distributions, not indices
+            let policy_targets_flat: Vec<f32> = batch.iter()
+                .flat_map(|ex| ex.policy_target.iter().copied())
+                .collect();
+            let policy_targets_batch = Tensor::from_slice(&policy_targets_flat)
+                .view([batch.len() as i64, 19])  // 19 positions
+                .to_device(device);
 
             let value_targets: Vec<f32> = batch.iter().map(|ex| ex.value_target).collect();
             let value_targets_batch = Tensor::from_slice(&value_targets)
                 .view([batch.len() as i64, 1])
                 .to_device(device);
 
-            // Train policy network
+            // Train policy network with KL divergence (soft cross-entropy)
             let policy_net = manager.policy_net();
-            let policy_pred = policy_net.forward(&states_batch, true);
-            let policy_loss = policy_pred.cross_entropy_for_logits(&policy_targets_batch);
+            let policy_pred_logits = policy_net.forward(&states_batch, true);
+            let policy_pred_probs = policy_pred_logits.log_softmax(-1, tch::Kind::Float);
+
+            // KL divergence: sum(target * (log(target) - log(pred)))
+            // Simplified as cross-entropy when target is a distribution
+            let policy_loss = -(policy_targets_batch * policy_pred_probs).sum_dim_intlist(
+                [-1].as_slice(),
+                false,
+                tch::Kind::Float,
+            ).mean(tch::Kind::Float);
 
             let policy_opt = manager.policy_optimizer_mut();
             policy_opt.backward_step(&policy_loss);

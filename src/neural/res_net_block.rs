@@ -1,11 +1,11 @@
 use tch::{nn, Tensor};
 
-/// Residual Block
+/// Residual Block with GroupNorm (more stable than BatchNorm for gradients)
 pub struct ResNetBlock {
     pub(crate) conv1: nn::Conv2D,
-    pub(crate) bn1: nn::BatchNorm,
+    pub(crate) gn1: nn::GroupNorm,  // Changed from BatchNorm to GroupNorm
     pub(crate) conv2: nn::Conv2D,
-    pub(crate) bn2: nn::BatchNorm,
+    pub(crate) gn2: nn::GroupNorm,  // Changed from BatchNorm to GroupNorm
     downsample: Option<nn::Conv2D>, // Optional downsampling for skip connections
 }
 
@@ -26,14 +26,12 @@ impl ResNetBlock {
                 ..Default::default()
             },
         );
-        let bn1 = nn::batch_norm2d(
-            &(path / "bn1"),
+        // GroupNorm: 16 groups, more stable than BatchNorm for gradient flow
+        let gn1 = nn::group_norm(
+            &(path / "gn1"),
+            16,
             channels_out,
-            nn::BatchNormConfig {
-                ws_init: nn::Init::Const(1.0),
-                bs_init: nn::Init::Const(0.0),
-                ..Default::default()
-            },
+            Default::default(),
         );
         let conv2 = nn::conv2d(
             &(path / "conv2"),
@@ -45,14 +43,12 @@ impl ResNetBlock {
                 ..Default::default()
             },
         );
-        let bn2 = nn::batch_norm2d(
-            &(path / "bn2"),
+        // GroupNorm: 16 groups, more stable than BatchNorm for gradient flow
+        let gn2 = nn::group_norm(
+            &(path / "gn2"),
+            16,
             channels_out,
-            nn::BatchNormConfig {
-                ws_init: nn::Init::Const(1.0),
-                bs_init: nn::Init::Const(0.0),
-                ..Default::default()
-            },
+            Default::default(),
         );
 
         // Downsample if input/output channels differ
@@ -70,31 +66,34 @@ impl ResNetBlock {
 
         Self {
             conv1,
-            bn1,
+            gn1,
             conv2,
-            bn2,
+            gn2,
             downsample,
         }
     }
 
     pub fn forward(&self, x: &Tensor, train: bool) -> Tensor {
-        let residual = if let Some(downsample) = &self.downsample {
+        // Standard ResNet block with skip connection
+        let identity = if let Some(downsample) = &self.downsample {
             x.apply(downsample)
         } else {
             x.shallow_clone()
         };
 
-        let x = x
+        // First conv block
+        let out = x
             .apply(&self.conv1)
-            .apply_t(&self.bn1, train)
-            .clamp(-1e3, 1e3) // Ensure this isn't in-place
-            .relu(); // Ensure this isn't in-place
-        let x = x
-            .apply(&self.conv2)
-            .apply_t(&self.bn2, train)
-            .clamp(-1e3, 1e3); // Ensure this isn't in-place
+            .apply_t(&self.gn1, train)
+            .relu();
 
-        (x + residual).relu() // Safe addition and relu
+        // Second conv block (no activation yet)
+        let out = out
+            .apply(&self.conv2)
+            .apply_t(&self.gn2, train);
+
+        // Add skip connection and activate
+        (out + identity).relu()
     }
 }
 
