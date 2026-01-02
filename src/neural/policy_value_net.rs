@@ -226,11 +226,14 @@ pub fn initialize_weights(vs: &nn::VarStore) {
                     .expect("Xavier initialization should not fail for conv weights");
             });
         } else if size.len() == 1 {
-            // Zero initialization for biases
-            tch::no_grad(|| {
-                param.f_zero_()
-                    .expect("Zero initialization should not fail for bias");
-            });
+            // Zero initialization for biases ONLY (not GroupNorm weights!)
+            if name.ends_with(".bias") {
+                tch::no_grad(|| {
+                    param.f_zero_()
+                        .expect("Zero initialization should not fail for bias");
+                });
+            }
+            // GroupNorm weights (.weight) are already initialized to 1.0 by PyTorch - leave them!
         }
 
         // Validation after initialization
