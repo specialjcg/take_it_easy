@@ -165,12 +165,9 @@ pub fn apply_player_move(
     mut game_state: TakeItEasyGameState,
     player_move: PlayerMove,
 ) -> Result<TakeItEasyGameState, String> {
-    // Vérifications utilisant vos fonctions
-    if game_state.current_tile.is_none() {
-        return Err("NO_CURRENT_TILE".to_string());
-    }
-
-    let current_tile = game_state.current_tile.unwrap();
+    // Vérifications utilisant vos fonctions - idiomatique Rust avec ?
+    let current_tile = game_state.current_tile
+        .ok_or_else(|| "NO_CURRENT_TILE".to_string())?;
 
     if player_move.tile != current_tile {
         return Err("WRONG_TILE".to_string());

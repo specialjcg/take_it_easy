@@ -42,8 +42,8 @@ pub fn train_network_with_game_data(
         let state = result.board_tensor.shallow_clone();
         let normalized_state = robust_state_normalization(&state);
         let (input_policy, input_value) = match arch {
-            NNArchitecture::CNN => (normalized_state.shallow_clone(), normalized_state),
-            NNArchitecture::GNN => {
+            NNArchitecture::Cnn => (normalized_state.shallow_clone(), normalized_state),
+            NNArchitecture::Gnn => {
                 let plateau_ref = result.plateau.as_ref().expect("MCTSResult.plateau is None");
                 let current_turn = result
                     .current_turn

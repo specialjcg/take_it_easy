@@ -13,6 +13,7 @@ pub struct MCTSResult {
     pub plateau: Option<Plateau>,       // Correction : plateau Rust
     pub current_turn: Option<usize>,
     pub total_turns: Option<usize>,
+    pub q_value_distribution: Option<Tensor>, // Distribution basée sur Q-values des rollouts
 }
 
 impl Clone for MCTSResult {
@@ -28,6 +29,7 @@ impl Clone for MCTSResult {
             plateau: self.plateau.clone(),
             current_turn: self.current_turn,
             total_turns: self.total_turns,
+            q_value_distribution: self.q_value_distribution.as_ref().map(|t| t.shallow_clone()),
         }
     }
 }

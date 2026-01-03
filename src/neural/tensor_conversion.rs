@@ -94,36 +94,58 @@ const LINE_DEFS: &[(&[usize], usize)] = &[
     (&[2, 6, 11], 2),
 ];
 
-const CHANNELS: usize = 8;
+const CHANNELS: usize = 9;  // Updated: added position ID channel
 const GRID_SIZE: usize = 5;
 
 pub fn convert_plateau_to_tensor(
     plateau: &Plateau,
-    _tile: &Tile,
+    tile: &Tile,
     _deck: &Deck,
     current_turn: usize,
-    total_turns: usize,
+    _total_turns: usize,
 ) -> Tensor {
+    // Encoding MUST match supervised_trainer exactly:
+    // IMPORTANT: supervised_trainer treats plateau.tiles (19 hex cells) as LINEAR 5×5 grid
+    // WITHOUT using HEX_TO_GRID_MAP! We must do the same for consistency.
+    // Ch 0-2: Plateau tiles (value1, value2, value3) normalized /9
+    // Ch 3: Empty cells mask (1.0 if empty)
+    // Ch 4-6: Current tile to place (value1, value2, value3) /9 - BROADCAST to all cells
+    // Ch 7: Turn progress (num_placed / 19)
+    // Ch 8: Position ID (0-18 normalized to 0.0-1.0)
+
     let mut features = vec![0.0f32; CHANNELS * GRID_SIZE * GRID_SIZE];
-    let turn_normalized = current_turn as f32 / total_turns as f32;
+    let num_placed = plateau.tiles.iter().filter(|&&t| t != Tile(0, 0, 0)).count();
+    let turn_progress = num_placed as f32 / 19.0;
 
-    let orientation_scores = compute_orientation_scores(plateau);
-
-    for (hex_pos, &(row, col)) in HEX_TO_GRID_MAP.iter().enumerate() {
+    // Process only the 19 hexagonal cells (plateau.tiles has 19 elements)
+    for cell_idx in 0..plateau.tiles.len() {
+        // Map LINEAR index to 5×5 grid (same as supervised_trainer)
+        let row = cell_idx / GRID_SIZE;
+        let col = cell_idx % GRID_SIZE;
         let grid_idx = row * GRID_SIZE + col;
 
-        if hex_pos < plateau.tiles.len() {
-            let tile = &plateau.tiles[hex_pos];
-            features[grid_idx] = (tile.0 as f32 / 10.0).clamp(0.0, 1.0);
-            features[GRID_SIZE * GRID_SIZE + grid_idx] = (tile.1 as f32 / 10.0).clamp(0.0, 1.0);
-            features[2 * GRID_SIZE * GRID_SIZE + grid_idx] = (tile.2 as f32 / 10.0).clamp(0.0, 1.0);
-            features[3 * GRID_SIZE * GRID_SIZE + grid_idx] =
-                if *tile == Tile(0, 0, 0) { 0.0 } else { 1.0 };
-            features[4 * GRID_SIZE * GRID_SIZE + grid_idx] = turn_normalized;
-            features[5 * GRID_SIZE * GRID_SIZE + grid_idx] = orientation_scores[0][hex_pos];
-            features[6 * GRID_SIZE * GRID_SIZE + grid_idx] = orientation_scores[1][hex_pos];
-            features[7 * GRID_SIZE * GRID_SIZE + grid_idx] = orientation_scores[2][hex_pos];
+        let plateau_tile = &plateau.tiles[cell_idx];
+
+        if *plateau_tile == Tile(0, 0, 0) {
+            // Empty cell
+            features[3 * GRID_SIZE * GRID_SIZE + grid_idx] = 1.0;
+        } else {
+            // Occupied cell - store tile values normalized /9
+            features[grid_idx] = plateau_tile.0 as f32 / 9.0;
+            features[GRID_SIZE * GRID_SIZE + grid_idx] = plateau_tile.1 as f32 / 9.0;
+            features[2 * GRID_SIZE * GRID_SIZE + grid_idx] = plateau_tile.2 as f32 / 9.0;
         }
+
+        // Current tile to place (broadcast to all cells)
+        features[4 * GRID_SIZE * GRID_SIZE + grid_idx] = tile.0 as f32 / 9.0;
+        features[5 * GRID_SIZE * GRID_SIZE + grid_idx] = tile.1 as f32 / 9.0;
+        features[6 * GRID_SIZE * GRID_SIZE + grid_idx] = tile.2 as f32 / 9.0;
+
+        // Turn progress (same for all cells)
+        features[7 * GRID_SIZE * GRID_SIZE + grid_idx] = turn_progress;
+
+        // Position ID (normalized 0-18 → 0.0-1.0)
+        features[8 * GRID_SIZE * GRID_SIZE + grid_idx] = cell_idx as f32 / 18.0;
     }
 
     Tensor::from_slice(&features).view([1, CHANNELS as i64, GRID_SIZE as i64, GRID_SIZE as i64])

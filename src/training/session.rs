@@ -359,8 +359,8 @@ pub async fn train_and_evaluate(
 
             // Save model weights avec les bons chemins selon l'architecture
             let arch_dir = match policy_net.arch {
-                NNArchitecture::CNN => "cnn",
-                NNArchitecture::GNN => "gnn",
+                NNArchitecture::Cnn => "cnn",
+                NNArchitecture::Gnn => "gnn",
             };
             let policy_path = format!("model_weights/{}/policy/policy.params", arch_dir);
             let value_path = format!("model_weights/{}/value/value.params", arch_dir);
@@ -411,12 +411,12 @@ pub async fn train_and_evaluate_offline(
                 .filter(|r| {
                     // Pour le GNN, ne garder que les résultats avec plateau/turn renseignés
                     match policy_net.arch {
-                        NNArchitecture::GNN => {
+                        NNArchitecture::Gnn => {
                             r.plateau.is_some()
                                 && r.current_turn.is_some()
                                 && r.total_turns.is_some()
                         }
-                        NNArchitecture::CNN => true,
+                        NNArchitecture::Cnn => true,
                     }
                 })
                 .take(200)
@@ -602,8 +602,8 @@ pub async fn train_and_evaluate_offline(
 
         // Save model weights avec les bons chemins selon l'architecture
         let arch_dir = match policy_net.arch {
-            NNArchitecture::CNN => "cnn",
-            NNArchitecture::GNN => "gnn",
+            NNArchitecture::Cnn => "cnn",
+            NNArchitecture::Gnn => "gnn",
         };
         let policy_path = format!("model_weights/{}/policy/policy.params", arch_dir);
         let value_path = format!("model_weights/{}/value/value.params", arch_dir);

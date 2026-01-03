@@ -58,7 +58,7 @@ impl GraphLayer {
 
         // Add residual connection if dimensions match (before activation)
         if let Some(res) = residual {
-            out = out + res;
+            out += res;
         }
 
         // Activation

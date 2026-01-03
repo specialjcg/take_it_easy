@@ -168,22 +168,22 @@ impl<'a> ExpectimaxMCTS<'a> {
     fn evaluate_with_cnn(&self, plateau: &Plateau, tile: &Tile, deck: &Deck) -> f64 {
         // Create input tensor based on architecture
         let board_tensor = match self.policy_net.arch {
-            NNArchitecture::CNN => {
+            NNArchitecture::Cnn => {
                 convert_plateau_to_tensor(plateau, tile, deck, self.current_turn, self.total_turns)
             }
-            NNArchitecture::GNN => {
+            NNArchitecture::Gnn => {
                 convert_plateau_for_gnn(plateau, self.current_turn, self.total_turns)
             }
         };
 
         // Get value prediction from CNN
-        let value = self
+        
+
+        self
             .value_net
             .forward(&board_tensor, false)
             .double_value(&[])
-            .clamp(-1.0, 1.0);
-
-        value
+            .clamp(-1.0, 1.0)
     }
 
     /// Normalizes a game score to [-1, 1] range
@@ -246,7 +246,7 @@ impl<'a> ExpectimaxMCTS<'a> {
                 .unwrap_or(0);
 
             // Get first available tile for tensor creation
-            let first_tile = available_tiles.get(0).copied().unwrap_or(Tile(0, 0, 0));
+            let first_tile = available_tiles.first().copied().unwrap_or(Tile(0, 0, 0));
 
             return MCTSResult {
                 best_position,
@@ -265,6 +265,7 @@ impl<'a> ExpectimaxMCTS<'a> {
                 plateau: Some(plateau.clone()),
                 current_turn: Some(self.current_turn),
                 total_turns: Some(self.total_turns),
+                q_value_distribution: None,
             };
         }
 
@@ -286,22 +287,23 @@ impl<'a> ExpectimaxMCTS<'a> {
             plateau: Some(plateau.clone()),
             current_turn: Some(self.current_turn),
             total_turns: Some(self.total_turns),
+            q_value_distribution: None,
         }
     }
 
     /// Gets policy distribution from CNN for current board state
     fn get_policy_distribution(&self, plateau: &Plateau, deck: &Deck) -> Tensor {
-        let first_tile = deck.tiles.get(0).copied().unwrap_or(Tile(0, 0, 0));
+        let first_tile = deck.tiles.first().copied().unwrap_or(Tile(0, 0, 0));
 
         let input_tensor = match self.policy_net.arch {
-            NNArchitecture::CNN => convert_plateau_to_tensor(
+            NNArchitecture::Cnn => convert_plateau_to_tensor(
                 plateau,
                 &first_tile,
                 deck,
                 self.current_turn,
                 self.total_turns,
             ),
-            NNArchitecture::GNN => {
+            NNArchitecture::Gnn => {
                 convert_plateau_for_gnn(plateau, self.current_turn, self.total_turns)
             }
         };
@@ -361,10 +363,10 @@ mod tests {
     // #[test]
     // fn test_normalize_score() {
     //     let policy_net = PolicyNet {
-    //         arch: NNArchitecture::CNN,
+    //         arch: NNArchitecture::Cnn,
     //     };
     //     let value_net = ValueNet {
-    //         arch: NNArchitecture::CNN,
+    //         arch: NNArchitecture::Cnn,
     //     };
     //
     //     let engine = ExpectimaxMCTS::new(&policy_net, &value_net, 1.4, 0, 19);

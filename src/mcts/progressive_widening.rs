@@ -1,24 +1,3 @@
-///! Progressive Widening for MCTS
-///!
-///! Progressive Widening (PW) dynamically limits the number of actions explored
-///! based on the number of visits to a node. This technique is particularly effective
-///! for games with large branching factors like Take It Easy (19 positions × variable tiles).
-///!
-///! Key Formula: k(n) = C × n^α
-///! - n: number of visits to the current node
-///! - C: constant controlling initial exploration (default: 1.0-2.0)
-///! - α: parameter controlling widening rate (default: 0.25-0.5)
-///!   - α=0.25: Conservative widening (slow growth)
-///!   - α=0.5: Moderate widening (square root growth)
-///!   - α=1.0: Linear widening (aggressive)
-///!
-///! Benefits:
-///! - Reduces computational waste on unlikely actions
-///! - Focuses simulations on promising moves
-///! - Improves sample efficiency with limited simulation budget
-///! - Adapts exploration breadth to confidence level
-
-use std::collections::HashMap;
 
 /// Progressive Widening configuration
 #[derive(Debug, Clone)]
@@ -132,79 +111,6 @@ pub fn max_actions_to_explore(
 
 /// Select top-k actions based on policy scores or value estimates
 ///
-/// # Arguments
-/// * `actions` - List of available actions with their scores
-/// * `k` - Maximum number of actions to select
-///
-/// # Returns
-/// Vector of top-k actions sorted by descending score
-pub fn select_top_k_actions<T: Copy>(
-    actions: &[(T, f64)],
-    k: usize,
-) -> Vec<T> {
-    let mut sorted_actions: Vec<_> = actions.to_vec();
-
-    // Sort by score descending
-    sorted_actions.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    // Take top k
-    sorted_actions
-        .into_iter()
-        .take(k)
-        .map(|(action, _score)| action)
-        .collect()
-}
-
-/// Track action exploration statistics for Progressive Widening
-#[derive(Debug, Clone, Default)]
-pub struct ActionExplorationTracker {
-    /// Number of times each action has been explored
-    pub action_visits: HashMap<usize, usize>,
-    /// Total visits to the parent node
-    pub total_visits: usize,
-}
-
-impl ActionExplorationTracker {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Record a visit to an action
-    pub fn record_visit(&mut self, action: usize) {
-        *self.action_visits.entry(action).or_insert(0) += 1;
-        self.total_visits += 1;
-    }
-
-    /// Get the number of visits for a specific action
-    pub fn get_visits(&self, action: usize) -> usize {
-        *self.action_visits.get(&action).unwrap_or(&0)
-    }
-
-    /// Check if an action should be added to the tree
-    pub fn should_add_action(
-        &self,
-        available_actions: usize,
-        config: &ProgressiveWideningConfig,
-    ) -> bool {
-        let current_explored = self.action_visits.len();
-        let max_allowed = max_actions_to_explore(
-            self.total_visits,
-            available_actions,
-            config,
-        );
-
-        current_explored < max_allowed
-    }
-
-    /// Get the set of currently explored actions
-    pub fn explored_actions(&self) -> Vec<usize> {
-        self.action_visits.keys().copied().collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,58 +150,6 @@ mod tests {
             conservative_k < aggressive_k,
             "Conservative should explore fewer actions than aggressive"
         );
-    }
-
-    #[test]
-    fn test_select_top_k() {
-        let actions = vec![
-            (0, 0.1),
-            (1, 0.9),
-            (2, 0.3),
-            (3, 0.7),
-            (4, 0.5),
-        ];
-
-        let top3 = select_top_k_actions(&actions, 3);
-        assert_eq!(top3, vec![1, 3, 4]); // Scores: 0.9, 0.7, 0.5
-
-        let top2 = select_top_k_actions(&actions, 2);
-        assert_eq!(top2, vec![1, 3]); // Scores: 0.9, 0.7
-
-        let all = select_top_k_actions(&actions, 10);
-        assert_eq!(all.len(), 5); // Only 5 actions available
-    }
-
-    #[test]
-    fn test_action_exploration_tracker() {
-        let mut tracker = ActionExplorationTracker::new();
-        let config = ProgressiveWideningConfig::default();
-
-        // Initially, should add actions
-        assert!(tracker.should_add_action(19, &config));
-
-        // Add first action
-        tracker.record_visit(5);
-        assert_eq!(tracker.get_visits(5), 1);
-        assert_eq!(tracker.total_visits, 1);
-
-        // With 1 visit, can explore up to 3 actions (min_actions)
-        assert!(tracker.should_add_action(19, &config));
-
-        tracker.record_visit(10);
-        tracker.record_visit(15);
-
-        // Now have 3 actions explored with 3 total visits
-        // k(3) = 1.5 × 3^0.4 ≈ 2.3 → max(3, 2) = 3
-        // Already exploring 3 actions, so should not add more yet
-        assert!(!tracker.should_add_action(19, &config));
-
-        // After more visits, should allow more actions
-        for _ in 0..20 {
-            tracker.record_visit(5);
-        }
-        // Now total_visits = 23, k(23) ≈ 6.2 → can explore 6 actions
-        assert!(tracker.should_add_action(19, &config));
     }
 
     #[test]

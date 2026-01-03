@@ -165,6 +165,7 @@ fn mcts_core(
             plateau: Some(plateau.clone()),
             current_turn: Some(current_turn),
             total_turns: Some(total_turns),
+            q_value_distribution: None,
         };
     }
 
@@ -172,7 +173,7 @@ fn mcts_core(
         MctsEvaluator::Neural { policy_net, .. } => {
             let PolicyNet { arch, .. } = policy_net;
             match arch {
-                NNArchitecture::CNN => (
+                NNArchitecture::Cnn => (
                     convert_plateau_to_tensor(
                         plateau,
                         &chosen_tile,
@@ -182,7 +183,7 @@ fn mcts_core(
                     ),
                     None,
                 ),
-                NNArchitecture::GNN => {
+                NNArchitecture::Gnn => {
                     let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
@@ -217,6 +218,7 @@ fn mcts_core(
             plateau: Some(plateau.clone()),
             current_turn: Some(current_turn),
             total_turns: Some(total_turns),
+            q_value_distribution: None,
         };
     }
     let mut value_estimates: HashMap<usize, f64> = HashMap::new();
@@ -241,14 +243,14 @@ fn mcts_core(
 
                 // Créer le tenseur selon l'architecture (CNN ou GNN)
                 let board_tensor_temp = match policy_net.arch {
-                    NNArchitecture::CNN => convert_plateau_to_tensor(
+                    NNArchitecture::Cnn => convert_plateau_to_tensor(
                         &temp_plateau,
                         &chosen_tile,
                         &temp_deck,
                         current_turn,
                         total_turns,
                     ),
-                    NNArchitecture::GNN => {
+                    NNArchitecture::Gnn => {
                         convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
                     }
                 };
@@ -303,6 +305,7 @@ fn mcts_core(
                 for _ in 0..rollout_count {
                     total_simulated_score +=
                         simulate_games_smart(temp_plateau.clone(), temp_deck.clone(), None) as f64;
+                    // Note: clone needed here as temp_plateau/temp_deck used multiple times in loop
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
                 let normalized_value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
@@ -440,30 +443,27 @@ fn mcts_core(
             let mut total_simulated_score = 0.0;
 
             for _ in 0..rollout_count {
-                let lookahead_plateau = temp_plateau.clone();
-                let lookahead_deck = temp_deck.clone();
-
                 // 🔮 Étape 1.1 — Tirer une tuile hypothétique (T2)
-                if lookahead_deck.tiles.is_empty() {
+                if temp_deck.tiles.is_empty() {
                     continue;
                 }
-                let tile2_index = random_index(lookahead_deck.tiles.len());
-                let tile2 = lookahead_deck.tiles[tile2_index];
+                let tile2_index = random_index(temp_deck.tiles.len());
+                let tile2 = temp_deck.tiles[tile2_index];
 
                 // 🔍 Étape 1.2 — Simuler tous les placements possibles de cette tuile
-                let second_moves = get_legal_moves(&lookahead_plateau);
+                let second_moves = get_legal_moves(&temp_plateau);
 
                 let mut best_score_for_tile2: f64 = 0.0;
 
                 for &pos2 in &second_moves {
-                    let mut plateau2 = lookahead_plateau.clone();
-                    let mut deck2 = lookahead_deck.clone();
+                    let mut plateau2 = temp_plateau.clone();
+                    let mut deck2 = temp_deck.clone();
 
                     plateau2.tiles[pos2] = tile2;
                     deck2 = replace_tile_in_deck(&deck2, &tile2);
 
-                    // Pattern Rollouts V2: Smart heuristic-based simulation
-                    let score = simulate_games_smart(plateau2.clone(), deck2.clone(), None) as f64;
+                    // Pattern Rollouts V2: Smart heuristic-based simulation (moved ownership)
+                    let score = simulate_games_smart(plateau2, deck2, None) as f64;
                     best_score_for_tile2 = best_score_for_tile2.max(score);
                 }
 
@@ -606,6 +606,7 @@ fn mcts_core(
         plateau: Some(plateau.clone()),
         current_turn: Some(current_turn),
         total_turns: Some(total_turns),
+        q_value_distribution: None,
     }
 }
 
@@ -654,6 +655,7 @@ fn mcts_core_cow(
             plateau: Some(plateau.clone()),
             current_turn: Some(current_turn),
             total_turns: Some(total_turns),
+            q_value_distribution: None,
         };
     }
 
@@ -661,7 +663,7 @@ fn mcts_core_cow(
         MctsEvaluator::Neural { policy_net, .. } => {
             let PolicyNet { arch, .. } = policy_net;
             match arch {
-                NNArchitecture::CNN => (
+                NNArchitecture::Cnn => (
                     convert_plateau_to_tensor(
                         plateau,
                         &chosen_tile,
@@ -671,7 +673,7 @@ fn mcts_core_cow(
                     ),
                     None,
                 ),
-                NNArchitecture::GNN => {
+                NNArchitecture::Gnn => {
                     let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
@@ -709,14 +711,14 @@ fn mcts_core_cow(
 
                 // Create tensor based on architecture (CNN or GNN)
                 let board_tensor_temp = match policy_net.arch {
-                    NNArchitecture::CNN => convert_plateau_to_tensor(
+                    NNArchitecture::Cnn => convert_plateau_to_tensor(
                         &temp_plateau_cow.read(|p| p.clone()),
                         &chosen_tile,
                         &temp_deck_cow.read(|d| d.clone()),
                         current_turn,
                         total_turns,
                     ),
-                    NNArchitecture::GNN => {
+                    NNArchitecture::Gnn => {
                         let temp_plateau = temp_plateau_cow.read(|p| p.clone());
                         convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
                     }
@@ -865,7 +867,17 @@ fn mcts_core_cow(
         &pw_config,
     );
 
-    for _ in 0..adaptive_simulations {
+    // DEBUG: Log MCTS configuration on first simulation of first turn
+    let debug_first_turn = current_turn == 0;
+    if debug_first_turn {
+        log::info!("🔍 DEBUG MCTS turn 0:");
+        log::info!("   legal_moves.len()={}, max_actions={}, adaptive_simulations={}",
+            legal_moves.len(), max_actions, adaptive_simulations);
+        log::info!("   pruning_ratio={:.3}, value_threshold={:.3}, min_value={:.3}, max_value={:.3}",
+            pruning_ratio, value_threshold, min_value, max_value);
+    }
+
+    for sim_idx in 0..adaptive_simulations {
         let mut moves_with_prior: Vec<_> = legal_moves
             .iter()
             .filter(|&&pos| value_estimates[&pos] >= value_threshold)
@@ -881,6 +893,14 @@ fn mcts_core_cow(
             .take(top_k)
             .map(|&(pos, _)| pos)
             .collect();
+
+        // DEBUG: Log first simulation
+        if debug_first_turn && sim_idx == 0 {
+            log::info!("   First simulation: moves_with_prior.len()={}, top_k={}, subset_moves={:?}",
+                moves_with_prior.len(), top_k, subset_moves);
+            log::info!("   Policy probs (top 5): {:?}",
+                moves_with_prior.iter().take(5).map(|(pos, prob)| format!("pos{}:{:.4}", pos, prob)).collect::<Vec<_>>());
+        }
 
         // CRITICAL SECTION: Zero-Copy refactor
         // BEFORE: 8 expensive clones per iteration = 880,800 total operations
@@ -899,7 +919,13 @@ fn mcts_core_cow(
 
             let mut total_simulated_score = 0.0;
 
-            for _ in 0..rollout_count {
+            // CRITICAL FIX: Only run rollouts if rollout_count > 0
+            // Otherwise simulated_score = 0/0 = NaN, which propagates through combined_eval
+            // even when weight_rollout = 0.0 (because 0.0 * NaN = NaN in IEEE 754)
+            let simulated_score = if rollout_count == 0 {
+                0.0  // No rollouts = assume average value
+            } else {
+                for _ in 0..rollout_count {
                 // ✅ Cheap clone (Rc increment, was expensive Vec clone before)
                 let lookahead_plateau_cow = temp_plateau_cow.clone();
                 let lookahead_deck_cow = temp_deck_cow.clone();
@@ -946,7 +972,8 @@ fn mcts_core_cow(
                 total_simulated_score += best_score_for_tile2;
             }
 
-            let simulated_score = total_simulated_score / rollout_count as f64;
+                total_simulated_score / rollout_count as f64
+            };
 
             let visits = visit_counts.entry(position).or_insert(0);
             *visits += 1;
@@ -993,6 +1020,18 @@ fn mcts_core_cow(
         }
     }
 
+    // DEBUG: Log UCB scores before selection
+    if debug_first_turn {
+        let mut ucb_vec: Vec<(usize, f64)> = ucb_scores.iter().map(|(&pos, &score)| (pos, score)).collect();
+        ucb_vec.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        log::info!("   UCB scores (top 5): {:?}",
+            ucb_vec.iter().take(5).map(|(pos, score)| format!("pos{}:{:.4}", pos, score)).collect::<Vec<_>>());
+        log::info!("   Total visits: {}", total_visits);
+        let visits_vec: Vec<(usize, usize)> = visit_counts.iter().map(|(&pos, &count)| (pos, count)).collect();
+        log::info!("   Visit counts (first 5): {:?}",
+            visits_vec.iter().take(5).map(|(pos, count)| format!("pos{}:{}", pos, count)).collect::<Vec<_>>());
+    }
+
     let best_position = legal_moves
         .into_iter()
         .max_by(|&a, &b| {
@@ -1003,6 +1042,12 @@ fn mcts_core_cow(
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
         .unwrap_or(0);
+
+    // DEBUG: Log selected position
+    if debug_first_turn {
+        log::info!("   Selected best_position: {} with UCB score: {:.4}",
+            best_position, ucb_scores.get(&best_position).unwrap_or(&f64::NEG_INFINITY));
+    }
 
     // Final simulation using owned values (acceptable, happens once per move)
     let mut final_plateau = plateau.clone();
@@ -1083,7 +1128,68 @@ fn mcts_core_cow(
         plateau: Some(plateau.clone()),
         current_turn: Some(current_turn),
         total_turns: Some(total_turns),
+        q_value_distribution: None,
     }
+}
+
+/// Create policy distribution from Q-values using softmax with temperature.
+/// This allows the policy network to learn from rollout quality rather than visit counts.
+///
+/// # Arguments
+/// * `q_values` - HashMap mapping positions to their Q-values (average rollout scores)
+/// * `plateau_size` - Number of positions on the plateau
+/// * `temperature` - Controls how sharply to focus on high Q-values (0.5 = focused, 1.0 = smooth)
+///
+/// # Returns
+/// Tensor of shape [plateau_size] with softmax probabilities based on Q-values
+fn create_q_value_policy_target(
+    q_values: &HashMap<usize, f64>,
+    plateau_size: usize,
+    temperature: f64,
+) -> Tensor {
+    let mut policy = vec![0.0f32; plateau_size];
+
+    if q_values.is_empty() {
+        // Fallback: uniform distribution
+        let uniform_prob = 1.0 / plateau_size as f32;
+        policy.fill(uniform_prob);
+        return Tensor::from_slice(&policy);
+    }
+
+    // Extract Q-values for all positions
+    let positions: Vec<usize> = q_values.keys().copied().collect();
+    let q_vec: Vec<f64> = positions.iter().map(|&pos| *q_values.get(&pos).unwrap_or(&0.0)).collect();
+
+    if q_vec.is_empty() {
+        return Tensor::from_slice(&policy);
+    }
+
+    // Softmax with temperature: exp((Q - max_Q) / temperature) / sum(exp(...))
+    let max_q = q_vec.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let exp_q: Vec<f64> = q_vec
+        .iter()
+        .map(|&q| ((q - max_q) / temperature).exp())
+        .collect();
+    let sum_exp: f64 = exp_q.iter().sum();
+
+    // Avoid division by zero
+    if sum_exp < f64::EPSILON {
+        let uniform_prob = 1.0 / positions.len() as f32;
+        for &pos in &positions {
+            if pos < plateau_size {
+                policy[pos] = uniform_prob;
+            }
+        }
+    } else {
+        // Assign probabilities based on softmax
+        for (i, &pos) in positions.iter().enumerate() {
+            if pos < plateau_size {
+                policy[pos] = (exp_q[i] / sum_exp) as f32;
+            }
+        }
+    }
+
+    Tensor::from_slice(&policy)
 }
 
 /// Gumbel MCTS Core - Uses Gumbel noise instead of UCB for selection
@@ -1122,6 +1228,7 @@ fn mcts_core_gumbel(
             plateau: Some(plateau.clone()),
             current_turn: Some(current_turn),
             total_turns: Some(total_turns),
+            q_value_distribution: None,
         };
     }
 
@@ -1129,7 +1236,7 @@ fn mcts_core_gumbel(
         MctsEvaluator::Neural { policy_net, .. } => {
             let PolicyNet { arch, .. } = policy_net;
             match arch {
-                NNArchitecture::CNN => (
+                NNArchitecture::Cnn => (
                     convert_plateau_to_tensor(
                         plateau,
                         &chosen_tile,
@@ -1139,7 +1246,7 @@ fn mcts_core_gumbel(
                     ),
                     None,
                 ),
-                NNArchitecture::GNN => {
+                NNArchitecture::Gnn => {
                     let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
@@ -1171,14 +1278,14 @@ fn mcts_core_gumbel(
                 temp_deck = replace_tile_in_deck(&temp_deck, &chosen_tile);
 
                 let board_tensor_temp = match policy_net.arch {
-                    NNArchitecture::CNN => convert_plateau_to_tensor(
+                    NNArchitecture::Cnn => convert_plateau_to_tensor(
                         &temp_plateau,
                         &chosen_tile,
                         &temp_deck,
                         current_turn,
                         total_turns,
                     ),
-                    NNArchitecture::GNN => {
+                    NNArchitecture::Gnn => {
                         convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
                     }
                 };
@@ -1233,6 +1340,7 @@ fn mcts_core_gumbel(
                 for _ in 0..rollout_count {
                     total_simulated_score +=
                         simulate_games_smart(temp_plateau.clone(), temp_deck.clone(), None) as f64;
+                    // Note: clone needed here as temp_plateau/temp_deck used multiple times in loop
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
                 let normalized_value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
@@ -1303,26 +1411,23 @@ fn mcts_core_gumbel(
         let mut total_simulated_score = 0.0;
 
         for _ in 0..rollout_count {
-            let lookahead_plateau = temp_plateau.clone();
-            let lookahead_deck = temp_deck.clone();
-
-            if lookahead_deck.tiles.is_empty() {
+            if temp_deck.tiles.is_empty() {
                 continue;
             }
-            let tile2_index = random_index(lookahead_deck.tiles.len());
-            let tile2 = lookahead_deck.tiles[tile2_index];
+            let tile2_index = random_index(temp_deck.tiles.len());
+            let tile2 = temp_deck.tiles[tile2_index];
 
-            let second_moves = get_legal_moves(&lookahead_plateau);
+            let second_moves = get_legal_moves(&temp_plateau);
             let mut best_score_for_tile2: f64 = 0.0;
 
             for &pos2 in &second_moves {
-                let mut plateau2 = lookahead_plateau.clone();
-                let mut deck2 = lookahead_deck.clone();
+                let mut plateau2 = temp_plateau.clone();
+                let mut deck2 = temp_deck.clone();
 
                 plateau2.tiles[pos2] = tile2;
                 deck2 = replace_tile_in_deck(&deck2, &tile2);
 
-                let score = simulate_games_smart(plateau2.clone(), deck2.clone(), None) as f64;
+                let score = simulate_games_smart(plateau2, deck2, None) as f64;
                 best_score_for_tile2 = best_score_for_tile2.max(score);
             }
 
@@ -1408,6 +1513,13 @@ fn mcts_core_gumbel(
     let policy_distribution = Tensor::from_slice(&visit_distribution);
     let policy_distribution_boosted = policy_distribution.shallow_clone();
 
+    // Create Q-value based policy target (for training to learn from rollout quality)
+    let q_value_distribution = Some(create_q_value_policy_target(
+        &q_values,
+        plateau.tiles.len(),
+        0.5, // Temperature: 0.5 = focused on best moves
+    ));
+
     MCTSResult {
         best_position,
         board_tensor: input_tensor,
@@ -1419,6 +1531,7 @@ fn mcts_core_gumbel(
         plateau: Some(plateau.clone()),
         current_turn: Some(current_turn),
         total_turns: Some(total_turns),
+        q_value_distribution,
     }
 }
 
@@ -1467,6 +1580,7 @@ pub fn mcts_find_best_position_for_tile_uct(
             plateau: Some(plateau.clone()),
             current_turn: Some(current_turn),
             total_turns: Some(total_turns),
+            q_value_distribution: None,
         };
     }
 
@@ -1508,7 +1622,15 @@ pub fn mcts_find_best_position_for_tile_uct(
     // If exploration_priors provided, mix them with network policy:
     // mixed_prior = (1 - ε) * policy_prior + ε * dirichlet_noise
     if let Some(ref noise_vec) = exploration_priors {
-        let epsilon = 0.25; // Mix ratio: 75% policy + 25% noise
+        let epsilon = 0.5; // Mix ratio: 50% policy + 50% noise (STRENGTHENED to break circular learning)
+
+        // DEBUG: Log before mixing (only for first call)
+        let debug_first_call = current_turn == 0 && num_simulations == 150;
+        if debug_first_call {
+            log::info!("🔍 DEBUG MCTS Mixing (turn 0):");
+            log::info!("   Policy BEFORE mix: {:?}", policy_vec.iter().take(5).map(|v| format!("{:.3}", v)).collect::<Vec<_>>());
+        }
+
         for (idx, &pos) in legal_moves.iter().enumerate() {
             let noise_value = noise_vec.get(pos).copied().unwrap_or(0.0) as f64;
             policy_vec[idx] = (1.0 - epsilon) * policy_vec[idx] + epsilon * noise_value;
@@ -1519,6 +1641,11 @@ pub fn mcts_find_best_position_for_tile_uct(
             for prob in &mut policy_vec {
                 *prob /= sum_after_mix;
             }
+        }
+
+        // DEBUG: Log after mixing
+        if debug_first_call {
+            log::info!("   Policy AFTER mix: {:?}", policy_vec.iter().take(5).map(|v| format!("{:.3}", v)).collect::<Vec<_>>());
         }
     }
 
@@ -1604,10 +1731,23 @@ pub fn mcts_find_best_position_for_tile_uct(
         }
     }
 
+    // DEBUG: Log visit count distribution (only for first call)
+    let debug_first_call = current_turn == 0 && num_simulations == 150;
+    if debug_first_call {
+        let mut sorted_visits: Vec<(usize, usize)> = visit_counts.iter().map(|(&pos, &visits)| (pos, visits)).collect();
+        sorted_visits.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by visits descending
+        log::info!("🔍 DEBUG Visit Counts after {} simulations:", num_simulations);
+        log::info!("   Best position: {} with {} visits", best_position, max_visits);
+        log::info!("   Top 5 positions: {:?}", sorted_visits.iter().take(5).map(|(pos, v)| format!("pos{}:{}", pos, v)).collect::<Vec<_>>());
+        let visit_values: Vec<usize> = sorted_visits.iter().map(|(_, v)| *v).collect();
+        let avg_visits = visit_values.iter().sum::<usize>() as f64 / visit_values.len() as f64;
+        log::info!("   Visit avg: {:.1}, max: {}, min: {}", avg_visits, visit_values[0], visit_values[visit_values.len()-1]);
+    }
+
     // Create distribution based on visit counts
     let mut distribution = vec![0.0f32; plateau.tiles.len()];
     let total_visits: usize = visit_counts.values().sum();
-    
+
     if total_visits > 0 {
         for &pos in &legal_moves {
             let visits = visit_counts[&pos];
@@ -1629,5 +1769,6 @@ pub fn mcts_find_best_position_for_tile_uct(
         plateau: Some(plateau.clone()),
         current_turn: Some(current_turn),
         total_turns: Some(total_turns),
+        q_value_distribution: None,
     }
 }

@@ -5,14 +5,14 @@ use tch::{IndexOp, Kind, Tensor};
 
 #[allow(dead_code)]
 pub fn load_game_data(file_path: &str) -> Vec<MCTSResult> {
-    load_game_data_with_arch(file_path, NNArchitecture::CNN)
+    load_game_data_with_arch(file_path, NNArchitecture::Cnn)
 }
 
 pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MCTSResult> {
     // Ajouter le suffixe d'architecture au chemin
     let arch_suffix = match arch {
-        NNArchitecture::CNN => "_cnn",
-        NNArchitecture::GNN => "_gnn",
+        NNArchitecture::Cnn => "_cnn",
+        NNArchitecture::Gnn => "_gnn",
     };
     let prefixed_path = format!("{}{}", file_path, arch_suffix);
 
@@ -153,6 +153,7 @@ pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MC
             plateau: None,
             current_turn: None,
             total_turns: None,
+            q_value_distribution: None,
         });
     }
     println!("✅ Loaded {} game records.", data.len());

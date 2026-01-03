@@ -3,7 +3,6 @@
 /// Companion to PlateauCoW - same principle applied to Deck structure
 
 use crate::game::deck::Deck;
-use crate::game::tile::Tile;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -19,11 +18,6 @@ impl DeckCoW {
         Self {
             data: Rc::new(RefCell::new(deck)),
         }
-    }
-
-    /// Create full deck wrapped in CoW
-    pub fn new_full() -> Self {
-        Self::new(crate::game::create_deck::create_deck())
     }
 
     /// Clone the underlying data for modification
@@ -50,19 +44,9 @@ impl DeckCoW {
         f(&mut self.data.borrow_mut())
     }
 
-    /// Get tiles vector (for compatibility)
-    pub fn tiles(&self) -> Vec<Tile> {
-        self.read(|d| d.tiles.clone())
-    }
-
     /// Get number of tiles remaining
     pub fn len(&self) -> usize {
         self.read(|d| d.tiles.len())
-    }
-
-    /// Check if deck is empty
-    pub fn is_empty(&self) -> bool {
-        self.read(|d| d.tiles.is_empty())
     }
 
     /// Unwrap to get owned Deck (consumes the CoW wrapper)
@@ -94,7 +78,8 @@ mod tests {
 
     #[test]
     fn test_deck_cow_no_clone_on_read() {
-        let deck_cow = DeckCoW::new_full();
+        let deck = crate::game::create_deck::create_deck();
+        let deck_cow = DeckCoW::new(deck);
         let initial_count = deck_cow.ref_count();
 
         // Multiple reads should not increase ref count
@@ -106,7 +91,8 @@ mod tests {
 
     #[test]
     fn test_deck_cow_shared_read() {
-        let deck_cow = DeckCoW::new_full();
+        let deck = crate::game::create_deck::create_deck();
+        let deck_cow = DeckCoW::new(deck);
         let clone1 = deck_cow.clone();
         let clone2 = deck_cow.clone();
 
@@ -122,7 +108,8 @@ mod tests {
 
     #[test]
     fn test_deck_cow_clone_for_modification() {
-        let deck_cow = DeckCoW::new_full();
+        let deck = crate::game::create_deck::create_deck();
+        let deck_cow = DeckCoW::new(deck);
         let modified = deck_cow.clone_for_modification();
 
         // Independent wrappers

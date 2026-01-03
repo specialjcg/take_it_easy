@@ -75,6 +75,16 @@ struct Args {
     #[arg(long, default_value_t = false)]
     fresh_start: bool,
 
+    /// Use Q-value based policy targets instead of visit counts
+    /// This trains the policy network on rollout quality rather than visit frequency
+    #[arg(long, default_value_t = false)]
+    use_q_value_targets: bool,
+
+    /// Save generated training data to disk (format: {path}_cnn_states.pt, etc.)
+    /// Use this to generate quality data for supervised learning
+    #[arg(long)]
+    save_data_path: Option<String>,
+
     /// Output file for training history
     #[arg(long, default_value = "training_history.csv")]
     output: String,
@@ -84,6 +94,57 @@ struct TrainingExample {
     state: Tensor,
     policy_target: Vec<f32>,  // FIXED: Use visit distribution instead of argmax
     value_target: f32,
+}
+
+/// Save training data to disk in format compatible with load_game_data()
+fn save_training_data(
+    data: &[TrainingExample],
+    path: &str,
+    arch: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if data.is_empty() {
+        log::warn!("No data to save");
+        return Ok(());
+    }
+
+    let arch_suffix = match arch {
+        "CNN" => "_cnn",
+        "GNN" => "_gnn",
+        _ => "_cnn",
+    };
+    let prefixed_path = format!("{}{}", path, arch_suffix);
+
+    log::info!("💾 Saving {} training examples to {}...", data.len(), prefixed_path);
+
+    // Stack all state tensors into a single tensor [N, C, H, W]
+    let states: Vec<Tensor> = data.iter().map(|ex| ex.state.shallow_clone()).collect();
+    let states_tensor = Tensor::stack(&states, 0);
+
+    // Create positions tensor from policy targets (argmax of policy distribution)
+    let positions: Vec<i64> = data
+        .iter()
+        .map(|ex| {
+            ex.policy_target
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .map(|(idx, _)| idx as i64)
+                .unwrap_or(0)
+        })
+        .collect();
+    let positions_tensor = Tensor::from_slice(&positions);
+
+    // Create subscores tensor from value targets
+    let subscores: Vec<f64> = data.iter().map(|ex| ex.value_target as f64).collect();
+    let subscores_tensor = Tensor::from_slice(&subscores);
+
+    // Save tensors
+    states_tensor.save(&format!("{}_states.pt", prefixed_path))?;
+    positions_tensor.save(&format!("{}_positions.pt", prefixed_path))?;
+    subscores_tensor.save(&format!("{}_subscores.pt", prefixed_path))?;
+
+    log::info!("✅ Training data saved successfully");
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -154,9 +215,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.games_per_iter,
             args.mcts_simulations,
             args.seed + iteration as u64,
+            args.use_q_value_targets,
         )?;
 
         log::info!("   Generated {} training examples", training_data.len());
+
+        // Save training data if requested
+        if let Some(ref save_path) = args.save_data_path {
+            let iteration_path = format!("{}_{}", save_path, iteration);
+            save_training_data(&training_data, &iteration_path, &args.nn_architecture)?;
+        }
 
         // Step 2: Train on self-play data
         log::info!("\n🏋️ Phase 2: Training ({} epochs)", args.epochs_per_iter);
@@ -212,8 +280,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         previous_score = benchmark_mean;
 
-        // Step 5: Save checkpoint (weights are auto-saved by NeuralManager)
-        log::info!("\n💾 Checkpoint: weights auto-saved");
+        // Step 5: Save checkpoint
+        log::info!("\n💾 Saving checkpoint...");
+        manager.save_models()
+            .expect("Failed to save model weights");
+        log::info!("   ✅ Weights saved successfully");
     }
 
     log::info!("\n{}", "=".repeat(60));
@@ -229,6 +300,7 @@ fn generate_self_play_games(
     num_games: usize,
     mcts_sims: usize,
     seed: u64,
+    use_q_value_targets: bool,
 ) -> Result<Vec<TrainingExample>, Box<dyn std::error::Error>> {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut training_data = Vec::new();
@@ -308,35 +380,42 @@ fn generate_self_play_games(
             // Record training example
             let state_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &deck, turn, turns_per_game);
 
-            // FIXED: Use full visit distribution instead of argmax
-            // This allows the network to learn the full policy, not just winner-takes-all
-            let mut policy_dist: Vec<f32> = mcts_result.policy_distribution
-                .view([-1])
-                .try_into()
-                .expect("Failed to convert policy distribution to Vec<f32>");
-
             // ====================================================================
-            // TEMPERATURE SCALING - Sharpen visit distribution for stronger learning signal
+            // POLICY TARGET SELECTION - Q-values vs Visit Counts
             // ====================================================================
-            // Temperature < 1.0 sharpens the distribution (emphasizes top moves)
-            // This creates a stronger gradient signal for the policy network
-            let temperature = 0.5;  // 0.5 = strong sharpening
+            let policy_dist: Vec<f32> = if use_q_value_targets && mcts_result.q_value_distribution.is_some() {
+                // Use Q-value distribution (already has temperature=0.5 applied in create_q_value_policy_target)
+                // This trains policy on rollout QUALITY rather than visit frequency
+                mcts_result.q_value_distribution.as_ref().unwrap()
+                    .view([-1])
+                    .try_into()
+                    .expect("Failed to convert Q-value distribution to Vec<f32>")
+            } else {
+                // Fallback: Use visit counts with temperature sharpening
+                let mut policy_dist: Vec<f32> = mcts_result.policy_distribution
+                    .view([-1])
+                    .try_into()
+                    .expect("Failed to convert policy distribution to Vec<f32>");
 
-            // Apply temperature: p_i^(1/T)
-            let inv_temp = 1.0 / temperature;
-            for p in &mut policy_dist {
-                if *p > 0.0 {
-                    *p = p.powf(inv_temp);
-                }
-            }
-
-            // Renormalize to ensure it's a valid probability distribution
-            let sum: f32 = policy_dist.iter().sum();
-            if sum > 0.0 {
+                // Temperature < 1.0 sharpens the distribution (emphasizes top moves)
+                let temperature = 0.5;
+                let inv_temp = 1.0 / temperature;
                 for p in &mut policy_dist {
-                    *p /= sum;
+                    if *p > 0.0 {
+                        *p = p.powf(inv_temp);
+                    }
                 }
-            }
+
+                // Renormalize to ensure it's a valid probability distribution
+                let sum: f32 = policy_dist.iter().sum();
+                if sum > 0.0 {
+                    for p in &mut policy_dist {
+                        *p /= sum;
+                    }
+                }
+
+                policy_dist
+            };
 
             // Store for later (we'll assign value after game ends)
             training_data.push((state_tensor, policy_dist, 0.0));

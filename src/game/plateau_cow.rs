@@ -37,6 +37,7 @@ impl PlateauCoW {
     }
 
     /// Create empty plateau wrapped in CoW
+    #[cfg(test)]
     pub fn new_empty() -> Self {
         Self::new(crate::game::plateau::create_plateau_empty())
     }
@@ -79,13 +80,9 @@ impl PlateauCoW {
     }
 
     /// Get tile at position (convenience method)
+    #[cfg(test)]
     pub fn get_tile(&self, position: usize) -> Option<Tile> {
         self.read(|p| p.tiles.get(position).copied())
-    }
-
-    /// Get reference to tiles vector (for compatibility)
-    pub fn tiles(&self) -> Vec<Tile> {
-        self.read(|p| p.tiles.clone())
     }
 
     /// Unwrap to get owned Plateau (consumes the CoW wrapper)

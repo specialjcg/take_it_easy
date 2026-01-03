@@ -100,6 +100,12 @@ where
 #[derive(Clone)]
 pub struct SimpleCorsLayer;
 
+impl Default for SimpleCorsLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SimpleCorsLayer {
     pub fn new() -> Self {
         Self
@@ -303,8 +309,8 @@ mod tests {
 
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (5, 47, 1);
-        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
-        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::Cnn);
+        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::Cnn);
 
         let config = GrpcConfig::default();
         let server = GrpcServer::new(config, policy_net, value_net, 300, true);
@@ -324,8 +330,8 @@ mod tests {
 
         let vs = nn::VarStore::new(Device::Cpu);
         let input_dim = (5, 47, 1);
-        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::CNN);
-        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::CNN);
+        let policy_net = PolicyNet::new(&vs, input_dim, NNArchitecture::Cnn);
+        let value_net = ValueNet::new(&vs, input_dim, NNArchitecture::Cnn);
 
         let config = GrpcConfig {
             port: 9000,
