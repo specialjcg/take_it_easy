@@ -160,7 +160,7 @@ impl GraphPolicyNet {
     pub fn forward(&self, node_features: &Tensor, train: bool) -> Tensor {
         let h = self.encoder.forward(node_features, train);
         let logits = h.apply(&self.head).squeeze_dim(-1);
-        logits.softmax(-1, Kind::Float)
+        logits  // Return raw logits (softmax applied by MCTS/training code)
     }
 }
 

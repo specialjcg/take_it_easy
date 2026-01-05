@@ -76,7 +76,7 @@ const HEX_TO_GRID_MAP: [(usize, usize); GRAPH_NODE_COUNT] = [
 ];
 
 /// Line definitions: indices and orientation (0: horizontal, 1: diag1, 2: diag2)
-const LINE_DEFS: &[(&[usize], usize)] = &[
+pub const LINE_DEFS: &[(&[usize], usize)] = &[
     (&[0, 1, 2], 0),
     (&[3, 4, 5, 6], 0),
     (&[7, 8, 9, 10, 11], 0),
@@ -94,7 +94,7 @@ const LINE_DEFS: &[(&[usize], usize)] = &[
     (&[2, 6, 11], 2),
 ];
 
-const CHANNELS: usize = 9;  // Updated: added position ID channel
+const CHANNELS: usize = 8;  // GNN uses 8 channels (no position ID)
 const GRID_SIZE: usize = 5;
 
 pub fn convert_plateau_to_tensor(
@@ -104,14 +104,13 @@ pub fn convert_plateau_to_tensor(
     current_turn: usize,
     _total_turns: usize,
 ) -> Tensor {
-    // Encoding MUST match supervised_trainer exactly:
+    // Encoding MUST match supervised_trainer exactly (8 channels):
     // IMPORTANT: supervised_trainer treats plateau.tiles (19 hex cells) as LINEAR 5×5 grid
     // WITHOUT using HEX_TO_GRID_MAP! We must do the same for consistency.
     // Ch 0-2: Plateau tiles (value1, value2, value3) normalized /9
     // Ch 3: Empty cells mask (1.0 if empty)
     // Ch 4-6: Current tile to place (value1, value2, value3) /9 - BROADCAST to all cells
     // Ch 7: Turn progress (num_placed / 19)
-    // Ch 8: Position ID (0-18 normalized to 0.0-1.0)
 
     let mut features = vec![0.0f32; CHANNELS * GRID_SIZE * GRID_SIZE];
     let num_placed = plateau.tiles.iter().filter(|&&t| t != Tile(0, 0, 0)).count();
@@ -143,9 +142,6 @@ pub fn convert_plateau_to_tensor(
 
         // Turn progress (same for all cells)
         features[7 * GRID_SIZE * GRID_SIZE + grid_idx] = turn_progress;
-
-        // Position ID (normalized 0-18 → 0.0-1.0)
-        features[8 * GRID_SIZE * GRID_SIZE + grid_idx] = cell_idx as f32 / 18.0;
     }
 
     Tensor::from_slice(&features).view([1, CHANNELS as i64, GRID_SIZE as i64, GRID_SIZE as i64])

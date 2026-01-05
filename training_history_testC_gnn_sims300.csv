@@ -1,0 +1,4 @@
+iteration,policy_loss,value_loss,benchmark_score_mean,benchmark_score_std
+1,2.7792,0.1381,124.20,35.13
+2,2.7778,0.1327,114.51,36.30
+3,2.7713,0.1182,121.30,32.68
