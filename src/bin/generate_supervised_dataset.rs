@@ -140,8 +140,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 write!(writer, ",{}", encoded)?;
             }
 
-            // Write tile and position
-            writeln!(writer, ",{},{},{},{}", tile.0, tile.1, tile.2, position, final_score)?;
+            // Write tile, position, and final score
+            writeln!(writer, ",{},{},{},{},{}", tile.0, tile.1, tile.2, position, final_score)?;
             total_examples += 1;
         }
 

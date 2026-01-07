@@ -70,7 +70,7 @@ impl PolicyNet {
             },
             NNArchitecture::Gnn => Self {
                 arch,
-                net: PolicyNetImpl::Gnn(GraphPolicyNet::new(vs, input_dim.0, &[64, 64, 64], 0.1)),
+                net: PolicyNetImpl::Gnn(GraphPolicyNet::new(vs, 8, &[64, 64, 64], 0.1)),  // 8 features per node for GNN (matches training data)
             },
         }
     }
@@ -78,7 +78,26 @@ impl PolicyNet {
     pub fn forward(&self, input: &Tensor, train: bool) -> Tensor {
         match &self.net {
             PolicyNetImpl::Cnn(net) => net.forward(input, train),
-            PolicyNetImpl::Gnn(net) => net.forward(input, train),
+            PolicyNetImpl::Gnn(net) => {
+                // Handle both input shapes: [batch, 8, 5, 5] from MCTS or [batch, 19, 8] from supervised
+                let input_shape = input.size();
+                let reshaped = if input_shape.len() == 4 {
+                    // [batch, 8, 5, 5] -> [batch, 19, 8]
+                    let batch_size = input_shape[0];
+                    input
+                        .view([batch_size, 8, 25])
+                        .narrow(2, 0, 19)
+                        .permute(&[0, 2, 1])
+                } else {
+                    // Already [batch, 19, 8] or [batch, 8, 19], check and permute if needed
+                    if input_shape[1] == 8 {
+                        input.permute(&[0, 2, 1])  // [batch, 8, 19] -> [batch, 19, 8]
+                    } else {
+                        input.shallow_clone()  // Already [batch, 19, 8]
+                    }
+                };
+                net.forward(&reshaped, train)
+            },
         }
     }
 
@@ -266,7 +285,7 @@ impl ValueNet {
             },
             NNArchitecture::Gnn => Self {
                 arch,
-                net: ValueNetImpl::Gnn(GraphValueNet::new(vs, input_dim.0, &[64, 64, 64], 0.1)),
+                net: ValueNetImpl::Gnn(GraphValueNet::new(vs, 8, &[64, 64, 64], 0.1)),  // 8 features per node for GNN (matches training data)
             },
         }
     }
@@ -274,7 +293,26 @@ impl ValueNet {
     pub fn forward(&self, input: &Tensor, train: bool) -> Tensor {
         match &self.net {
             ValueNetImpl::Cnn(net) => net.forward(input, train),
-            ValueNetImpl::Gnn(net) => net.forward(input, train),
+            ValueNetImpl::Gnn(net) => {
+                // Handle both input shapes: [batch, 8, 5, 5] from MCTS or [batch, 19, 8] from supervised
+                let input_shape = input.size();
+                let reshaped = if input_shape.len() == 4 {
+                    // [batch, 8, 5, 5] -> [batch, 19, 8]
+                    let batch_size = input_shape[0];
+                    input
+                        .view([batch_size, 8, 25])
+                        .narrow(2, 0, 19)
+                        .permute(&[0, 2, 1])
+                } else {
+                    // Already [batch, 19, 8] or [batch, 8, 19], check and permute if needed
+                    if input_shape[1] == 8 {
+                        input.permute(&[0, 2, 1])  // [batch, 8, 19] -> [batch, 19, 8]
+                    } else {
+                        input.shallow_clone()  // Already [batch, 19, 8]
+                    }
+                };
+                net.forward(&reshaped, train)
+            },
         }
     }
 

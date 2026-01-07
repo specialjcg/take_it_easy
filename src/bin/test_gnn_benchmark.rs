@@ -11,7 +11,7 @@ use rand::SeedableRng;
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
-use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile;
+use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
 use take_it_easy::mcts::hyperparameters::MCTSHyperparameters;
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
@@ -51,8 +51,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load trained GNN (read-only, won't modify weights)
     log::info!("\n📂 Loading trained GNN...");
     let neural_config = NeuralConfig {
-        input_dim: (8, 5, 5),
-        nn_architecture: NNArchitecture::Gnn,
+        input_dim: (17, 5, 5),  // STOCHZERO: 17 channels (8 base + 9 bag awareness)
+        nn_architecture: NNArchitecture::Cnn,  // Using CNN architecture for StochZero
         policy_lr: 0.001,
         value_lr: 0.0001,
         ..Default::default()
@@ -82,14 +82,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let chosen_tile = available_tiles[rng.gen_range(0..available_tiles.len())];
 
             // Use GNN-guided MCTS
-            let mcts_result = mcts_find_best_position_for_tile(
+            let mcts_result = mcts_find_best_position_for_tile_with_nn(
                 &mut plateau,
                 &mut deck,
                 chosen_tile,
+                manager.policy_net(),
+                manager.value_net(),
                 args.simulations,
                 turn,
                 turns_per_game,
-                &manager,
                 Some(&hyperparams),
             );
 

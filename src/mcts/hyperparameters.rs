@@ -262,6 +262,114 @@ impl MCTSHyperparameters {
         }
     }
 
+    /// Calculate entropy-based adaptive CNN weight
+    ///
+    /// When GNN policy has low entropy (confident), use higher CNN weight
+    /// When GNN policy has high entropy (uncertain), use lower CNN weight
+    ///
+    /// Entropy formula: H = -Σ p_i * log(p_i)
+    /// - Uniform distribution (19 positions): H ≈ 2.944 (max entropy)
+    /// - Peaked distribution (confident): H ≈ 0.5-1.5 (low entropy)
+    ///
+    /// Returns adjusted (weight_cnn, weight_rollout) tuple
+    pub fn get_adaptive_cnn_weight(&self, policy_probs: &[f32]) -> (f64, f64) {
+        // Calculate Shannon entropy of policy distribution
+        let mut entropy = 0.0;
+        for &p in policy_probs.iter() {
+            if p > 1e-10 {
+                entropy -= (p as f64) * (p as f64).ln();
+            }
+        }
+
+        // Normalize entropy to [0, 1] range
+        // Max entropy for uniform over 19 positions: ln(19) ≈ 2.944
+        let max_entropy = (policy_probs.len() as f64).ln();
+        let normalized_entropy = (entropy / max_entropy).clamp(0.0, 1.0);
+
+        // Adaptive weight:
+        // - Low entropy (confident GNN): weight_cnn = 0.65, weight_rollout = 0.25
+        // - High entropy (uncertain GNN): weight_cnn = 0.25, weight_rollout = 0.65
+        let min_cnn_weight = 0.25;
+        let max_cnn_weight = 0.65;
+        let adaptive_cnn_weight = max_cnn_weight - normalized_entropy * (max_cnn_weight - min_cnn_weight);
+
+        // Keep other weights constant, adjust rollout to maintain sum = 1.0
+        let other_weights = self.weight_heuristic + self.weight_contextual;
+        let adaptive_rollout_weight = 1.0 - adaptive_cnn_weight - other_weights;
+
+        (adaptive_cnn_weight, adaptive_rollout_weight)
+    }
+
+    /// TURN-ADAPTIVE STRATEGY: Optimal weighting based on GNN confidence progression
+    ///
+    /// Analysis shows GNN confidence grows with game progression:
+    /// - Turn 0:  1.0x vs uniform (0.053 max prob) → GNN useless
+    /// - Turn 5:  3.2x vs uniform (0.172 max prob) → GNN weak
+    /// - Turn 10: 4.7x vs uniform (0.250 max prob) → GNN moderate
+    /// - Turn 15: 9.0x vs uniform (0.475 max prob) → GNN strong
+    ///
+    /// Strategy phases:
+    /// - Early (0-5):   Rollout-heavy (w_rollout=0.70, w_cnn=0.20)
+    /// - Mid (6-11):    Balanced      (w_rollout=0.45, w_cnn=0.45)
+    /// - Late (12+):    GNN-dominant  (w_rollout=0.15, w_cnn=0.75)
+    ///
+    /// Returns (weight_cnn, weight_rollout) for the given turn
+    pub fn get_turn_adaptive_weights(&self, current_turn: usize) -> (f64, f64) {
+        let other_weights = self.weight_heuristic + self.weight_contextual;
+
+        let (w_cnn, w_rollout) = if current_turn <= 5 {
+            // Early game: GNN weak (1-3x confidence) → Trust rollouts
+            (0.20, 0.70)
+        } else if current_turn <= 11 {
+            // Mid game: GNN moderate (3-5x confidence) → Balanced
+            (0.45, 0.45)
+        } else {
+            // Late game: GNN strong (5-9x confidence) → Trust GNN
+            (0.75, 0.15)
+        };
+
+        // Ensure weights sum to 1.0 with other weights
+        let total_adaptive = w_cnn + w_rollout;
+        let scale = (1.0 - other_weights) / total_adaptive;
+
+        (w_cnn * scale, w_rollout * scale)
+    }
+
+    /// HYBRID STRATEGY: Combines turn-based and entropy-based adaptation
+    ///
+    /// First applies turn-based weights, then fine-tunes with entropy
+    /// This gives us the best of both worlds:
+    /// - Turn-based: Coarse-grained phase strategy
+    /// - Entropy-based: Fine-grained confidence gating
+    ///
+    /// Returns (weight_cnn, weight_rollout) for the given turn and policy
+    pub fn get_hybrid_adaptive_weights(&self, current_turn: usize, policy_probs: &[f32]) -> (f64, f64) {
+        // Start with turn-based weights
+        let (base_w_cnn, base_w_rollout) = self.get_turn_adaptive_weights(current_turn);
+
+        // Calculate policy entropy for fine-tuning
+        let mut entropy = 0.0;
+        for &p in policy_probs.iter() {
+            if p > 1e-10 {
+                entropy -= (p as f64) * (p as f64).ln();
+            }
+        }
+
+        let max_entropy = (policy_probs.len() as f64).ln();
+        let normalized_entropy = (entropy / max_entropy).clamp(0.0, 1.0);
+
+        // If GNN is very uncertain (high entropy), reduce its weight further
+        // If GNN is very confident (low entropy), boost its weight
+        let entropy_factor = 1.0 - normalized_entropy * 0.3; // Max 30% adjustment
+        let adjusted_w_cnn = base_w_cnn * entropy_factor;
+
+        // Redistribute the difference to rollout
+        let other_weights = self.weight_heuristic + self.weight_contextual;
+        let adjusted_w_rollout = 1.0 - adjusted_w_cnn - other_weights;
+
+        (adjusted_w_cnn, adjusted_w_rollout.max(0.0))
+    }
+
     /// Validate that evaluation weights sum to approximately 1.0
     #[allow(dead_code)] // Used in binaries, not in lib
     pub fn validate_weights(&self) -> Result<(), String> {

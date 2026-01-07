@@ -21,6 +21,7 @@ use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_uct;
+use take_it_easy::neural::gnn::convert_plateau_for_gnn;
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
@@ -377,7 +378,8 @@ fn generate_self_play_games(
                 Some(exploration_priors), // Pass Dirichlet noise for exploration
             );
 
-            // Record training example
+            // Record training example (use architecture-aware tensor conversion)
+            // Both CNN and GNN use same encoding (includes tile), GNN reshapes in forward()
             let state_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &deck, turn, turns_per_game);
 
             // ====================================================================
@@ -460,6 +462,7 @@ fn train_on_data(
     batch_size: usize,
     device: Device,
 ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
+    let is_gnn = manager.config().nn_architecture == NNArchitecture::Gnn;
     let mut final_policy_loss = 0.0;
     let mut final_value_loss = 0.0;
 
@@ -469,9 +472,17 @@ fn train_on_data(
         let mut batch_count = 0;
 
         for batch in training_data.chunks(batch_size) {
-            // Prepare batch tensors
+            // Prepare batch tensors (use stack to add batch dimension)
             let states: Vec<&Tensor> = batch.iter().map(|ex| &ex.state).collect();
-            let states_batch = Tensor::cat(&states, 0).to_device(device);
+            let mut states_batch = Tensor::stack(&states, 0);
+
+            // GNN tensors have shape [1, 19, 8] which stacks to [batch, 1, 19, 8]
+            // Need to squeeze dimension 1 to get [batch, 19, 8]
+            if is_gnn {
+                states_batch = states_batch.squeeze_dim(1);
+            }
+
+            let states_batch = states_batch.to_device(device);
 
             // FIXED: Policy targets are now distributions, not indices
             let policy_targets_flat: Vec<f32> = batch.iter()

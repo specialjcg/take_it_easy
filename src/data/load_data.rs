@@ -48,7 +48,14 @@ pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MC
 
     // Load the saved tensors (with error handling)
     let state_tensor = match Tensor::load(&states_path) {
-        Ok(tensor) => tensor,
+        Ok(tensor) => {
+            // Fix: squeeze dimension 1 if shape is [N, 1, C, H, W] -> [N, C, H, W]
+            if tensor.size().len() == 5 && tensor.size()[1] == 1 {
+                tensor.squeeze_dim(1)
+            } else {
+                tensor
+            }
+        },
         Err(e) => {
             eprintln!("⚠️  Error loading states from '{}': {}. Returning empty dataset.", states_path, e);
             return Vec::new();

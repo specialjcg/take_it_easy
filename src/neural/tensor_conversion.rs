@@ -94,23 +94,26 @@ pub const LINE_DEFS: &[(&[usize], usize)] = &[
     (&[2, 6, 11], 2),
 ];
 
-const CHANNELS: usize = 8;  // GNN uses 8 channels (no position ID)
+// STOCHZERO: Extended channel count for bag awareness
+// Set to 8 for legacy encoding, 17 for StochZero with bag awareness
+const CHANNELS: usize = 17;  // 8 base + 9 bag features
 const GRID_SIZE: usize = 5;
 
 pub fn convert_plateau_to_tensor(
     plateau: &Plateau,
     tile: &Tile,
-    _deck: &Deck,
+    deck: &Deck,
     current_turn: usize,
     _total_turns: usize,
 ) -> Tensor {
-    // Encoding MUST match supervised_trainer exactly (8 channels):
-    // IMPORTANT: supervised_trainer treats plateau.tiles (19 hex cells) as LINEAR 5×5 grid
-    // WITHOUT using HEX_TO_GRID_MAP! We must do the same for consistency.
+    // STOCHZERO: Extended encoding with bag awareness (17 channels):
     // Ch 0-2: Plateau tiles (value1, value2, value3) normalized /9
     // Ch 3: Empty cells mask (1.0 if empty)
     // Ch 4-6: Current tile to place (value1, value2, value3) /9 - BROADCAST to all cells
     // Ch 7: Turn progress (num_placed / 19)
+    // Ch 8-10: Dir1 value counts [1, 5, 9] normalized /9 - BROADCAST
+    // Ch 11-13: Dir2 value counts [2, 6, 7] normalized /9 - BROADCAST
+    // Ch 14-16: Dir3 value counts [3, 4, 8] normalized /9 - BROADCAST
 
     let mut features = vec![0.0f32; CHANNELS * GRID_SIZE * GRID_SIZE];
     let num_placed = plateau.tiles.iter().filter(|&&t| t != Tile(0, 0, 0)).count();
@@ -144,7 +147,91 @@ pub fn convert_plateau_to_tensor(
         features[7 * GRID_SIZE * GRID_SIZE + grid_idx] = turn_progress;
     }
 
+    // STOCHZERO: Add bag awareness features (broadcast to all cells)
+    // Count remaining tiles by value for each direction
+    let bag_counts = compute_bag_value_counts(deck);
+
+    // Broadcast bag features to all 19 cells
+    for cell_idx in 0..plateau.tiles.len() {
+        let row = cell_idx / GRID_SIZE;
+        let col = cell_idx % GRID_SIZE;
+        let grid_idx = row * GRID_SIZE + col;
+
+        // Direction 1: values [1, 5, 9]
+        features[8 * GRID_SIZE * GRID_SIZE + grid_idx] = bag_counts.dir1[0];
+        features[9 * GRID_SIZE * GRID_SIZE + grid_idx] = bag_counts.dir1[1];
+        features[10 * GRID_SIZE * GRID_SIZE + grid_idx] = bag_counts.dir1[2];
+
+        // Direction 2: values [2, 6, 7]
+        features[11 * GRID_SIZE * GRID_SIZE + grid_idx] = bag_counts.dir2[0];
+        features[12 * GRID_SIZE * GRID_SIZE + grid_idx] = bag_counts.dir2[1];
+        features[13 * GRID_SIZE * GRID_SIZE + grid_idx] = bag_counts.dir2[2];
+
+        // Direction 3: values [3, 4, 8]
+        features[14 * GRID_SIZE * GRID_SIZE + grid_idx] = bag_counts.dir3[0];
+        features[15 * GRID_SIZE * GRID_SIZE + grid_idx] = bag_counts.dir3[1];
+        features[16 * GRID_SIZE * GRID_SIZE + grid_idx] = bag_counts.dir3[2];
+    }
+
     Tensor::from_slice(&features).view([1, CHANNELS as i64, GRID_SIZE as i64, GRID_SIZE as i64])
+}
+
+/// STOCHZERO: Compute value counts for each direction in the remaining deck
+struct BagValueCounts {
+    dir1: [f32; 3],  // Counts for [1, 5, 9] normalized /9
+    dir2: [f32; 3],  // Counts for [2, 6, 7] normalized /9
+    dir3: [f32; 3],  // Counts for [3, 4, 8] normalized /9
+}
+
+fn compute_bag_value_counts(deck: &Deck) -> BagValueCounts {
+    let mut counts_dir1 = [0u32; 3];  // [1, 5, 9]
+    let mut counts_dir2 = [0u32; 3];  // [2, 6, 7]
+    let mut counts_dir3 = [0u32; 3];  // [3, 4, 8]
+
+    for tile in &deck.tiles {
+        // Count direction 1 values
+        match tile.0 {
+            1 => counts_dir1[0] += 1,
+            5 => counts_dir1[1] += 1,
+            9 => counts_dir1[2] += 1,
+            _ => {}
+        }
+
+        // Count direction 2 values
+        match tile.1 {
+            2 => counts_dir2[0] += 1,
+            6 => counts_dir2[1] += 1,
+            7 => counts_dir2[2] += 1,
+            _ => {}
+        }
+
+        // Count direction 3 values
+        match tile.2 {
+            3 => counts_dir3[0] += 1,
+            4 => counts_dir3[1] += 1,
+            8 => counts_dir3[2] += 1,
+            _ => {}
+        }
+    }
+
+    // Normalize counts /9 (max possible count per value)
+    BagValueCounts {
+        dir1: [
+            counts_dir1[0] as f32 / 9.0,
+            counts_dir1[1] as f32 / 9.0,
+            counts_dir1[2] as f32 / 9.0,
+        ],
+        dir2: [
+            counts_dir2[0] as f32 / 9.0,
+            counts_dir2[1] as f32 / 9.0,
+            counts_dir2[2] as f32 / 9.0,
+        ],
+        dir3: [
+            counts_dir3[0] as f32 / 9.0,
+            counts_dir3[1] as f32 / 9.0,
+            counts_dir3[2] as f32 / 9.0,
+        ],
+    }
 }
 
 pub fn convert_plateau_to_graph_features(

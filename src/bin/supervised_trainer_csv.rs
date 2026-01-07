@@ -107,7 +107,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize neural network
     log::info!("\n🧠 Initializing {} neural network...", args.nn_architecture);
-    let input_channels = 8; // GNN uses 8 channels (no position ID needed)
+    let input_channels = 17; // STOCHZERO: 17 channels (8 base + 9 bag awareness)
 
     let neural_config = NeuralConfig {
         input_dim: (input_channels, 5, 5),
@@ -308,18 +308,18 @@ fn prepare_batch(
     device: Device,
 ) -> Result<(Tensor, Tensor, Tensor), Box<dyn Error>> {
     let batch_size = examples.len();
-    let input_channels = 8i64;
+    let input_channels = 17i64;  // STOCHZERO: 17 channels (was 8)
 
     // Prepare tensors
-    let mut states = vec![0.0f32; batch_size * 8 * 5 * 5];
+    let mut states = vec![0.0f32; batch_size * 17 * 5 * 5];
     let mut policy_targets = vec![0i64; batch_size];
     let mut value_targets = vec![0.0f32; batch_size];
 
     for (i, example) in examples.iter().enumerate() {
         // Encode state
         let state = encode_state(&example.plateau_state, &example.tile);
-        let offset = i * 8 * 5 * 5;
-        states[offset..offset + 8 * 5 * 5].copy_from_slice(&state);
+        let offset = i * 17 * 5 * 5;
+        states[offset..offset + 17 * 5 * 5].copy_from_slice(&state);
 
         // Policy target: position
         policy_targets[i] = example.position as i64;
@@ -329,9 +329,15 @@ fn prepare_batch(
         value_targets[i] = (example.final_score as f32) / 180.0;
     }
 
+    // STOCHZERO: CNN expects [batch, channels, height, width] = [batch, 17, 5, 5]
+    // For CNN: keep native 2D spatial format
     let state_tensor = Tensor::from_slice(&states)
         .view([batch_size as i64, input_channels, 5, 5])
         .to_device(device);
+
+    // TODO: Add GNN format support when needed:
+    // GNN expects [batch, nodes, features] = [batch, 19, input_channels]
+    // Would need: .view([batch, channels, 25]) -> .narrow(2, 0, 19) -> .permute([0, 2, 1])
 
     let policy_tensor = Tensor::from_slice(&policy_targets).to_device(device);
 
@@ -343,12 +349,15 @@ fn prepare_batch(
 }
 
 fn encode_state(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
-    // 8 channels: 3 for placed tiles, 1 for empty mask, 3 for current tile, 1 for turn progress
-    let mut state = vec![0.0f32; 8 * 5 * 5];
+    // STOCHZERO: 17 channels = 8 base + 9 bag awareness
+    // Base (8): tile values (3) + empty mask (1) + current tile (3) + turn (1)
+    // Bag (9): dir1 counts (3) + dir2 counts (3) + dir3 counts (3)
+    let mut state = vec![0.0f32; 17 * 5 * 5];
 
     let num_placed = plateau.iter().filter(|&&x| x != 0).count();
     let turn_progress = num_placed as f32 / 19.0;
 
+    // Base encoding (channels 0-7)
     for (pos, &encoded) in plateau.iter().enumerate() {
         let grid_idx = pos; // Direct mapping for 5x5 (19 positions)
 
@@ -373,6 +382,84 @@ fn encode_state(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
 
         // Turn progress
         state[7 * 25 + grid_idx] = turn_progress;
+    }
+
+    // STOCHZERO: Reconstruct remaining deck (channels 8-16)
+    // Create full deck and remove placed tiles + current tile
+    use take_it_easy::game::create_deck::create_deck;
+    use take_it_easy::game::tile::Tile;
+
+    let mut remaining_deck = create_deck();
+
+    // Remove placed tiles from deck
+    for &encoded in plateau.iter() {
+        if encoded != 0 {
+            let v1 = encoded / 100;
+            let v2 = (encoded % 100) / 10;
+            let v3 = encoded % 10;
+            let placed_tile = Tile(v1, v2, v3);
+
+            if let Some(idx) = remaining_deck.tiles().iter().position(|t| *t == placed_tile) {
+                remaining_deck.tiles_mut().remove(idx);
+            }
+        }
+    }
+
+    // Remove current tile from deck
+    let current_tile = Tile(tile.0, tile.1, tile.2);
+    if let Some(idx) = remaining_deck.tiles().iter().position(|t| *t == current_tile) {
+        remaining_deck.tiles_mut().remove(idx);
+    }
+
+    // Compute bag value counts
+    let mut counts_dir1 = [0u32; 3];  // [1, 5, 9]
+    let mut counts_dir2 = [0u32; 3];  // [2, 6, 7]
+    let mut counts_dir3 = [0u32; 3];  // [3, 4, 8]
+
+    for tile_in_deck in remaining_deck.tiles() {
+        // Count direction 1 values
+        match tile_in_deck.0 {
+            1 => counts_dir1[0] += 1,
+            5 => counts_dir1[1] += 1,
+            9 => counts_dir1[2] += 1,
+            _ => {}
+        }
+
+        // Count direction 2 values
+        match tile_in_deck.1 {
+            2 => counts_dir2[0] += 1,
+            6 => counts_dir2[1] += 1,
+            7 => counts_dir2[2] += 1,
+            _ => {}
+        }
+
+        // Count direction 3 values
+        match tile_in_deck.2 {
+            3 => counts_dir3[0] += 1,
+            4 => counts_dir3[1] += 1,
+            8 => counts_dir3[2] += 1,
+            _ => {}
+        }
+    }
+
+    // Broadcast bag features to all 19 cells (channels 8-16)
+    for pos in 0..19 {
+        let grid_idx = pos;
+
+        // Direction 1: [1, 5, 9] normalized /9
+        state[8 * 25 + grid_idx] = counts_dir1[0] as f32 / 9.0;
+        state[9 * 25 + grid_idx] = counts_dir1[1] as f32 / 9.0;
+        state[10 * 25 + grid_idx] = counts_dir1[2] as f32 / 9.0;
+
+        // Direction 2: [2, 6, 7] normalized /9
+        state[11 * 25 + grid_idx] = counts_dir2[0] as f32 / 9.0;
+        state[12 * 25 + grid_idx] = counts_dir2[1] as f32 / 9.0;
+        state[13 * 25 + grid_idx] = counts_dir2[2] as f32 / 9.0;
+
+        // Direction 3: [3, 4, 8] normalized /9
+        state[14 * 25 + grid_idx] = counts_dir3[0] as f32 / 9.0;
+        state[15 * 25 + grid_idx] = counts_dir3[1] as f32 / 9.0;
+        state[16 * 25 + grid_idx] = counts_dir3[2] as f32 / 9.0;
     }
 
     state

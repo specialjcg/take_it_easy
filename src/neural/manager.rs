@@ -56,7 +56,10 @@ pub struct NeuralConfig {
 impl Default for NeuralConfig {
     fn default() -> Self {
         Self {
-            input_dim: (9, 5, 5), // 9 channels (tile values + empty mask + current tile + turn + position ID) × 5×5 spatial grid
+            // STOCHZERO: 17 channels = 8 base + 9 bag awareness
+            // Base (8): tile values (3) + empty mask (1) + current tile (3) + turn (1)
+            // Bag (9): dir1 counts (3) + dir2 counts (3) + dir3 counts (3)
+            input_dim: (17, 5, 5),
             device: Device::Cpu,
             model_path: "model_weights".to_string(),
             policy_lr: 1e-3,

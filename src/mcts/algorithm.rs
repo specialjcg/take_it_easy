@@ -26,6 +26,24 @@ use crate::utils::random_index::random_index;
 use std::collections::HashMap;
 use tch::{IndexOp, Kind, Tensor};
 
+/// Helper function to convert plateau to tensor based on architecture
+fn convert_plateau_by_arch(
+    arch: NNArchitecture,
+    plateau: &Plateau,
+    chosen_tile: &Tile,
+    deck: &Deck,
+    current_turn: usize,
+    total_turns: usize,
+) -> Tensor {
+    match arch {
+        NNArchitecture::Cnn => convert_plateau_to_tensor(plateau, chosen_tile, deck, current_turn, total_turns),
+        NNArchitecture::Gnn => {
+            // GNN uses same encoding as CNN (includes tile), then reshaped to [batch, 19, 8]
+            convert_plateau_to_tensor(plateau, chosen_tile, deck, current_turn, total_turns)
+        },
+    }
+}
+
 /// Evaluator used by the MCTS algorithm to rank candidate moves.
 pub enum MctsEvaluator<'a> {
     Neural {
@@ -142,6 +160,12 @@ fn mcts_core(
     total_turns: usize,
     hyperparams: &MCTSHyperparameters,
 ) -> MCTSResult {
+    // Extract architecture from evaluator
+    let arch = match &evaluator {
+        MctsEvaluator::Neural { policy_net, .. } => policy_net.arch,
+        MctsEvaluator::Pure => NNArchitecture::Cnn, // default
+    };
+
     let legal_moves = get_legal_moves(plateau);
     if legal_moves.is_empty() {
         let distribution_len = plateau.tiles.len() as i64;
@@ -150,7 +174,8 @@ fn mcts_core(
         let policy_distribution_boosted = policy_distribution.shallow_clone();
         return MCTSResult {
             best_position: 0,
-            board_tensor: convert_plateau_to_tensor(
+            board_tensor: convert_plateau_by_arch(
+                arch,
                 plateau,
                 &chosen_tile,
                 deck,
@@ -203,7 +228,8 @@ fn mcts_core(
         let policy_distribution_boosted = policy_distribution.shallow_clone();
         return MCTSResult {
             best_position: 0,
-            board_tensor: convert_plateau_to_tensor(
+            board_tensor: convert_plateau_by_arch(
+                arch,
                 plateau,
                 &chosen_tile,
                 deck,
@@ -225,6 +251,51 @@ fn mcts_core(
     let mut min_value = f64::INFINITY;
     let mut max_value = f64::NEG_INFINITY;
     let mut sum_values = 0.0;
+
+    // ADAPTIVE ENTROPY WEIGHTING: Calculate policy entropy for dynamic weight adjustment
+    let adaptive_weights = match evaluator {
+        MctsEvaluator::Neural { policy_net, .. } => {
+            let policy_logits = policy_net.forward(&input_tensor, false);
+            let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
+
+            // Extract policy probabilities for entropy calculation
+            let policy_probs: Vec<f32> = policy.view([-1]).try_into().unwrap_or_else(|_| vec![]);
+
+            if !policy_probs.is_empty() {
+                // HYBRID STRATEGY: Turn-adaptive + Entropy-based
+                let (w_cnn, w_rollout) = hyperparams.get_hybrid_adaptive_weights(current_turn, &policy_probs);
+
+                // Log adaptive weights at key turns (0, 5, 10, 15) to track strategy
+                let debug_turns = [0, 5, 10, 15];
+                if debug_turns.contains(&current_turn) {
+                    // Calculate entropy for logging
+                    let mut entropy = 0.0;
+                    for &p in &policy_probs {
+                        if p > 1e-10 {
+                            entropy -= (p as f64) * (p as f64).ln();
+                        }
+                    }
+                    let max_entropy = (policy_probs.len() as f64).ln();
+                    let normalized_entropy = (entropy / max_entropy).clamp(0.0, 1.0);
+
+                    // Compare strategies
+                    let (turn_w_cnn, turn_w_rollout) = hyperparams.get_turn_adaptive_weights(current_turn);
+                    let (entropy_w_cnn, entropy_w_rollout) = hyperparams.get_adaptive_cnn_weight(&policy_probs);
+
+                    log::info!("🎯 ADAPTIVE STRATEGY COMPARISON (turn {}):", current_turn);
+                    log::info!("   Entropy: {:.3} (normalized: {:.3})", entropy, normalized_entropy);
+                    log::info!("   Turn-only:    w_cnn={:.3}, w_rollout={:.3}", turn_w_cnn, turn_w_rollout);
+                    log::info!("   Entropy-only: w_cnn={:.3}, w_rollout={:.3}", entropy_w_cnn, entropy_w_rollout);
+                    log::info!("   HYBRID:       w_cnn={:.3}, w_rollout={:.3} ← ACTIVE", w_cnn, w_rollout);
+                }
+
+                Some((w_cnn, w_rollout))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
 
     let (policy, entropy_factor) = match evaluator {
         MctsEvaluator::Neural {
@@ -501,8 +572,10 @@ fn mcts_core(
             .clamp(-1.0, 1.0);
 
             // Pattern Rollouts V2: Weighted combination of evaluators
-            let combined_eval = hyperparams.weight_cnn * normalized_value
-                + hyperparams.weight_rollout * normalized_rollout
+            // Use adaptive weights if available (entropy-based), otherwise use fixed hyperparams
+            let (w_cnn, w_rollout) = adaptive_weights.unwrap_or((hyperparams.weight_cnn, hyperparams.weight_rollout));
+            let combined_eval = w_cnn * normalized_value
+                + w_rollout * normalized_rollout
                 + hyperparams.weight_heuristic * normalized_heuristic
                 + hyperparams.weight_contextual * contextual;
 
@@ -628,6 +701,12 @@ fn mcts_core_cow(
     total_turns: usize,
     hyperparams: &MCTSHyperparameters,
 ) -> MCTSResult {
+    // Extract architecture from evaluator
+    let arch = match &evaluator {
+        MctsEvaluator::Neural { policy_net, .. } => policy_net.arch,
+        MctsEvaluator::Pure => NNArchitecture::Cnn, // default
+    };
+
     // Extract owned Plateau/Deck for read-only operations that need them
     let plateau = &plateau_cow.read(|p| p.clone());
     let deck = &deck_cow.read(|d| d.clone());
@@ -640,7 +719,8 @@ fn mcts_core_cow(
         let policy_distribution_boosted = policy_distribution.shallow_clone();
         return MCTSResult {
             best_position: 0,
-            board_tensor: convert_plateau_to_tensor(
+            board_tensor: convert_plateau_by_arch(
+                arch,
                 plateau,
                 &chosen_tile,
                 deck,
@@ -695,6 +775,51 @@ fn mcts_core_cow(
     let mut min_value = f64::MAX;
     let mut max_value = f64::MIN;
     let mut sum_values = 0.0;
+
+    // ADAPTIVE ENTROPY WEIGHTING: Calculate policy entropy for dynamic weight adjustment
+    let adaptive_weights = match evaluator {
+        MctsEvaluator::Neural { policy_net, .. } => {
+            let policy_logits = policy_net.forward(&input_tensor, false);
+            let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
+
+            // Extract policy probabilities for entropy calculation
+            let policy_probs: Vec<f32> = policy.view([-1]).try_into().unwrap_or_else(|_| vec![]);
+
+            if !policy_probs.is_empty() {
+                // HYBRID STRATEGY: Turn-adaptive + Entropy-based
+                let (w_cnn, w_rollout) = hyperparams.get_hybrid_adaptive_weights(current_turn, &policy_probs);
+
+                // Log adaptive weights at key turns (0, 5, 10, 15) to track strategy
+                let debug_turns = [0, 5, 10, 15];
+                if debug_turns.contains(&current_turn) {
+                    // Calculate entropy for logging
+                    let mut entropy = 0.0;
+                    for &p in &policy_probs {
+                        if p > 1e-10 {
+                            entropy -= (p as f64) * (p as f64).ln();
+                        }
+                    }
+                    let max_entropy = (policy_probs.len() as f64).ln();
+                    let normalized_entropy = (entropy / max_entropy).clamp(0.0, 1.0);
+
+                    // Compare strategies
+                    let (turn_w_cnn, turn_w_rollout) = hyperparams.get_turn_adaptive_weights(current_turn);
+                    let (entropy_w_cnn, entropy_w_rollout) = hyperparams.get_adaptive_cnn_weight(&policy_probs);
+
+                    log::info!("🎯 ADAPTIVE STRATEGY COMPARISON (turn {}):", current_turn);
+                    log::info!("   Entropy: {:.3} (normalized: {:.3})", entropy, normalized_entropy);
+                    log::info!("   Turn-only:    w_cnn={:.3}, w_rollout={:.3}", turn_w_cnn, turn_w_rollout);
+                    log::info!("   Entropy-only: w_cnn={:.3}, w_rollout={:.3}", entropy_w_cnn, entropy_w_rollout);
+                    log::info!("   HYBRID:       w_cnn={:.3}, w_rollout={:.3} ← ACTIVE", w_cnn, w_rollout);
+                }
+
+                Some((w_cnn, w_rollout))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
 
     let (policy, _policy_entropy) = match evaluator {
         MctsEvaluator::Neural {
@@ -1003,8 +1128,13 @@ fn mcts_core_cow(
                 0.5,
             );
 
-            let combined_eval = hyperparams.weight_cnn * normalized_value
-                + hyperparams.weight_rollout * normalized_rollout
+            // HYBRID ADAPTIVE WEIGHTS: Use turn-based + entropy-based strategy
+            // Early game (0-5):   20% GNN,  70% rollout (GNN weak, trust rollouts)
+            // Mid game (6-11):    45% GNN,  45% rollout (balanced)
+            // Late game (12+):    75% GNN,  15% rollout (GNN strong, trust policy)
+            let (w_cnn, w_rollout) = adaptive_weights.unwrap_or((hyperparams.weight_cnn, hyperparams.weight_rollout));
+            let combined_eval = w_cnn * normalized_value
+                + w_rollout * normalized_rollout
                 + hyperparams.weight_heuristic * normalized_heuristic
                 + hyperparams.weight_contextual * contextual;
 
@@ -1205,6 +1335,12 @@ fn mcts_core_gumbel(
 ) -> MCTSResult {
     use crate::mcts::gumbel_selection::{gumbel_select, GumbelSelector};
 
+    // Extract architecture from evaluator
+    let arch = match &evaluator {
+        MctsEvaluator::Neural { policy_net, .. } => policy_net.arch,
+        MctsEvaluator::Pure => NNArchitecture::Cnn, // default
+    };
+
     let legal_moves = get_legal_moves(plateau);
     if legal_moves.is_empty() {
         let distribution_len = plateau.tiles.len() as i64;
@@ -1213,7 +1349,8 @@ fn mcts_core_gumbel(
         let policy_distribution_boosted = policy_distribution.shallow_clone();
         return MCTSResult {
             best_position: 0,
-            board_tensor: convert_plateau_to_tensor(
+            board_tensor: convert_plateau_by_arch(
+                arch,
                 plateau,
                 &chosen_tile,
                 deck,
@@ -1558,6 +1695,9 @@ pub fn mcts_find_best_position_for_tile_uct(
     let default_hyperparams = MCTSHyperparameters::default();
     let hyperparams = hyperparams.unwrap_or(&default_hyperparams);
 
+    // Extract architecture from policy_net
+    let arch = policy_net.arch;
+
     let legal_moves = get_legal_moves(plateau);
     if legal_moves.is_empty() {
         let distribution_len = plateau.tiles.len() as i64;
@@ -1565,7 +1705,8 @@ pub fn mcts_find_best_position_for_tile_uct(
             Tensor::zeros([distribution_len], (Kind::Float, tch::Device::Cpu));
         return MCTSResult {
             best_position: 0,
-            board_tensor: convert_plateau_to_tensor(
+            board_tensor: convert_plateau_by_arch(
+                arch,
                 plateau,
                 &chosen_tile,
                 deck,
@@ -1585,7 +1726,8 @@ pub fn mcts_find_best_position_for_tile_uct(
     }
 
     // Get policy and value priors from neural networks
-    let input_tensor = convert_plateau_to_tensor(
+    let input_tensor = convert_plateau_by_arch(
+        arch,
         plateau,
         &chosen_tile,
         deck,
@@ -1624,10 +1766,11 @@ pub fn mcts_find_best_position_for_tile_uct(
     if let Some(ref noise_vec) = exploration_priors {
         let epsilon = 0.5; // Mix ratio: 50% policy + 50% noise (STRENGTHENED to break circular learning)
 
-        // DEBUG: Log before mixing (only for first call)
-        let debug_first_call = current_turn == 0 && num_simulations == 150;
-        if debug_first_call {
-            log::info!("🔍 DEBUG MCTS Mixing (turn 0):");
+        // DEBUG: Log policy evolution across game (turn 0, 5, 10, 15)
+        let debug_turns = [0, 5, 10, 15];
+        let should_log = debug_turns.contains(&current_turn) && num_simulations == 150;
+        if should_log {
+            log::info!("🔍 DEBUG MCTS Mixing (turn {}):", current_turn);
             log::info!("   Policy BEFORE mix: {:?}", policy_vec.iter().take(5).map(|v| format!("{:.3}", v)).collect::<Vec<_>>());
         }
 
@@ -1644,15 +1787,30 @@ pub fn mcts_find_best_position_for_tile_uct(
         }
 
         // DEBUG: Log after mixing
-        if debug_first_call {
+        if should_log {
             log::info!("   Policy AFTER mix: {:?}", policy_vec.iter().take(5).map(|v| format!("{:.3}", v)).collect::<Vec<_>>());
+        }
+    }
+
+    // LOG ADAPTIVE WEIGHTING STRATEGY
+    let debug_turns = [0, 5, 10, 15];
+    if debug_turns.contains(&current_turn) && num_simulations == 150 {
+        let (w_cnn, w_rollout) = hyperparams.get_turn_adaptive_weights(current_turn);
+        log::info!("🎯 TURN-ADAPTIVE WEIGHTS (turn {}):", current_turn);
+        log::info!("   w_cnn={:.3}, w_rollout={:.3}", w_cnn, w_rollout);
+        if current_turn <= 5 {
+            log::info!("   Phase: EARLY GAME (rollout-heavy, GNN weak)");
+        } else if current_turn <= 11 {
+            log::info!("   Phase: MID GAME (balanced)");
+        } else {
+            log::info!("   Phase: LATE GAME (GNN-dominant)");
         }
     }
 
     // Initialize UCT statistics
     let mut visit_counts: HashMap<usize, usize> = HashMap::new();
     let mut total_values: HashMap<usize, f64> = HashMap::new();
-    
+
     for &pos in &legal_moves {
         visit_counts.insert(pos, 0);
         total_values.insert(pos, 0.0);
@@ -1696,23 +1854,23 @@ pub fn mcts_find_best_position_for_tile_uct(
         temp_plateau.tiles[best_position] = chosen_tile;
         temp_deck = replace_tile_in_deck(&temp_deck, &chosen_tile);
 
-        // Run rollouts to estimate value
-        let rollout_count = 5; // Fixed for simplicity
-        let mut rollout_sum = 0.0;
+        // HEX-AWARE HEURISTIC EVALUATION (No rollouts! Fast!)
+        // Q = immediate_score + completion_potential + hex_degree_bonus
 
-        for _ in 0..rollout_count {
-            let score = simulate_games_smart(
-                temp_plateau.clone(),
-                temp_deck.clone(),
-                None,  // Pure rollout, no policy
-            );
-            rollout_sum += score as f64;
-        }
+        // 1. Calculate immediate score from placing tile
+        let immediate_score = calculate_score_for_plateau(&temp_plateau);
+        let base_score = calculate_score_for_plateau(plateau);
+        let score_gain = (immediate_score - base_score) as f64;
 
-        let rollout_value = rollout_sum / rollout_count as f64;
-        
-        // Normalize to [-1, 1]
-        let normalized_value = ((rollout_value / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+        // 2. Completion potential: count lines that are 2/3+ filled with same value
+        let completion_potential = calculate_line_completion_potential(&temp_plateau, current_turn, total_turns);
+
+        // 3. Hex degree bonus: center positions touch more lines (weight: 1-6)
+        let hex_degree = get_hex_degree(best_position) as f64 / 6.0;  // Normalize to [0,1]
+
+        // Combined Q-value (normalized to [-1, 1] range)
+        let q_value = (score_gain * 0.5) + (completion_potential * 0.3) + (hex_degree * 0.2);
+        let normalized_value = (q_value / 100.0).clamp(-1.0, 1.0);
 
         // Update statistics
         *visit_counts.get_mut(&best_position).unwrap() += 1;
@@ -1731,9 +1889,10 @@ pub fn mcts_find_best_position_for_tile_uct(
         }
     }
 
-    // DEBUG: Log visit count distribution (only for first call)
-    let debug_first_call = current_turn == 0 && num_simulations == 150;
-    if debug_first_call {
+    // DEBUG: Log visit count distribution (turns 0, 5, 10, 15)
+    let debug_turns = [0, 5, 10, 15];
+    let should_log_visits = debug_turns.contains(&current_turn) && num_simulations == 150;
+    if should_log_visits {
         let mut sorted_visits: Vec<(usize, usize)> = visit_counts.iter().map(|(&pos, &visits)| (pos, visits)).collect();
         sorted_visits.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by visits descending
         log::info!("🔍 DEBUG Visit Counts after {} simulations:", num_simulations);
@@ -1771,4 +1930,80 @@ pub fn mcts_find_best_position_for_tile_uct(
         total_turns: Some(total_turns),
         q_value_distribution: None,
     }
+}
+
+// ============================================================================
+// HEX-AWARE HEURISTIC HELPERS (No rollouts!)
+// ============================================================================
+
+/// Calculate current score for a plateau state
+fn calculate_score_for_plateau(plateau: &Plateau) -> i32 {
+    result(plateau)
+}
+
+/// Calculate line completion potential: how close are we to completing valuable lines?
+/// Returns a score [0-100] based on lines that are 2/3+ filled with same value
+fn calculate_line_completion_potential(plateau: &Plateau, _current_turn: usize, _total_turns: usize) -> f64 {
+    use crate::neural::tensor_conversion::LINE_DEFS;
+
+    let mut potential = 0.0;
+
+    for (positions, orientation) in LINE_DEFS {
+        if positions.len() < 3 {
+            continue; // Need at least 3 tiles for scoring
+        }
+
+        let mut counts = [0usize; 10]; // Count tiles 0-9
+        let mut filled = 0usize;
+
+        for &pos in *positions {
+            let tile = plateau.tiles[pos];
+            if tile == Tile(0, 0, 0) {
+                continue; // Empty
+            }
+            filled += 1;
+            let value = match orientation {
+                0 => tile.0,
+                1 => tile.1,
+                2 => tile.2,
+                _ => 0,
+            };
+            if value > 0 && (value as usize) < counts.len() {
+                counts[value as usize] += 1;
+            }
+        }
+
+        // Check if line is 2/3+ filled
+        let fill_ratio = filled as f64 / positions.len() as f64;
+        if fill_ratio >= 0.66 {
+            // Find max count
+            let max_count = counts.iter().max().copied().unwrap_or(0);
+            if max_count >= 2 {
+                // Line has potential! Weight by fill ratio and max count
+                let value_score = match max_count {
+                    2 => 5.0,   // Potential for small line
+                    3 => 15.0,  // Potential for medium line
+                    4 => 30.0,  // Potential for large line
+                    _ => 50.0,  // Potential for full line
+                };
+                potential += value_score * fill_ratio;
+            }
+        }
+    }
+
+    potential
+}
+
+/// Get hex degree: number of lines passing through a position
+/// Center: 6 lines, Mid-ring: 4-5 lines, Edges: 2-3 lines
+fn get_hex_degree(position: usize) -> usize {
+    use crate::neural::tensor_conversion::LINE_DEFS;
+
+    let mut degree = 0;
+    for (positions, _) in LINE_DEFS {
+        if positions.contains(&position) {
+            degree += 1;
+        }
+    }
+    degree
 }
