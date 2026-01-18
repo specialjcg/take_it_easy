@@ -25,6 +25,8 @@ use take_it_easy::scoring::scoring::result;
 pub enum NnArchitectureCli {
     Cnn,
     Gnn,
+    #[value(name = "cnn-onehot")]
+    CnnOnehot,
 }
 
 impl From<NnArchitectureCli> for take_it_easy::neural::manager::NNArchitecture {
@@ -32,6 +34,7 @@ impl From<NnArchitectureCli> for take_it_easy::neural::manager::NNArchitecture {
         match cli {
             NnArchitectureCli::Cnn => take_it_easy::neural::manager::NNArchitecture::Cnn,
             NnArchitectureCli::Gnn => take_it_easy::neural::manager::NNArchitecture::Gnn,
+            NnArchitectureCli::CnnOnehot => take_it_easy::neural::manager::NNArchitecture::CnnOnehot,
         }
     }
 }
@@ -41,6 +44,7 @@ impl fmt::Display for NnArchitectureCli {
         match self {
             NnArchitectureCli::Cnn => write!(f, "cnn"),
             NnArchitectureCli::Gnn => write!(f, "gnn"),
+            NnArchitectureCli::CnnOnehot => write!(f, "cnn-onehot"),
         }
     }
 }
@@ -95,9 +99,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err(format!("Turns must be between 1 and 27 (received {}).", args.turns).into());
     }
 
+    let nn_arch: take_it_easy::neural::manager::NNArchitecture = args.nn_architecture.clone().into();
     let neural_config = NeuralConfig {
-        input_dim: (9, 5, 5),
-        nn_architecture: args.nn_architecture.clone().into(),
+        input_dim: nn_arch.input_dim(),  // Use architecture-specific input dimensions
+        nn_architecture: nn_arch,
         ..Default::default()
     };
     let manager = NeuralManager::with_config(neural_config)?;

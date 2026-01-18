@@ -12,6 +12,9 @@ use tch::{nn, Device};
 pub enum NNArchitecture {
     Cnn,
     Gnn,
+    /// CNN with one-hot oriented encoding (37 channels)
+    /// Better for pattern matching and line completion detection
+    CnnOnehot,
 }
 
 impl std::str::FromStr for NNArchitecture {
@@ -20,7 +23,8 @@ impl std::str::FromStr for NNArchitecture {
         match s.to_lowercase().as_str() {
             "cnn" => Ok(NNArchitecture::Cnn),
             "gnn" => Ok(NNArchitecture::Gnn),
-            _ => Err(format!("Unknown architecture: {}", s)),
+            "cnn-onehot" | "cnn_onehot" | "onehot" => Ok(NNArchitecture::CnnOnehot),
+            _ => Err(format!("Unknown architecture: {}. Valid: cnn, gnn, cnn-onehot", s)),
         }
     }
 }
@@ -30,6 +34,18 @@ impl std::fmt::Display for NNArchitecture {
         match self {
             NNArchitecture::Cnn => write!(f, "cnn"),
             NNArchitecture::Gnn => write!(f, "gnn"),
+            NNArchitecture::CnnOnehot => write!(f, "cnn-onehot"),
+        }
+    }
+}
+
+impl NNArchitecture {
+    /// Get the input dimensions for this architecture
+    pub fn input_dim(&self) -> (i64, i64, i64) {
+        match self {
+            NNArchitecture::Cnn => (47, 5, 5),      // 17 base + 30 line features
+            NNArchitecture::Gnn => (47, 5, 5),      // Same as CNN
+            NNArchitecture::CnnOnehot => (37, 5, 5), // One-hot oriented encoding
         }
     }
 }
@@ -56,10 +72,10 @@ pub struct NeuralConfig {
 impl Default for NeuralConfig {
     fn default() -> Self {
         Self {
-            // STOCHZERO: 17 channels = 8 base + 9 bag awareness
-            // Base (8): tile values (3) + empty mask (1) + current tile (3) + turn (1)
-            // Bag (9): dir1 counts (3) + dir2 counts (3) + dir3 counts (3)
-            input_dim: (17, 5, 5),
+            // STOCHZERO V2: 47 channels = 17 base + 30 line features
+            // Base (17): tile values (3) + empty mask (1) + current tile (3) + turn (1) + bag (9)
+            // Line features (30): 15 lines × 2 features (potential + compatibility)
+            input_dim: (47, 5, 5),
             device: Device::Cpu,
             model_path: "model_weights".to_string(),
             policy_lr: 1e-3,
@@ -117,6 +133,7 @@ impl NeuralManager {
             let arch_dir = match config.nn_architecture {
                 NNArchitecture::Cnn => "cnn",
                 NNArchitecture::Gnn => "gnn",
+                NNArchitecture::CnnOnehot => "cnn-onehot",
             };
 
             let policy_path = format!("{}/{}/policy/policy.params", config.model_path, arch_dir);
@@ -245,6 +262,7 @@ impl NeuralManager {
         let arch_dir = match self.config.nn_architecture {
             NNArchitecture::Cnn => "cnn",
             NNArchitecture::Gnn => "gnn",
+            NNArchitecture::CnnOnehot => "cnn-onehot",
         };
         let model_path = format!("{}/{}", self.config.model_path, arch_dir);
         log::info!("💾 Saving neural network models to {}", model_path);

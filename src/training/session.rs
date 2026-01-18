@@ -361,6 +361,7 @@ pub async fn train_and_evaluate(
             let arch_dir = match policy_net.arch {
                 NNArchitecture::Cnn => "cnn",
                 NNArchitecture::Gnn => "gnn",
+                NNArchitecture::CnnOnehot => "cnn-onehot",
             };
             let policy_path = format!("model_weights/{}/policy/policy.params", arch_dir);
             let value_path = format!("model_weights/{}/value/value.params", arch_dir);
@@ -416,7 +417,7 @@ pub async fn train_and_evaluate_offline(
                                 && r.current_turn.is_some()
                                 && r.total_turns.is_some()
                         }
-                        NNArchitecture::Cnn => true,
+                        NNArchitecture::Cnn | NNArchitecture::CnnOnehot => true,
                     }
                 })
                 .take(200)
@@ -604,6 +605,7 @@ pub async fn train_and_evaluate_offline(
         let arch_dir = match policy_net.arch {
             NNArchitecture::Cnn => "cnn",
             NNArchitecture::Gnn => "gnn",
+            NNArchitecture::CnnOnehot => "cnn-onehot",
         };
         let policy_path = format!("model_weights/{}/policy/policy.params", arch_dir);
         let value_path = format!("model_weights/{}/value/value.params", arch_dir);

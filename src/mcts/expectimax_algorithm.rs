@@ -171,6 +171,9 @@ impl<'a> ExpectimaxMCTS<'a> {
             NNArchitecture::Cnn => {
                 convert_plateau_to_tensor(plateau, tile, deck, self.current_turn, self.total_turns)
             }
+            NNArchitecture::CnnOnehot => {
+                crate::neural::tensor_onehot::convert_plateau_onehot(plateau, tile, deck, self.current_turn)
+            }
             NNArchitecture::Gnn => {
                 convert_plateau_for_gnn(plateau, self.current_turn, self.total_turns)
             }
@@ -302,6 +305,12 @@ impl<'a> ExpectimaxMCTS<'a> {
                 deck,
                 self.current_turn,
                 self.total_turns,
+            ),
+            NNArchitecture::CnnOnehot => crate::neural::tensor_onehot::convert_plateau_onehot(
+                plateau,
+                &first_tile,
+                deck,
+                self.current_turn,
             ),
             NNArchitecture::Gnn => {
                 convert_plateau_for_gnn(plateau, self.current_turn, self.total_turns)

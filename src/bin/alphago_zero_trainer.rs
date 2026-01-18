@@ -111,6 +111,7 @@ fn save_training_data(
     let arch_suffix = match arch {
         "CNN" => "_cnn",
         "GNN" => "_gnn",
+        "CNN-ONEHOT" | "ONEHOT" => "_cnn_onehot",
         _ => "_cnn",
     };
     let prefixed_path = format!("{}{}", path, arch_suffix);

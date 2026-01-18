@@ -160,10 +160,10 @@ impl Default for MCTSHyperparameters {
             rollout_default: 7,
             rollout_weak: 9,
 
-            // Evaluation weights (RESTORED MASTER DEFAULTS: 2025-12-27)
-            // Original optimized weights from Phase 1
-            weight_cnn: 0.65,        // CNN value network (or policy if trained)
-            weight_rollout: 0.25,    // Rollout simulations
+            // Evaluation weights - CNN DISABLED for debugging
+            // Set weight_cnn=0 to isolate CNN impact
+            weight_cnn: 0.10,        // CNN DISABLED for testing
+            weight_rollout: 0.80,    // Rollout simulations (primary)
             weight_heuristic: 0.05,  // Domain heuristics
             weight_contextual: 0.05, // Contextual boost
 
@@ -308,24 +308,24 @@ impl MCTSHyperparameters {
     /// - Turn 10: 4.7x vs uniform (0.250 max prob) → GNN moderate
     /// - Turn 15: 9.0x vs uniform (0.475 max prob) → GNN strong
     ///
-    /// Strategy phases:
-    /// - Early (0-5):   Rollout-heavy (w_rollout=0.70, w_cnn=0.20)
-    /// - Mid (6-11):    Balanced      (w_rollout=0.45, w_cnn=0.45)
-    /// - Late (12+):    GNN-dominant  (w_rollout=0.15, w_cnn=0.75)
+    /// Strategy phases (REDUCED CNN for weak policy):
+    /// - Early (0-5):   Rollout-heavy (w_rollout=0.85, w_cnn=0.05)
+    /// - Mid (6-11):    Rollout-focused (w_rollout=0.75, w_cnn=0.15)
+    /// - Late (12+):    Balanced (w_rollout=0.55, w_cnn=0.35)
     ///
     /// Returns (weight_cnn, weight_rollout) for the given turn
     pub fn get_turn_adaptive_weights(&self, current_turn: usize) -> (f64, f64) {
         let other_weights = self.weight_heuristic + self.weight_contextual;
 
         let (w_cnn, w_rollout) = if current_turn <= 5 {
-            // Early game: GNN weak (1-3x confidence) → Trust rollouts
-            (0.20, 0.70)
+            // Early game: CNN DISABLED for testing
+            (0.00, 0.90)
         } else if current_turn <= 11 {
-            // Mid game: GNN moderate (3-5x confidence) → Balanced
-            (0.45, 0.45)
+            // Mid game: CNN DISABLED for testing
+            (0.00, 0.90)
         } else {
-            // Late game: GNN strong (5-9x confidence) → Trust GNN
-            (0.75, 0.15)
+            // Late game: CNN DISABLED for testing
+            (0.00, 0.90)
         };
 
         // Ensure weights sum to 1.0 with other weights

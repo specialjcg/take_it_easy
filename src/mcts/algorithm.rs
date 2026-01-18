@@ -41,6 +41,10 @@ fn convert_plateau_by_arch(
             // GNN uses same encoding as CNN (includes tile), then reshaped to [batch, 19, 8]
             convert_plateau_to_tensor(plateau, chosen_tile, deck, current_turn, total_turns)
         },
+        NNArchitecture::CnnOnehot => {
+            // Use one-hot oriented encoding (37 channels)
+            crate::neural::tensor_onehot::convert_plateau_onehot(plateau, chosen_tile, deck, current_turn)
+        },
     }
 }
 
@@ -208,6 +212,15 @@ fn mcts_core(
                     ),
                     None,
                 ),
+                NNArchitecture::CnnOnehot => (
+                    crate::neural::tensor_onehot::convert_plateau_onehot(
+                        plateau,
+                        &chosen_tile,
+                        deck,
+                        current_turn,
+                    ),
+                    None,
+                ),
                 NNArchitecture::Gnn => {
                     let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
@@ -320,6 +333,12 @@ fn mcts_core(
                         &temp_deck,
                         current_turn,
                         total_turns,
+                    ),
+                    NNArchitecture::CnnOnehot => crate::neural::tensor_onehot::convert_plateau_onehot(
+                        &temp_plateau,
+                        &chosen_tile,
+                        &temp_deck,
+                        current_turn,
                     ),
                     NNArchitecture::Gnn => {
                         convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
@@ -482,22 +501,9 @@ fn mcts_core(
     );
 
     for _ in 0..adaptive_simulations {
-        let mut moves_with_prior: Vec<_> = legal_moves
-            .iter()
-            .filter(|&&pos| value_estimates[&pos] >= value_threshold) // Prune weak moves
-            .map(|&pos| (pos, policy.i((0, pos as i64)).double_value(&[])))
-            .collect();
-
-        moves_with_prior.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Progressive Widening: Use adaptive action count instead of fixed sqrt formula
-        let top_k = usize::min(moves_with_prior.len(), max_actions);
-
-        let subset_moves: Vec<usize> = moves_with_prior
-            .iter()
-            .take(top_k)
-            .map(|&(pos, _)| pos)
-            .collect();
+        // FIXED: Don't filter/sort by CNN when it's undertrained
+        // Use all legal moves with uniform prior instead of CNN-based pruning
+        let subset_moves: Vec<usize> = legal_moves.clone();
 
         for &position in &subset_moves {
             let mut temp_plateau = plateau.clone();
@@ -668,6 +674,9 @@ fn mcts_core(
 
     let total_boost: f64 = boost_applied.values().sum();
 
+    // STOCHZERO: Compute Q-value based policy distribution
+    let q_value_dist = create_q_value_policy_target(&value_estimates, 19, 1.0);
+
     MCTSResult {
         best_position,
         board_tensor: input_tensor,
@@ -679,7 +688,7 @@ fn mcts_core(
         plateau: Some(plateau.clone()),
         current_turn: Some(current_turn),
         total_turns: Some(total_turns),
-        q_value_distribution: None,
+        q_value_distribution: Some(q_value_dist),
     }
 }
 
@@ -750,6 +759,15 @@ fn mcts_core_cow(
                         deck,
                         current_turn,
                         total_turns,
+                    ),
+                    None,
+                ),
+                NNArchitecture::CnnOnehot => (
+                    crate::neural::tensor_onehot::convert_plateau_onehot(
+                        plateau,
+                        &chosen_tile,
+                        deck,
+                        current_turn,
                     ),
                     None,
                 ),
@@ -829,31 +847,25 @@ fn mcts_core_cow(
             let policy_logits = policy_net.forward(&input_tensor, false);
             let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
 
+            // FIXED: Use rollouts for initial value estimates instead of CNN
+            // CNN value predictions were causing catastrophic decisions
             for &position in &legal_moves {
                 let temp_plateau_cow = plateau_cow.clone_for_modification();
                 temp_plateau_cow.set_tile(position, chosen_tile);
                 let temp_deck_cow = replace_tile_in_deck_cow(deck_cow, &chosen_tile);
 
-                // Create tensor based on architecture (CNN or GNN)
-                let board_tensor_temp = match policy_net.arch {
-                    NNArchitecture::Cnn => convert_plateau_to_tensor(
-                        &temp_plateau_cow.read(|p| p.clone()),
-                        &chosen_tile,
-                        &temp_deck_cow.read(|d| d.clone()),
-                        current_turn,
-                        total_turns,
-                    ),
-                    NNArchitecture::Gnn => {
-                        let temp_plateau = temp_plateau_cow.read(|p| p.clone());
-                        convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
-                    }
-                };
-
-                let pred_value = value_net
-                    .forward(&board_tensor_temp, false)
-                    .double_value(&[])
-                    .clamp(-1.0, 1.0);
-                let value = pred_value;
+                // Use rollouts instead of CNN value for initial estimate
+                let rollout_count = hyperparams.rollout_default;
+                let mut total_simulated_score = 0.0;
+                for _ in 0..rollout_count {
+                    total_simulated_score += simulate_games_smart(
+                        temp_plateau_cow.read(|p| p.clone()),
+                        temp_deck_cow.read(|d| d.clone()),
+                        None,
+                    ) as f64;
+                }
+                let avg_score = total_simulated_score / rollout_count as f64;
+                let value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
 
                 min_value = min_value.min(value);
                 max_value = max_value.max(value);
@@ -993,7 +1005,7 @@ fn mcts_core_cow(
     );
 
     // DEBUG: Log MCTS configuration on first simulation of first turn
-    let debug_first_turn = current_turn == 0;
+    let debug_first_turn = false; // Disabled for dataset generation performance
     if debug_first_turn {
         log::info!("🔍 DEBUG MCTS turn 0:");
         log::info!("   legal_moves.len()={}, max_actions={}, adaptive_simulations={}",
@@ -1003,28 +1015,13 @@ fn mcts_core_cow(
     }
 
     for sim_idx in 0..adaptive_simulations {
-        let mut moves_with_prior: Vec<_> = legal_moves
-            .iter()
-            .filter(|&&pos| value_estimates[&pos] >= value_threshold)
-            .map(|&pos| (pos, policy.i((0, pos as i64)).double_value(&[])))
-            .collect();
-
-        moves_with_prior.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        let top_k = usize::min(moves_with_prior.len(), max_actions);
-
-        let subset_moves: Vec<usize> = moves_with_prior
-            .iter()
-            .take(top_k)
-            .map(|&(pos, _)| pos)
-            .collect();
+        // FIXED: Don't filter/sort by CNN when it's undertrained
+        // Use all legal moves with uniform prior instead of CNN-based pruning
+        let subset_moves: Vec<usize> = legal_moves.clone();
 
         // DEBUG: Log first simulation
         if debug_first_turn && sim_idx == 0 {
-            log::info!("   First simulation: moves_with_prior.len()={}, top_k={}, subset_moves={:?}",
-                moves_with_prior.len(), top_k, subset_moves);
-            log::info!("   Policy probs (top 5): {:?}",
-                moves_with_prior.iter().take(5).map(|(pos, prob)| format!("pos{}:{:.4}", pos, prob)).collect::<Vec<_>>());
+            log::info!("   First simulation: subset_moves={:?}", subset_moves);
         }
 
         // CRITICAL SECTION: Zero-Copy refactor
@@ -1162,13 +1159,15 @@ fn mcts_core_cow(
             visits_vec.iter().take(5).map(|(pos, count)| format!("pos{}:{}", pos, count)).collect::<Vec<_>>());
     }
 
+    // For supervised learning: use value_estimates (initial rollouts Q-values) for exploitation
+    // This gives deterministic expert moves based on rollout quality, not UCB exploration
     let best_position = legal_moves
         .into_iter()
         .max_by(|&a, &b| {
-            ucb_scores
+            value_estimates
                 .get(&a)
                 .unwrap_or(&f64::NEG_INFINITY)
-                .partial_cmp(ucb_scores.get(&b).unwrap_or(&f64::NEG_INFINITY))
+                .partial_cmp(value_estimates.get(&b).unwrap_or(&f64::NEG_INFINITY))
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
         .unwrap_or(0);
@@ -1247,6 +1246,10 @@ fn mcts_core_cow(
 
     let total_boost: f64 = boost_applied.values().sum();
 
+    // STOCHZERO: Compute Q-value based policy distribution
+    // This provides stronger learning signal than visit counts (which are uniform with 200 sims)
+    let q_value_dist = create_q_value_policy_target(&value_estimates, 19, 1.0);
+
     MCTSResult {
         best_position,
         board_tensor: input_tensor,
@@ -1258,7 +1261,7 @@ fn mcts_core_cow(
         plateau: Some(plateau.clone()),
         current_turn: Some(current_turn),
         total_turns: Some(total_turns),
-        q_value_distribution: None,
+        q_value_distribution: Some(q_value_dist),
     }
 }
 
@@ -1383,6 +1386,15 @@ fn mcts_core_gumbel(
                     ),
                     None,
                 ),
+                NNArchitecture::CnnOnehot => (
+                    crate::neural::tensor_onehot::convert_plateau_onehot(
+                        plateau,
+                        &chosen_tile,
+                        deck,
+                        current_turn,
+                    ),
+                    None,
+                ),
                 NNArchitecture::Gnn => {
                     let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
@@ -1421,6 +1433,12 @@ fn mcts_core_gumbel(
                         &temp_deck,
                         current_turn,
                         total_turns,
+                    ),
+                    NNArchitecture::CnnOnehot => crate::neural::tensor_onehot::convert_plateau_onehot(
+                        &temp_plateau,
+                        &chosen_tile,
+                        &temp_deck,
+                        current_turn,
                     ),
                     NNArchitecture::Gnn => {
                         convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
@@ -1582,32 +1600,18 @@ fn mcts_core_gumbel(
         *q_value += (normalized_score - *q_value) / (*visits as f64);
     }
 
-    // Select best move based on visit counts (robust) or Q-values (greedy)
-    // In late game, use greedy selection; in early/mid game, use visit counts
-    let best_position = if current_turn > 15 {
-        // Late game: greedy Q-value selection
-        legal_moves
-            .into_iter()
-            .max_by(|&a, &b| {
-                q_values
-                    .get(&a)
-                    .unwrap_or(&f64::NEG_INFINITY)
-                    .partial_cmp(q_values.get(&b).unwrap_or(&f64::NEG_INFINITY))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .unwrap_or(0)
-    } else {
-        // Early/mid game: visit-count based (more robust)
-        legal_moves
-            .into_iter()
-            .max_by(|&a, &b| {
-                visit_counts
-                    .get(&a)
-                    .unwrap_or(&0)
-                    .cmp(visit_counts.get(&b).unwrap_or(&0))
-            })
-            .unwrap_or(0)
-    };
+    // Select best move based on Q-values (greedy, exploitation)
+    // For supervised learning, we want deterministic expert moves based on rollout quality
+    let best_position = legal_moves
+        .into_iter()
+        .max_by(|&a, &b| {
+            q_values
+                .get(&a)
+                .unwrap_or(&f64::NEG_INFINITY)
+                .partial_cmp(q_values.get(&b).unwrap_or(&f64::NEG_INFINITY))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(0);
 
     // Simulate rest of game for final score
     let mut final_plateau = plateau.clone();

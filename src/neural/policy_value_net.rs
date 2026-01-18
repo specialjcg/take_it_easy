@@ -64,7 +64,7 @@ impl PolicyNet {
     // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
     pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64), arch: NNArchitecture) -> Self {
         match arch {
-            NNArchitecture::Cnn => Self {
+            NNArchitecture::Cnn | NNArchitecture::CnnOnehot => Self {
                 arch,
                 net: PolicyNetImpl::Cnn(Box::new(PolicyNetCNN::new(vs, input_dim))),
             },
@@ -216,8 +216,26 @@ impl PolicyNetCNN {
         let batch_size = h.size()[0];
         h = h.view([batch_size, 25]);  // [batch, 25]
 
-        // Extract first 19 positions (valid game positions 0-18)
-        h.narrow(1, 0, 19)  // Return [batch, 19] logits
+        // Extract the 19 hexagonal positions using correct VERTICAL column mapping
+        // HEX_TO_GRID_MAP: hex pos → (row, col) → flat_idx = row * 5 + col
+        //
+        // Layout:  Col0    Col1    Col2    Col3    Col4
+        //                           7
+        //           0      3      8       12      16
+        //           1      4      9       13      17
+        //           2      5     10       14      18
+        //                  6     11       15
+        //
+        let hex_grid_indices: [i64; 19] = [
+            5, 10, 15,         // hex 0-2   → col 0, rows 1-3
+            6, 11, 16, 21,     // hex 3-6   → col 1, rows 1-4
+            2, 7, 12, 17, 22,  // hex 7-11  → col 2, rows 0-4
+            8, 13, 18, 23,     // hex 12-15 → col 3, rows 1-4
+            9, 14, 19,         // hex 16-18 → col 4, rows 1-3
+        ];
+
+        let indices = Tensor::from_slice(&hex_grid_indices).to_device(h.device());
+        h.index_select(1, &indices)  // Return [batch, 19] logits in hex order
     }
 }
 
@@ -279,7 +297,7 @@ impl ValueNet {
     // Bronze GNN: Adapted for 5×5 2D spatial input (was 47×1)
     pub fn new(vs: &nn::VarStore, input_dim: (i64, i64, i64), arch: NNArchitecture) -> Self {
         match arch {
-            NNArchitecture::Cnn => Self {
+            NNArchitecture::Cnn | NNArchitecture::CnnOnehot => Self {
                 arch,
                 net: ValueNetImpl::Cnn(Box::new(ValueNetCNN::new(vs, input_dim))),
             },

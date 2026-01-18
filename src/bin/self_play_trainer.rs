@@ -68,6 +68,7 @@ struct TrainingExample {
     state_tensor: Tensor,
     best_position: i64,
     final_score: f32,
+    q_value_policy: Option<Tensor>, // Q-value based policy distribution (stronger signal than visit counts)
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -85,9 +86,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     log::info!("Batch size: {}", args.batch_size);
     log::info!("Learning rate: {}", args.learning_rate);
 
-    // Initialize neural network
+    // Initialize neural network with StochZero 17-channel input
     let neural_config = NeuralConfig {
-        input_dim: (9, 5, 5),
+        input_dim: (17, 5, 5),  // StochZero: 8 base + 9 bag awareness
         nn_architecture: NNArchitecture::Cnn,
         policy_lr: args.learning_rate,
         value_lr: args.learning_rate,
@@ -232,13 +233,17 @@ fn generate_self_play_data(
             deck = replace_tile_in_deck(&deck, &chosen_tile);
 
             // Store training example (remove batch dimension from state_tensor)
-            // convert_plateau_to_tensor returns [1, 8, 5, 5], we need [8, 5, 5]
+            // convert_plateau_to_tensor returns [1, 17, 5, 5], we need [17, 5, 5]
             let state_tensor_squeezed = state_tensor.squeeze_dim(0);
+
+            // STOCHZERO: Use Q-value distribution instead of visit counts for stronger learning signal
+            let q_value_policy = mcts_result.q_value_distribution.as_ref().map(|t| t.shallow_clone());
 
             training_examples.push(TrainingExample {
                 state_tensor: state_tensor_squeezed,
                 best_position: best_position as i64,
                 final_score: 0.0, // Will be filled after game completes
+                q_value_policy,
             });
         }
 
@@ -283,11 +288,8 @@ fn train_iteration(
                 .collect();
             let batch_states = Tensor::stack(&batch_states, 0).to_device(device);
 
-            let batch_positions: Vec<i64> = batch_indices
-                .iter()
-                .map(|&i| training_data[i].best_position)
-                .collect();
-            let batch_positions = Tensor::from_slice(&batch_positions).to_device(device);
+            // STOCHZERO: Prepare Q-value policy targets (or fallback to position if unavailable)
+            let has_q_values = batch_indices.iter().all(|&i| training_data[i].q_value_policy.is_some());
 
             let batch_values: Vec<f32> = batch_indices
                 .iter()
@@ -300,7 +302,27 @@ fn train_iteration(
             // Train policy network
             let policy_net = manager.policy_net();
             let policy_pred = policy_net.forward(&batch_states, true);
-            let policy_loss = policy_pred.cross_entropy_for_logits(&batch_positions);
+
+            let policy_loss = if has_q_values {
+                // Use Q-value distributions as soft targets (stronger signal than visit counts)
+                let q_value_targets: Vec<Tensor> = batch_indices
+                    .iter()
+                    .map(|&i| training_data[i].q_value_policy.as_ref().unwrap().shallow_clone())
+                    .collect();
+                let q_value_batch = Tensor::stack(&q_value_targets, 0).to_device(device);
+
+                // KL divergence: policy learns from Q-value distribution
+                let log_probs = policy_pred.log_softmax(-1, tch::Kind::Float);
+                -(q_value_batch * log_probs).sum_dim_intlist(-1, false, tch::Kind::Float).mean(tch::Kind::Float)
+            } else {
+                // Fallback: use single best position (original behavior)
+                let batch_positions: Vec<i64> = batch_indices
+                    .iter()
+                    .map(|&i| training_data[i].best_position)
+                    .collect();
+                let batch_positions = Tensor::from_slice(&batch_positions).to_device(device);
+                policy_pred.cross_entropy_for_logits(&batch_positions)
+            };
 
             let policy_opt = manager.policy_optimizer_mut();
             policy_opt.backward_step(&policy_loss);
