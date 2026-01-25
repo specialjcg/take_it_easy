@@ -16,6 +16,7 @@ pub enum TakeItEasyError {
 
 pub type Result<T> = std::result::Result<T, TakeItEasyError>;
 
+pub mod auth;
 pub mod data;
 pub mod game;
 pub mod generated;
