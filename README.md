@@ -100,10 +100,8 @@ Serve the frontend bundle (`frontend/dist`) with any static server (nginx, Vite 
 ```
 src/                # Rust backend (game logic, services, MCTS, neural bindings)
 frontend/           # SolidJS app (Vite)
-model_weights/      # CNN weights used in production
-docs/               # Architecture notes, experiment archives
-docs/archive/       # Legacy experiments/scripts (not needed to run)
-scripts/            # Active Python helpers for data analysis
+model_weights/      # Neural network weights (CNN + Q-net)
+docs/               # Research history and documentation
 Makefile            # Common dev + build shortcuts
 dev_start.sh        # Legacy helper (make dev wraps this)
 ```
@@ -123,8 +121,8 @@ dev_start.sh        # Legacy helper (make dev wraps this)
 
 ## 8. Next Steps
 
-- Explore `docs/` for detailed AI/MCTS notes.
-- Run benchmarks with `cargo run --bin compare_mcts`.
+- Read `docs/RESEARCH_HISTORY.md` for the complete AI research history (Nov 2025 - Jan 2026).
+- Run benchmarks with `cargo run --release --bin compare_mcts_hybrid -- --games 50 --top-k 6`.
 - Contribute fixes via pull requests (use `cargo fmt && cargo clippy && cargo test` before pushing).
 
-Have fun playing and hacking on **Take It Easy**! 🦀🎮
+Have fun playing and hacking on **Take It Easy**!
