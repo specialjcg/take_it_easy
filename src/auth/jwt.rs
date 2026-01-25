@@ -70,7 +70,10 @@ impl JwtManager {
     }
 
     /// Verify and decode a JWT token
-    pub fn verify_token(&self, token: &str) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
+    pub fn verify_token(
+        &self,
+        token: &str,
+    ) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
         decode::<Claims>(
             token,
             &DecodingKey::from_secret(self.config.secret.as_bytes()),
@@ -97,10 +100,7 @@ impl JwtManager {
 impl Clone for JwtManager {
     fn clone(&self) -> Self {
         Self {
-            config: JwtConfig::new(
-                self.config.secret.clone(),
-                self.config.expiration_hours,
-            ),
+            config: JwtConfig::new(self.config.secret.clone(), self.config.expiration_hours),
         }
     }
 }

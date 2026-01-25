@@ -1,9 +1,8 @@
 //! Email sending for verification and password reset
 
 use lettre::{
-    message::header::ContentType,
-    transport::smtp::authentication::Credentials,
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::header::ContentType, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
+    AsyncTransport, Message, Tokio1Executor,
 };
 
 /// Email configuration
@@ -30,7 +29,8 @@ impl EmailConfig {
             smtp_password: std::env::var("SMTP_PASSWORD").ok()?,
             from_email: std::env::var("FROM_EMAIL").ok()?,
             from_name: std::env::var("FROM_NAME").unwrap_or_else(|_| "Take It Easy".to_string()),
-            app_url: std::env::var("APP_URL").unwrap_or_else(|_| "http://localhost:3000".to_string()),
+            app_url: std::env::var("APP_URL")
+                .unwrap_or_else(|_| "http://localhost:3000".to_string()),
         })
     }
 }
@@ -109,7 +109,10 @@ impl EmailService {
         username: &str,
         token: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let reset_url = format!("{}/auth/reset-password?token={}", self.config.app_url, token);
+        let reset_url = format!(
+            "{}/auth/reset-password?token={}",
+            self.config.app_url, token
+        );
 
         let html_body = format!(
             r#"<!DOCTYPE html>
@@ -216,8 +219,8 @@ impl EmailSender {
             },
             None => {
                 log::info!("Email not configured. Using mock email service.");
-                let app_url =
-                    std::env::var("APP_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+                let app_url = std::env::var("APP_URL")
+                    .unwrap_or_else(|_| "http://localhost:3000".to_string());
                 EmailSender::Mock(MockEmailService::new(app_url))
             }
         }
@@ -231,10 +234,13 @@ impl EmailSender {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match self {
             EmailSender::Real(service) => {
-                service.send_verification_email(to_email, username, token).await
+                service
+                    .send_verification_email(to_email, username, token)
+                    .await
             }
             EmailSender::Mock(mock) => {
-                mock.send_verification_email(to_email, username, token).await
+                mock.send_verification_email(to_email, username, token)
+                    .await
             }
         }
     }
@@ -247,10 +253,13 @@ impl EmailSender {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match self {
             EmailSender::Real(service) => {
-                service.send_password_reset_email(to_email, username, token).await
+                service
+                    .send_password_reset_email(to_email, username, token)
+                    .await
             }
             EmailSender::Mock(mock) => {
-                mock.send_password_reset_email(to_email, username, token).await
+                mock.send_password_reset_email(to_email, username, token)
+                    .await
             }
         }
     }

@@ -9,19 +9,15 @@ use rand::Rng;
 /// Uses cyclic permutations of the 3 tile directions (compatible with hexagonal geometry)
 #[derive(Debug, Clone, Copy)]
 pub enum AugmentTransform {
-    Original,      // Tile(a,b,c) - no transformation
-    CyclicPerm1,   // Tile(b,c,a) - rotate directions 120°
-    CyclicPerm2,   // Tile(c,a,b) - rotate directions 240°
+    Original,    // Tile(a,b,c) - no transformation
+    CyclicPerm1, // Tile(b,c,a) - rotate directions 120°
+    CyclicPerm2, // Tile(c,a,b) - rotate directions 240°
 }
 
 impl AugmentTransform {
     /// Get all 3 transformations
     pub fn all() -> [Self; 3] {
-        [
-            Self::Original,
-            Self::CyclicPerm1,
-            Self::CyclicPerm2,
-        ]
+        [Self::Original, Self::CyclicPerm1, Self::CyclicPerm2]
     }
 
     /// Random transformation
@@ -127,10 +123,10 @@ mod tests {
     #[test]
     fn test_augmentation_preserves_score() {
         let plateau = vec![
-            123, 456,  // positions 0-1: Tile(1,2,3), Tile(4,5,6)
+            123, 456, // positions 0-1: Tile(1,2,3), Tile(4,5,6)
             0, 0, 0,   // positions 2-4: empty
-            789,       // position 5: Tile(7,8,9)
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  // positions 6-18: empty
+            789, // position 5: Tile(7,8,9)
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // positions 6-18: empty
         ];
         let tile = (7, 8, 9);
         let position = 5;
@@ -145,11 +141,11 @@ mod tests {
     #[test]
     fn test_plateau_permutation() {
         let plateau = vec![
-            123,  // Tile(1,2,3) encoded
-            456,  // Tile(4,5,6) encoded
-            789,  // Tile(7,8,9) encoded
-            0,    // Empty tile
-            564,  // Tile(5,6,4) encoded
+            123, // Tile(1,2,3) encoded
+            456, // Tile(4,5,6) encoded
+            789, // Tile(7,8,9) encoded
+            0,   // Empty tile
+            564, // Tile(5,6,4) encoded
         ];
 
         let permuted = permute_plateau(&plateau, AugmentTransform::CyclicPerm1);

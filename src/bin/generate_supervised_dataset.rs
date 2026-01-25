@@ -141,7 +141,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             // Write tile, position, and final score
-            writeln!(writer, ",{},{},{},{},{}", tile.0, tile.1, tile.2, position, final_score)?;
+            writeln!(
+                writer,
+                ",{},{},{},{},{}",
+                tile.0, tile.1, tile.2, position, final_score
+            )?;
             total_examples += 1;
         }
 

@@ -1,5 +1,4 @@
 ///! Analyze what strategy produces a score of 23 pts
-
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::Plateau;
@@ -17,12 +16,14 @@ fn main() {
     };
 
     // Place 6 tiles at positions 0-5
-    let test_tiles = [Tile(1, 2, 3),
+    let test_tiles = [
+        Tile(1, 2, 3),
         Tile(5, 6, 7),
         Tile(9, 7, 8),
         Tile(1, 6, 4),
         Tile(5, 2, 8),
-        Tile(9, 6, 3)];
+        Tile(9, 6, 3),
+    ];
 
     for (i, &tile) in test_tiles.iter().enumerate() {
         plateau1.tiles[i] = tile;
@@ -53,7 +54,8 @@ fn main() {
         let legal_moves = get_legal_moves(&plateau2);
         let preferred = [4, 3, 2, 1, 0, 5, 6, 7, 8, 9];
 
-        let chosen_pos = preferred.iter()
+        let chosen_pos = preferred
+            .iter()
             .find(|&&pos| legal_moves.contains(&pos))
             .copied()
             .unwrap_or(legal_moves[0]);
@@ -67,10 +69,10 @@ fn main() {
     // Strategy 3: Check if 23 = one complete line
     println!("\n📋 Strategy 3: Common line scores");
     println!("Line with all 1s: {}", 7);
-    println!("Line with all 5s: {}", 5*7);
-    println!("Line with all 9s: {}", 9*7);
-    println!("Line with 1,1,5,5,5,9,9: {}", 1+1+5+5+5+9+9);
-    println!("Line with 1,5,5,5,5,5,9: {}", 1+5+5+5+5+5+9);
+    println!("Line with all 5s: {}", 5 * 7);
+    println!("Line with all 9s: {}", 9 * 7);
+    println!("Line with 1,1,5,5,5,9,9: {}", 1 + 1 + 5 + 5 + 5 + 9 + 9);
+    println!("Line with 1,5,5,5,5,5,9: {}", 1 + 5 + 5 + 5 + 5 + 5 + 9);
 
     // Visualize plateau layout
     println!("\n📊 Plateau position layout (5x5 grid, 19 hexagonal positions):");

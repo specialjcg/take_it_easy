@@ -1,20 +1,19 @@
 //! Compare Batch MCTS vs UCT MCTS on identical games
-//! 
+//!
 //! This investigates why UCT shows 145 pts vs batch's ~82 pts
 
+use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use rand::prelude::IndexedRandom;
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::mcts::algorithm::{
-    mcts_find_best_position_for_tile_with_nn,
-    mcts_find_best_position_for_tile_uct,
+    mcts_find_best_position_for_tile_uct, mcts_find_best_position_for_tile_with_nn,
 };
 use take_it_easy::mcts::hyperparameters::MCTSHyperparameters;
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::scoring::scoring::result;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,14 +30,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = NeuralManager::with_config(neural_config)?;
     println!("   ✅ Network loaded\n");
 
-    let num_games = 50;  // Smaller for faster comparison
+    let num_games = 50; // Smaller for faster comparison
     let simulations = 150;
     let hyperparams = MCTSHyperparameters::default();
 
     let mut batch_scores: Vec<i32> = Vec::new();
     let mut uct_scores: Vec<i32> = Vec::new();
 
-    println!("🎮 Running {} games with BOTH algorithms (same seed)...\n", num_games);
+    println!(
+        "🎮 Running {} games with BOTH algorithms (same seed)...\n",
+        num_games
+    );
 
     for game_idx in 0..num_games {
         // Use same seed for both algorithms
@@ -117,39 +119,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Show comparison for each game
         if (game_idx + 1) % 10 == 0 {
-            println!("  Game {}/{}: Batch={:3} pts, UCT={:3} pts, Diff={:+3}",
-                     game_idx + 1, num_games, batch_score, uct_score, uct_score - batch_score);
+            println!(
+                "  Game {}/{}: Batch={:3} pts, UCT={:3} pts, Diff={:+3}",
+                game_idx + 1,
+                num_games,
+                batch_score,
+                uct_score,
+                uct_score - batch_score
+            );
         }
     }
 
     // Calculate statistics
     let batch_mean = batch_scores.iter().sum::<i32>() as f64 / batch_scores.len() as f64;
-    let batch_std = (batch_scores.iter()
+    let batch_std = (batch_scores
+        .iter()
         .map(|&s| (s as f64 - batch_mean).powi(2))
-        .sum::<f64>() / batch_scores.len() as f64)
+        .sum::<f64>()
+        / batch_scores.len() as f64)
         .sqrt();
 
     let uct_mean = uct_scores.iter().sum::<i32>() as f64 / uct_scores.len() as f64;
-    let uct_std = (uct_scores.iter()
+    let uct_std = (uct_scores
+        .iter()
         .map(|&s| (s as f64 - uct_mean).powi(2))
-        .sum::<f64>() / uct_scores.len() as f64)
+        .sum::<f64>()
+        / uct_scores.len() as f64)
         .sqrt();
 
     println!("\n{}", "=".repeat(60));
     println!("RESULTS");
     println!("{}", "=".repeat(60));
-    
+
     println!("\n📊 Batch MCTS (Current):");
     println!("  Mean: {:.2} ± {:.2} pts", batch_mean, batch_std);
-    println!("  Min/Max: {} / {} pts", 
-             batch_scores.iter().min().unwrap(),
-             batch_scores.iter().max().unwrap());
+    println!(
+        "  Min/Max: {} / {} pts",
+        batch_scores.iter().min().unwrap(),
+        batch_scores.iter().max().unwrap()
+    );
 
     println!("\n📊 UCT MCTS (New):");
     println!("  Mean: {:.2} ± {:.2} pts", uct_mean, uct_std);
-    println!("  Min/Max: {} / {} pts",
-             uct_scores.iter().min().unwrap(),
-             uct_scores.iter().max().unwrap());
+    println!(
+        "  Min/Max: {} / {} pts",
+        uct_scores.iter().min().unwrap(),
+        uct_scores.iter().max().unwrap()
+    );
 
     println!("\n📈 Comparison:");
     let diff_mean = uct_mean - batch_mean;
@@ -173,12 +189,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (idx, (&batch, &uct)) in batch_scores.iter().zip(uct_scores.iter()).enumerate() {
         let diff = (uct - batch).abs();
         if diff > 30 {
-            println!("  Game {}: Batch={} pts, UCT={} pts, Diff={:+}", 
-                     idx + 1, batch, uct, uct - batch);
+            println!(
+                "  Game {}: Batch={} pts, UCT={} pts, Diff={:+}",
+                idx + 1,
+                batch,
+                uct,
+                uct - batch
+            );
             big_diffs += 1;
         }
     }
-    
+
     if big_diffs == 0 {
         println!("  (None - both algorithms very consistent)");
     }

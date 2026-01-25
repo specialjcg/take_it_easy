@@ -159,8 +159,8 @@ impl GraphPolicyNet {
 
     pub fn forward(&self, node_features: &Tensor, train: bool) -> Tensor {
         let h = self.encoder.forward(node_features, train);
-        
-        h.apply(&self.head).squeeze_dim(-1)  // Return raw logits (softmax applied by MCTS/training code)
+
+        h.apply(&self.head).squeeze_dim(-1) // Return raw logits (softmax applied by MCTS/training code)
     }
 }
 

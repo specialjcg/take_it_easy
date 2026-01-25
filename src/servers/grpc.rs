@@ -233,7 +233,10 @@ impl GrpcServer {
 
         // Log server startup info
         let mcts_mode = if self.qvalue_net.is_some() {
-            format!("HYBRID Q-Net (top-{}, {} sims)", self.top_k, self.num_simulations)
+            format!(
+                "HYBRID Q-Net (top-{}, {} sims)",
+                self.top_k, self.num_simulations
+            )
         } else {
             format!("CNN ({} sims)", self.num_simulations)
         };

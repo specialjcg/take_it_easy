@@ -1,6 +1,7 @@
 // main.rs - Version corrigée avec les bonnes compatibilités
 use clap::Parser;
 use flexi_logger::Logger;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 
 use crate::neural::{NeuralConfig, NeuralManager, QNetManager};
@@ -10,6 +11,7 @@ use crate::training::session::{train_and_evaluate, train_and_evaluate_offline};
 mod test;
 
 // Modules existants (inchangés)
+mod auth;
 mod data;
 mod game;
 mod logging;
@@ -102,6 +104,14 @@ struct Config {
     /// Top-K positions for Q-net pruning (6 is optimal)
     #[arg(long, default_value_t = 6)]
     top_k: usize,
+
+    /// Enable authentication system
+    #[arg(long, default_value_t = true)]
+    enable_auth: bool,
+
+    /// Path to SQLite database for authentication
+    #[arg(long, default_value = "data/auth.db")]
+    auth_db_path: String,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -113,16 +123,23 @@ enum GameMode {
 }
 
 // ============================================================================
-// SERVEUR WEB POUR LES FICHIERS STATIQUES
+// SERVEUR WEB POUR LES FICHIERS STATIQUES + AUTHENTIFICATION
 // ============================================================================
 
-async fn start_web_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+async fn start_web_server(
+    port: u16,
+    auth_state: Option<Arc<auth::AuthState>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config = servers::WebUiConfig {
         port: port + 1000,
         host: "0.0.0.0".to_string(),
     };
 
-    let web_ui_server = servers::WebUiServer::new(config);
+    let web_ui_server = match auth_state {
+        Some(state) => servers::WebUiServer::with_auth(config, state),
+        None => servers::WebUiServer::new(config),
+    };
+
     web_ui_server.start().await
 }
 
@@ -268,10 +285,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             };
 
+            // Initialize authentication if enabled
+            let auth_state = if config.enable_auth {
+                // Ensure data directory exists
+                if let Some(parent) = std::path::Path::new(&config.auth_db_path).parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+
+                match auth::AuthState::new(&config.auth_db_path) {
+                    Ok(state) => {
+                        log::info!("🔐 Authentication enabled (db: {})", config.auth_db_path);
+                        Some(Arc::new(state))
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ Failed to initialize auth ({}), continuing without", e);
+                        None
+                    }
+                }
+            } else {
+                log::info!("ℹ️ Authentication disabled");
+                None
+            };
+
             // Lancer le serveur web en arrière-plan
             let web_port = config.port;
+            let auth_state_clone = auth_state.clone();
             tokio::spawn(async move {
-                if let Err(e) = start_web_server(web_port).await {
+                if let Err(e) = start_web_server(web_port, auth_state_clone).await {
                     log::error!("❌ Web server error: {}", e);
                 }
             });

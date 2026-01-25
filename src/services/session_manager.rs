@@ -19,7 +19,7 @@ pub struct GameSession {
     pub state: i32,
     pub max_players: i32,
     pub game_mode: String,
-    pub num_simulations: usize,  // MCTS simulations per move (from game_mode)
+    pub num_simulations: usize, // MCTS simulations per move (from game_mode)
     #[allow(dead_code)]
     pub created_at: std::time::Instant,
     pub board_state: String,
@@ -34,7 +34,7 @@ pub fn get_simulations_for_mode(game_mode: &str) -> usize {
         "single-player-hard" | "solo-expert" => 1000,
         "multiplayer" => 150,
         "training" => 100,
-        _ => 200  // Default fallback
+        _ => 200, // Default fallback
     }
 }
 
@@ -120,7 +120,11 @@ pub fn find_session_by_id<'a>(
 
 pub fn create_game_session(max_players: i32, game_mode: String) -> GameSession {
     let num_simulations = get_simulations_for_mode(&game_mode);
-    log::info!("🎮 Session créée: mode={}, simulations={}", game_mode, num_simulations);
+    log::info!(
+        "🎮 Session créée: mode={}, simulations={}",
+        game_mode,
+        num_simulations
+    );
 
     GameSession {
         id: Uuid::new_v4().to_string(),
@@ -194,10 +198,7 @@ pub fn set_player_ready_in_session_with_min(
             player.is_ready = ready;
 
             // ✅ En mode multiplayer: mettre automatiquement MCTS prêt quand un joueur humain est prêt
-            if new_session.game_mode == "multiplayer"
-                && player_id != "mcts_ai"
-                && ready
-            {
+            if new_session.game_mode == "multiplayer" && player_id != "mcts_ai" && ready {
                 if let Some(mcts_player) = new_session.players.get_mut("mcts_ai") {
                     if !mcts_player.is_ready {
                         mcts_player.is_ready = true;

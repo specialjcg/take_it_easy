@@ -225,7 +225,7 @@ impl AuthDatabase {
             Ok(Some(OAuthAccount {
                 id: row.get(0)?,
                 user_id: row.get(1)?,
-                provider: OAuthProvider::from_str(&provider_str).unwrap_or(OAuthProvider::Google),
+                provider: OAuthProvider::parse(&provider_str).unwrap_or(OAuthProvider::Google),
                 provider_user_id: row.get(3)?,
                 access_token: row.get(4)?,
                 refresh_token: row.get(5)?,
@@ -274,7 +274,7 @@ impl AuthDatabase {
                 id: row.get(0)?,
                 user_id: row.get(1)?,
                 token: row.get(2)?,
-                token_type: TokenType::from_str(&token_type_str)
+                token_type: TokenType::parse(&token_type_str)
                     .unwrap_or(TokenType::EmailVerification),
                 expires_at: row.get(4)?,
                 used: row.get::<_, i32>(5)? != 0,

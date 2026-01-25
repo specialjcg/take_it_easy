@@ -10,8 +10,8 @@ use crate::generated::takeiteasygame::v1::*;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
 use crate::services::game_manager::{
-    ensure_current_tile, player_move_from_json, process_player_move_with_mcts,
-    process_player_move_with_hybrid_mcts, MoveResult, PlayerMove, TakeItEasyGameState,
+    ensure_current_tile, player_move_from_json, process_player_move_with_hybrid_mcts,
+    process_player_move_with_mcts, MoveResult, PlayerMove, TakeItEasyGameState,
 };
 use crate::services::session_manager::{
     get_store_from_manager, update_session_in_store, SessionManager,
@@ -34,7 +34,7 @@ pub async fn make_move_async_logic(
     policy_net: &Arc<Mutex<PolicyNet>>,
     value_net: &Arc<Mutex<ValueNet>>,
     qvalue_net: Option<Arc<Mutex<QValueNet>>>,
-    _num_simulations: usize,  // Unused - simulations come from session config
+    _num_simulations: usize, // Unused - simulations come from session config
     top_k: usize,
     request: AsyncMoveRequest,
 ) -> Result<Response<MakeMoveResponse>, Status> {
@@ -108,7 +108,11 @@ pub async fn make_move_async_logic(
     let session_id_clone = request.session_id.clone();
     let game_mode = session.game_mode.clone();
 
-    log::info!("🎯 MCTS avec {} simulations (mode: {})", session_simulations, game_mode);
+    log::info!(
+        "🎯 MCTS avec {} simulations (mode: {})",
+        session_simulations,
+        game_mode
+    );
 
     task::spawn(async move {
         process_mcts_in_background(
@@ -116,7 +120,7 @@ pub async fn make_move_async_logic(
             policy_net_clone,
             value_net_clone,
             qvalue_net_clone,
-            session_simulations,  // Utilise la config de session
+            session_simulations, // Utilise la config de session
             top_k,
             game_state,
             player_move,
@@ -173,10 +177,15 @@ async fn process_mcts_in_background(
     session_id: String,
     _game_mode: String,
 ) {
-    let mcts_type = if qvalue_net.is_some() { "HYBRID" } else { "CNN" };
+    let mcts_type = if qvalue_net.is_some() {
+        "HYBRID"
+    } else {
+        "CNN"
+    };
     log::info!(
         "🔄 Démarrage traitement MCTS {} en arrière-plan pour joueur {}",
-        mcts_type, player_move.player_id
+        mcts_type,
+        player_move.player_id
     );
 
     // Use hybrid MCTS if Q-Net is available, otherwise standard CNN MCTS

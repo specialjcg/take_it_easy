@@ -6,9 +6,9 @@
 //!
 //! If network can learn this, it CAN learn. If not, there's a bug.
 
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
-use tch::{Device, Tensor, Kind};
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
+use tch::{Device, Kind, Tensor};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🧪 Testing if Network Can Learn Simple Patterns\n");
@@ -18,14 +18,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let neural_config = NeuralConfig {
         input_dim: (9, 5, 5),
         nn_architecture: NNArchitecture::Cnn,
-        policy_lr: 0.1,  // VERY HIGH LR for fast learning
+        policy_lr: 0.1, // VERY HIGH LR for fast learning
         value_lr: 0.1,
         ..Default::default()
     };
 
     // Don't load weights - start fresh
     let model_path_backup = std::env::var("MODEL_PATH").ok();
-    std::env::set_var("MODEL_PATH", "/nonexistent");  // Force fresh init
+    std::env::set_var("MODEL_PATH", "/nonexistent"); // Force fresh init
 
     let mut manager = NeuralManager::with_config(neural_config)?;
 
@@ -49,13 +49,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let states = Tensor::zeros([batch_size, 8, 5, 5], (Kind::Float, device));
 
     // Policy targets: center positions have high probability
-    let mut policy_targets = vec![9i64; batch_size as usize];  // Position 9 (center)
-    // Add some variation
+    let mut policy_targets = vec![9i64; batch_size as usize]; // Position 9 (center)
+                                                              // Add some variation
     for i in 0..batch_size as usize {
         policy_targets[i] = match i % 3 {
-            0 => 4,   // Center top
-            1 => 9,   // Center middle
-            _ => 14,  // Center bottom
+            0 => 4,  // Center top
+            1 => 9,  // Center middle
+            _ => 14, // Center bottom
         };
     }
     let policy_targets = Tensor::from_slice(&policy_targets).to_device(device);
@@ -85,7 +85,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if (epoch + 1) % 50 == 0 {
             let p_loss: f64 = policy_loss.double_value(&[]);
             let v_loss: f64 = value_loss.double_value(&[]);
-            println!("  Epoch {}: policy_loss={:.4}, value_loss={:.4}", epoch + 1, p_loss, v_loss);
+            println!(
+                "  Epoch {}: policy_loss={:.4}, value_loss={:.4}",
+                epoch + 1,
+                p_loss,
+                v_loss
+            );
         }
     }
 
@@ -98,9 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let policy = policy_pred.softmax(-1, Kind::Float);
 
     // Extract probabilities
-    let probs: Vec<f64> = (0..19)
-        .map(|i| policy.double_value(&[0, i]))
-        .collect();
+    let probs: Vec<f64> = (0..19).map(|i| policy.double_value(&[0, i])).collect();
 
     println!("Policy probabilities:");
     for (pos, prob) in probs.iter().enumerate() {

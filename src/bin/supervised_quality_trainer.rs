@@ -8,15 +8,15 @@ use flexi_logger::Logger;
 use std::error::Error;
 use tch::{Device, Kind, Reduction, Tensor};
 
+use rand::prelude::*;
 use take_it_easy::data::load_data::load_game_data_with_arch;
-use take_it_easy::neural::manager::NNArchitecture;
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::get_available_tiles;
 use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_uct;
+use take_it_easy::neural::manager::NNArchitecture;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::scoring::scoring::result;
-use rand::prelude::*;
 
 #[derive(Parser, Debug)]
 #[command(name = "supervised-quality-trainer")]
@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Load training data
     log::info!("\n📂 Loading training data...");
     let training_data = load_game_data_with_arch(&args.data_path, nn_arch);
-    
+
     if training_data.is_empty() {
         return Err("No training data loaded. Check file paths.".into());
     }
@@ -88,16 +88,28 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut manager = NeuralManager::with_config(neural_config)?;
 
     // Benchmark before training
-    log::info!("\n📊 Benchmark BEFORE training ({} games)...", args.benchmark_games);
+    log::info!(
+        "\n📊 Benchmark BEFORE training ({} games)...",
+        args.benchmark_games
+    );
     let score_before = benchmark(&manager, args.benchmark_games);
     log::info!("   Score: {:.2} pts", score_before);
 
     // Train
     log::info!("\n🏋️ Training for {} epochs...", args.epochs);
-    train_supervised(&mut manager, &training_data, args.epochs, args.batch_size, device)?;
+    train_supervised(
+        &mut manager,
+        &training_data,
+        args.epochs,
+        args.batch_size,
+        device,
+    )?;
 
     // Benchmark after training
-    log::info!("\n📊 Benchmark AFTER training ({} games)...", args.benchmark_games);
+    log::info!(
+        "\n📊 Benchmark AFTER training ({} games)...",
+        args.benchmark_games
+    );
     let score_after = benchmark(&manager, args.benchmark_games);
     log::info!("   Score: {:.2} pts", score_after);
 
@@ -106,7 +118,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     log::info!("✅ Training Complete");
     log::info!("   Before: {:.2} pts", score_before);
     log::info!("   After:  {:.2} pts", score_after);
-    log::info!("   Change: {:+.2} pts ({:+.1}%)", 
+    log::info!(
+        "   Change: {:+.2} pts ({:+.1}%)",
         score_after - score_before,
         ((score_after - score_before) / score_before) * 100.0
     );
@@ -123,7 +136,7 @@ fn train_supervised(
     device: Device,
 ) -> Result<(), Box<dyn Error>> {
     let num_examples = data.len();
-    
+
     for epoch in 0..epochs {
         let mut total_policy_loss = 0.0;
         let mut total_value_loss = 0.0;
@@ -165,11 +178,9 @@ fn train_supervised(
             let policy_pred_probs = policy_pred_logits.log_softmax(-1, Kind::Float);
 
             // KL divergence loss for policy
-            let policy_loss = -(policy_targets_batch * policy_pred_probs).sum_dim_intlist(
-                [-1].as_slice(),
-                false,
-                Kind::Float,
-            ).mean(Kind::Float);
+            let policy_loss = -(policy_targets_batch * policy_pred_probs)
+                .sum_dim_intlist([-1].as_slice(), false, Kind::Float)
+                .mean(Kind::Float);
 
             let policy_opt = manager.policy_optimizer_mut();
             policy_opt.backward_step(&policy_loss);
@@ -219,7 +230,7 @@ fn benchmark(manager: &NeuralManager, num_games: usize) -> f64 {
             }
 
             let tile = *available.choose(&mut rand::thread_rng()).unwrap();
-            
+
             let mcts_result = mcts_find_best_position_for_tile_uct(
                 &mut plateau,
                 &mut deck,

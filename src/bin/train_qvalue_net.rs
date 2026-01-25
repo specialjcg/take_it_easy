@@ -16,7 +16,10 @@ use std::fs::File;
 use tch::{nn, nn::OptimizerConfig, Device, Kind, Tensor};
 
 #[derive(Parser, Debug)]
-#[command(name = "train-qvalue-net", about = "Train Q-value network on rollout data")]
+#[command(
+    name = "train-qvalue-net",
+    about = "Train Q-value network on rollout data"
+)]
 struct Args {
     /// CSV file with Q-value data (from generate_qvalues)
     #[arg(short, long)]
@@ -72,13 +75,40 @@ impl QValueNet {
     fn new(vs: &nn::VarStore, input_channels: i64) -> Self {
         let p = vs.root();
 
-        let conv1 = nn::conv2d(&p / "conv1", input_channels, 64, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv1 = nn::conv2d(
+            &p / "conv1",
+            input_channels,
+            64,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let bn1 = nn::batch_norm2d(&p / "bn1", 64, Default::default());
 
-        let conv2 = nn::conv2d(&p / "conv2", 64, 128, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv2 = nn::conv2d(
+            &p / "conv2",
+            64,
+            128,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let bn2 = nn::batch_norm2d(&p / "bn2", 128, Default::default());
 
-        let conv3 = nn::conv2d(&p / "conv3", 128, 128, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv3 = nn::conv2d(
+            &p / "conv3",
+            128,
+            128,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let bn3 = nn::batch_norm2d(&p / "bn3", 128, Default::default());
 
         // 128 channels * 5 * 5 = 3200
@@ -86,7 +116,17 @@ impl QValueNet {
         let fc2 = nn::linear(&p / "fc2", 512, 256, Default::default());
         let qvalue_head = nn::linear(&p / "qvalue_head", 256, 19, Default::default());
 
-        Self { conv1, bn1, conv2, bn2, conv3, bn3, fc1, fc2, qvalue_head }
+        Self {
+            conv1,
+            bn1,
+            conv2,
+            bn2,
+            conv3,
+            bn3,
+            fc1,
+            fc2,
+            qvalue_head,
+        }
     }
 
     fn forward(&self, x: &Tensor, train: bool) -> Tensor {
@@ -113,7 +153,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     log::info!("🎯 Q-Value Network Trainer");
     log::info!("Data: {}", args.data);
-    log::info!("Epochs: {}, Batch: {}, LR: {}", args.epochs, args.batch_size, args.lr);
+    log::info!(
+        "Epochs: {}, Batch: {}, LR: {}",
+        args.epochs,
+        args.batch_size,
+        args.lr
+    );
 
     // Load data
     let examples = load_qvalue_data(&args.data)?;
@@ -151,12 +196,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             // === CROSS-ENTROPY LOSS for ranking ===
             // Targets are already softmax distributions, pred needs softmax
-            let pred_masked = &pred * &masks + (&masks - 1.0) * 1e9;  // Mask invalid with -inf
+            let pred_masked = &pred * &masks + (&masks - 1.0) * 1e9; // Mask invalid with -inf
             let pred_softmax = pred_masked.softmax(-1, Kind::Float);
 
             // Cross-entropy: -sum(target * log(pred))
-            let loss = -(&targets * (pred_softmax + 1e-10).log())
-                .sum(Kind::Float) / (batch.len() as f64);
+            let loss =
+                -(&targets * (pred_softmax + 1e-10).log()).sum(Kind::Float) / (batch.len() as f64);
 
             optimizer.zero_grad();
             loss.backward();
@@ -179,8 +224,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             // Cross-entropy loss (same as training)
             let pred_masked = &pred * &masks + (&masks - 1.0) * 1e9;
             let pred_softmax = pred_masked.softmax(-1, Kind::Float);
-            let loss = -(&targets * (pred_softmax + 1e-10).log())
-                .sum(Kind::Float) / (batch.len() as f64);
+            let loss =
+                -(&targets * (pred_softmax + 1e-10).log()).sum(Kind::Float) / (batch.len() as f64);
 
             val_loss += loss.double_value(&[]);
             val_batches += 1;
@@ -188,7 +233,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         val_loss /= val_batches as f64;
 
         if epoch % 5 == 0 || epoch == 1 {
-            log::info!("Epoch {:3}/{} | Train: {:.6} | Val: {:.6}", epoch, args.epochs, train_loss, val_loss);
+            log::info!(
+                "Epoch {:3}/{} | Train: {:.6} | Val: {:.6}",
+                epoch,
+                args.epochs,
+                train_loss,
+                val_loss
+            );
         }
 
         // Early stopping
@@ -200,13 +251,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else {
             epochs_without_improvement += 1;
             if epochs_without_improvement >= args.patience {
-                log::info!("⚠️ Early stopping at epoch {} (no improvement for {} epochs)", epoch, args.patience);
+                log::info!(
+                    "⚠️ Early stopping at epoch {} (no improvement for {} epochs)",
+                    epoch,
+                    args.patience
+                );
                 break;
             }
         }
     }
 
-    log::info!("\n🎉 Training complete! Best val loss: {:.6}", best_val_loss);
+    log::info!(
+        "\n🎉 Training complete! Best val loss: {:.6}",
+        best_val_loss
+    );
 
     Ok(())
 }
@@ -243,12 +301,13 @@ fn load_qvalue_data(path: &str) -> Result<Vec<QValueExample>, Box<dyn Error>> {
 
         // === NORMALIZE Q-VALUES TO SOFTMAX DISTRIBUTION ===
         // This makes the network learn RANKING, not absolute values
-        let temperature = 0.1;  // Low temperature = sharper ranking
+        let temperature = 0.1; // Low temperature = sharper ranking
         let valid_count = mask.iter().filter(|&&m| m > 0.0).count();
 
         if valid_count > 1 {
             // Find max for numerical stability
-            let max_q = qvalues.iter()
+            let max_q = qvalues
+                .iter()
                 .zip(mask.iter())
                 .filter(|(_, &m)| m > 0.0)
                 .map(|(&q, _)| q)
@@ -273,7 +332,12 @@ fn load_qvalue_data(path: &str) -> Result<Vec<QValueExample>, Box<dyn Error>> {
             }
         }
 
-        examples.push(QValueExample { plateau_state, tile, qvalues, mask });
+        examples.push(QValueExample {
+            plateau_state,
+            tile,
+            qvalues,
+            mask,
+        });
     }
 
     Ok(examples)
@@ -314,11 +378,25 @@ fn prepare_batch(examples: &[QValueExample], device: Device) -> (Tensor, Tensor,
 
 /// Hexagonal position to grid index mapping
 const HEX_TO_GRID: [(usize, usize); 19] = [
-    (1, 0), (2, 0), (3, 0),           // Col 0: positions 0-2
-    (0, 1), (1, 1), (2, 1), (3, 1),   // Col 1: positions 3-6
-    (0, 2), (1, 2), (2, 2), (3, 2), (4, 2), // Col 2: positions 7-11
-    (0, 3), (1, 3), (2, 3), (3, 3),   // Col 3: positions 12-15
-    (1, 4), (2, 4), (3, 4),           // Col 4: positions 16-18
+    (1, 0),
+    (2, 0),
+    (3, 0), // Col 0: positions 0-2
+    (0, 1),
+    (1, 1),
+    (2, 1),
+    (3, 1), // Col 1: positions 3-6
+    (0, 2),
+    (1, 2),
+    (2, 2),
+    (3, 2),
+    (4, 2), // Col 2: positions 7-11
+    (0, 3),
+    (1, 3),
+    (2, 3),
+    (3, 3), // Col 3: positions 12-15
+    (1, 4),
+    (2, 4),
+    (3, 4), // Col 4: positions 16-18
 ];
 
 fn hex_to_grid_idx(hex_pos: usize) -> usize {

@@ -71,15 +71,29 @@ pub const GRAPH_EDGES: &[(usize, usize)] = &[
 /// Positions 16-18: Column 4 (3 tiles, centered vertically)
 const HEX_TO_GRID_MAP: [(usize, usize); GRAPH_NODE_COUNT] = [
     // Column 0 (positions 0-2): 3 tiles, rows 1-3
-    (1, 0), (2, 0), (3, 0),
+    (1, 0),
+    (2, 0),
+    (3, 0),
     // Column 1 (positions 3-6): 4 tiles, rows 1-4
-    (1, 1), (2, 1), (3, 1), (4, 1),
+    (1, 1),
+    (2, 1),
+    (3, 1),
+    (4, 1),
     // Column 2 (positions 7-11): 5 tiles, rows 0-4
-    (0, 2), (1, 2), (2, 2), (3, 2), (4, 2),
+    (0, 2),
+    (1, 2),
+    (2, 2),
+    (3, 2),
+    (4, 2),
     // Column 3 (positions 12-15): 4 tiles, rows 1-4
-    (1, 3), (2, 3), (3, 3), (4, 3),
+    (1, 3),
+    (2, 3),
+    (3, 3),
+    (4, 3),
     // Column 4 (positions 16-18): 3 tiles, rows 1-3
-    (1, 4), (2, 4), (3, 4),
+    (1, 4),
+    (2, 4),
+    (3, 4),
 ];
 
 /// Line definitions: indices and orientation (0: horizontal, 1: diag1, 2: diag2)
@@ -105,7 +119,7 @@ pub const LINE_DEFS: &[(&[usize], usize)] = &[
 // - 8 base + 9 bag features + 30 line features = 47 channels
 // Line features solve the broken geometry problem where Dir2/Dir3 lines
 // are zigzag in the 5x5 grid and can't be detected by convolution
-const CHANNELS: usize = 47;  // 17 base + 30 line features
+const CHANNELS: usize = 47; // 17 base + 30 line features
 const GRID_SIZE: usize = 5;
 
 // Line features: For each of 15 scoring lines:
@@ -138,7 +152,11 @@ pub fn convert_plateau_to_tensor(
     // Ch 14-16: Dir3 value counts [3, 4, 8] normalized /9 - BROADCAST
 
     let mut features = vec![0.0f32; CHANNELS * GRID_SIZE * GRID_SIZE];
-    let num_placed = plateau.tiles.iter().filter(|&&t| t != Tile(0, 0, 0)).count();
+    let num_placed = plateau
+        .tiles
+        .iter()
+        .filter(|&&t| t != Tile(0, 0, 0))
+        .count();
     let turn_progress = num_placed as f32 / 19.0;
 
     // Process only the 19 hexagonal cells using CORRECT hexagonal mapping
@@ -215,15 +233,15 @@ pub fn convert_plateau_to_tensor(
 /// STOCHZERO: Compute value counts for each direction in the remaining deck
 /// EXCLUDES the current tile being placed (to match training encoding)
 struct BagValueCounts {
-    dir1: [f32; 3],  // Counts for [1, 5, 9] normalized /9
-    dir2: [f32; 3],  // Counts for [2, 6, 7] normalized /9
-    dir3: [f32; 3],  // Counts for [3, 4, 8] normalized /9
+    dir1: [f32; 3], // Counts for [1, 5, 9] normalized /9
+    dir2: [f32; 3], // Counts for [2, 6, 7] normalized /9
+    dir3: [f32; 3], // Counts for [3, 4, 8] normalized /9
 }
 
 fn compute_bag_value_counts(deck: &Deck, current_tile: &Tile) -> BagValueCounts {
-    let mut counts_dir1 = [0u32; 3];  // [1, 5, 9]
-    let mut counts_dir2 = [0u32; 3];  // [2, 6, 7]
-    let mut counts_dir3 = [0u32; 3];  // [3, 4, 8]
+    let mut counts_dir1 = [0u32; 3]; // [1, 5, 9]
+    let mut counts_dir2 = [0u32; 3]; // [2, 6, 7]
+    let mut counts_dir3 = [0u32; 3]; // [3, 4, 8]
     let mut current_tile_found = false;
 
     for tile in &deck.tiles {

@@ -17,7 +17,10 @@ use take_it_easy::game::tile::Tile;
 use take_it_easy::scoring::scoring::result;
 
 #[derive(Parser, Debug)]
-#[command(name = "compare-mcts-qvalue", about = "Compare Q-Value Network guided MCTS vs Pure MCTS")]
+#[command(
+    name = "compare-mcts-qvalue",
+    about = "Compare Q-Value Network guided MCTS vs Pure MCTS"
+)]
 struct Args {
     #[arg(short, long, default_value_t = 50)]
     games: usize,
@@ -54,20 +57,57 @@ impl QValueNet {
     fn new(vs: &nn::VarStore) -> Self {
         let p = vs.root();
 
-        let conv1 = nn::conv2d(&p / "conv1", 47, 64, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv1 = nn::conv2d(
+            &p / "conv1",
+            47,
+            64,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let bn1 = nn::batch_norm2d(&p / "bn1", 64, Default::default());
 
-        let conv2 = nn::conv2d(&p / "conv2", 64, 128, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv2 = nn::conv2d(
+            &p / "conv2",
+            64,
+            128,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let bn2 = nn::batch_norm2d(&p / "bn2", 128, Default::default());
 
-        let conv3 = nn::conv2d(&p / "conv3", 128, 128, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv3 = nn::conv2d(
+            &p / "conv3",
+            128,
+            128,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let bn3 = nn::batch_norm2d(&p / "bn3", 128, Default::default());
 
         let fc1 = nn::linear(&p / "fc1", 128 * 5 * 5, 512, Default::default());
         let fc2 = nn::linear(&p / "fc2", 512, 256, Default::default());
         let qvalue_head = nn::linear(&p / "qvalue_head", 256, 19, Default::default());
 
-        Self { conv1, bn1, conv2, bn2, conv3, bn3, fc1, fc2, qvalue_head }
+        Self {
+            conv1,
+            bn1,
+            conv2,
+            bn2,
+            conv3,
+            bn3,
+            fc1,
+            fc2,
+            qvalue_head,
+        }
     }
 
     fn forward(&self, x: &Tensor) -> Tensor {
@@ -106,7 +146,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         .start()?;
 
     log::info!("🎮 Q-Value Network MCTS Comparison (Progressive Prior Mode)");
-    log::info!("Games: {}, Simulations: {}, Prior Strength: {}", args.games, args.simulations, args.prior_strength);
+    log::info!(
+        "Games: {}, Simulations: {}, Prior Strength: {}",
+        args.games,
+        args.simulations,
+        args.prior_strength
+    );
 
     // Load Q-Value network
     let mut vs = nn::VarStore::new(Device::Cpu);
@@ -121,7 +166,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         let qvalues = qnet.predict_qvalues(&empty_plateau.tiles, &test_tile);
         log::info!("🔍 Debug: Q-values for empty board with tile (1,2,3):");
         log::info!("   Raw Q-values: {:?}", qvalues);
-        log::info!("   Scaled (x200): {:?}", qvalues.iter().map(|v| v * 200.0).collect::<Vec<_>>());
+        log::info!(
+            "   Scaled (x200): {:?}",
+            qvalues.iter().map(|v| v * 200.0).collect::<Vec<_>>()
+        );
     }
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(args.seed);
@@ -152,17 +200,31 @@ fn main() -> Result<(), Box<dyn Error>> {
     let qnet_std = std_dev(&qnet_scores);
     let delta = qnet_mean - pure_mean;
 
-    let qnet_wins = pure_scores.iter().zip(&qnet_scores)
-        .filter(|(p, q)| q > p).count();
+    let qnet_wins = pure_scores
+        .iter()
+        .zip(&qnet_scores)
+        .filter(|(p, q)| q > p)
+        .count();
 
     println!("\n===== Q-Value MCTS (Progressive Prior) =====");
     println!("Games: {}, Simulations: {}", args.games, args.simulations);
     println!("Prior Strength: {} (virtual visits)", args.prior_strength);
     println!();
-    println!("Pure MCTS      : mean = {:>6.2}, std = {:>6.2}", pure_mean, pure_std);
-    println!("Q-Net Prior    : mean = {:>6.2}, std = {:>6.2}", qnet_mean, qnet_std);
+    println!(
+        "Pure MCTS      : mean = {:>6.2}, std = {:>6.2}",
+        pure_mean, pure_std
+    );
+    println!(
+        "Q-Net Prior    : mean = {:>6.2}, std = {:>6.2}",
+        qnet_mean, qnet_std
+    );
     println!("Delta          : {:+.2}", delta);
-    println!("Q-Net wins     : {} / {} ({:.1}%)", qnet_wins, args.games, qnet_wins as f64 / args.games as f64 * 100.0);
+    println!(
+        "Q-Net wins     : {} / {} ({:.1}%)",
+        qnet_wins,
+        args.games,
+        qnet_wins as f64 / args.games as f64 * 100.0
+    );
     println!("============================================\n");
 
     Ok(())
@@ -186,7 +248,8 @@ fn play_game_qnet(tiles: &[Tile], num_sims: usize, qnet: &QValueNet, prior_stren
     let mut deck = create_deck();
 
     for tile in tiles {
-        let best_pos = find_best_position_qnet(&plateau, &deck, *tile, num_sims, qnet, prior_strength);
+        let best_pos =
+            find_best_position_qnet(&plateau, &deck, *tile, num_sims, qnet, prior_strength);
         plateau.tiles[best_pos] = *tile;
         deck = replace_tile_in_deck(&deck, tile);
     }
@@ -194,7 +257,12 @@ fn play_game_qnet(tiles: &[Tile], num_sims: usize, qnet: &QValueNet, prior_stren
     result(&plateau)
 }
 
-fn find_best_position_pure(plateau: &take_it_easy::game::plateau::Plateau, deck: &take_it_easy::game::deck::Deck, tile: Tile, num_sims: usize) -> usize {
+fn find_best_position_pure(
+    plateau: &take_it_easy::game::plateau::Plateau,
+    deck: &take_it_easy::game::deck::Deck,
+    tile: Tile,
+    num_sims: usize,
+) -> usize {
     let empty_positions: Vec<usize> = (0..19)
         .filter(|&i| plateau.tiles[i] == Tile(0, 0, 0))
         .collect();
@@ -228,7 +296,7 @@ fn find_best_position_qnet(
     tile: Tile,
     num_sims: usize,
     qnet: &QValueNet,
-    prior_strength: f64,  // Weight of Q-net prior in final decision
+    prior_strength: f64, // Weight of Q-net prior in final decision
 ) -> usize {
     let empty_positions: Vec<usize> = (0..19)
         .filter(|&i| plateau.tiles[i] == Tile(0, 0, 0))
@@ -276,7 +344,9 @@ fn sample_tiles(rng: &mut rand::rngs::StdRng, count: usize) -> Vec<Tile> {
 
     for _ in 0..count {
         let available = get_available_tiles(&deck);
-        if available.is_empty() { break; }
+        if available.is_empty() {
+            break;
+        }
         let tile = *available.choose(rng).unwrap();
         tiles.push(tile);
         deck = replace_tile_in_deck(&deck, &tile);
@@ -287,18 +357,34 @@ fn sample_tiles(rng: &mut rand::rngs::StdRng, count: usize) -> Vec<Tile> {
 
 fn std_dev(values: &[i32]) -> f64 {
     let mean = values.iter().sum::<i32>() as f64 / values.len() as f64;
-    let variance = values.iter()
+    let variance = values
+        .iter()
         .map(|&v| (v as f64 - mean).powi(2))
-        .sum::<f64>() / values.len() as f64;
+        .sum::<f64>()
+        / values.len() as f64;
     variance.sqrt()
 }
 
 const HEX_TO_GRID: [(usize, usize); 19] = [
-    (1, 0), (2, 0), (3, 0),
-    (0, 1), (1, 1), (2, 1), (3, 1),
-    (0, 2), (1, 2), (2, 2), (3, 2), (4, 2),
-    (0, 3), (1, 3), (2, 3), (3, 3),
-    (1, 4), (2, 4), (3, 4),
+    (1, 0),
+    (2, 0),
+    (3, 0),
+    (0, 1),
+    (1, 1),
+    (2, 1),
+    (3, 1),
+    (0, 2),
+    (1, 2),
+    (2, 2),
+    (3, 2),
+    (4, 2),
+    (0, 3),
+    (1, 3),
+    (2, 3),
+    (3, 3),
+    (1, 4),
+    (2, 4),
+    (3, 4),
 ];
 
 fn hex_to_grid_idx(hex_pos: usize) -> usize {

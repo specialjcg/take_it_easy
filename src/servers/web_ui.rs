@@ -6,9 +6,12 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
+
+use crate::auth::{auth_router, AuthState};
 
 // Structures pour l'API Web
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -50,11 +53,23 @@ impl Default for WebUiConfig {
 // Serveur Web UI principal
 pub struct WebUiServer {
     config: WebUiConfig,
+    auth_state: Option<Arc<AuthState>>,
 }
 
 impl WebUiServer {
     pub fn new(config: WebUiConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            auth_state: None,
+        }
+    }
+
+    /// Create server with authentication enabled
+    pub fn with_auth(config: WebUiConfig, auth_state: Arc<AuthState>) -> Self {
+        Self {
+            config,
+            auth_state: Some(auth_state),
+        }
     }
 
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -67,17 +82,29 @@ impl WebUiServer {
             self.config.port
         );
 
+        if self.auth_state.is_some() {
+            log::info!("🔐 Authentication enabled at /auth/*");
+        }
+
         axum::serve(listener, app).await?;
         Ok(())
     }
 
     fn create_router(&self) -> Router {
-        Router::new()
+        let mut router = Router::new()
             .route("/", get(serve_index))
             .route("/api/status", get(api_status))
             .route("/api/launch-mode", post(api_launch_mode))
             .route("/api/stop-all", post(api_stop_all))
-            .route("/api/logs", get(api_logs))
+            .route("/api/logs", get(api_logs));
+
+        // Add auth routes if auth is enabled
+        if let Some(auth_state) = &self.auth_state {
+            router = router.nest("/auth", auth_router(Arc::clone(auth_state)));
+            log::debug!("Auth routes mounted at /auth/*");
+        }
+
+        router
             .nest_service("/static", ServeDir::new("web"))
             .fallback_service(ServeDir::new("web"))
             .layer(

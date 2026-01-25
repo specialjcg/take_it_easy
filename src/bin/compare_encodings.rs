@@ -1,7 +1,6 @@
 /// Compare old normalized encoding vs new one-hot encoding
 ///
 /// This tool visualizes the difference to understand why one-hot is better
-
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::tile::Tile;
@@ -18,13 +17,13 @@ fn main() {
 
     // Place some tiles to create a pattern
     // Line Dir1 (vertical column 0): positions 0, 1, 2 - all need same Dir1 value
-    plateau.tiles[0] = Tile(5, 6, 3);  // Dir1=5
-    plateau.tiles[1] = Tile(5, 2, 4);  // Dir1=5 (matching!)
-    // Position 2 empty - should place Dir1=5 to complete
+    plateau.tiles[0] = Tile(5, 6, 3); // Dir1=5
+    plateau.tiles[1] = Tile(5, 2, 4); // Dir1=5 (matching!)
+                                      // Position 2 empty - should place Dir1=5 to complete
 
     // Current tile to evaluate
-    let good_tile = Tile(5, 7, 8);   // Dir1=5 - MATCHES line!
-    let bad_tile = Tile(9, 6, 3);    // Dir1=9 - CONFLICTS with line!
+    let good_tile = Tile(5, 7, 8); // Dir1=5 - MATCHES line!
+    let bad_tile = Tile(9, 6, 3); // Dir1=9 - CONFLICTS with line!
 
     println!("Scenario: Partial line with Dir1=5 at positions 0,1");
     println!("Position 2 is empty - can complete line\n");
@@ -60,7 +59,10 @@ fn main() {
     println!("Old Encoding (normalized values):");
     println!("  Ch 0 (Dir1 placed): 5/9 = {:.3}", 5.0 / 9.0);
     println!("  Ch 4 (Current tile Dir1): 9/9 = {:.3}", 9.0 / 9.0);
-    println!("  Problem: 0.556 vs 1.0 - difference is {:.3}", 1.0 - 5.0/9.0);
+    println!(
+        "  Problem: 0.556 vs 1.0 - difference is {:.3}",
+        1.0 - 5.0 / 9.0
+    );
     println!("           Network must learn this difference means 'conflict'\n");
 
     println!("New One-Hot Encoding:");
@@ -72,26 +74,30 @@ fn main() {
     println!("=== TENSOR VALUES AT POSITION 2 (empty cell) ===\n");
 
     // Position 2 in hex maps to grid (3,0) = row 3, col 0 = index 15
-    let grid_idx = 3 * 5;  // = 15
+    let grid_idx = 3 * 5; // = 15
 
     println!("Grid index for hex pos 2: {}", grid_idx);
     println!("\nOld encoding at position 2:");
-    print_channel_values(&old_tensor_good, grid_idx, &[
-        (0, "Dir1 value"),
-        (3, "Empty mask"),
-        (4, "Current Dir1"),
-    ]);
+    print_channel_values(
+        &old_tensor_good,
+        grid_idx,
+        &[(0, "Dir1 value"), (3, "Empty mask"), (4, "Current Dir1")],
+    );
 
     println!("\nNew one-hot encoding at position 2:");
-    print_channel_values(&new_tensor_good, grid_idx, &[
-        (0, "Dir1=1"),
-        (1, "Dir1=5"),
-        (2, "Dir1=9"),
-        (9, "Occupied"),
-        (10, "Current Dir1=1"),
-        (11, "Current Dir1=5"),
-        (12, "Current Dir1=9"),
-    ]);
+    print_channel_values(
+        &new_tensor_good,
+        grid_idx,
+        &[
+            (0, "Dir1=1"),
+            (1, "Dir1=5"),
+            (2, "Dir1=9"),
+            (9, "Occupied"),
+            (10, "Current Dir1=1"),
+            (11, "Current Dir1=5"),
+            (12, "Current Dir1=9"),
+        ],
+    );
 
     println!("\n=== WHY ONE-HOT IS BETTER ===\n");
     println!("1. PATTERN MATCHING:");

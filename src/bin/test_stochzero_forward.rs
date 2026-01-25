@@ -1,8 +1,8 @@
-use take_it_easy::neural::policy_value_net::{PolicyNet, ValueNet};
-use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::Plateau;
 use take_it_easy::game::tile::Tile;
+use take_it_easy::neural::manager::NNArchitecture;
+use take_it_easy::neural::policy_value_net::{PolicyNet, ValueNet};
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
 use tch::{nn, Device};
 
@@ -19,7 +19,9 @@ fn main() {
     println!("✓ Networks created with 17-channel input");
 
     // Create test data
-    let plateau = Plateau { tiles: vec![Tile(0, 0, 0); 19] };
+    let plateau = Plateau {
+        tiles: vec![Tile(0, 0, 0); 19],
+    };
     let deck = create_deck();
     let tile = Tile(1, 2, 3);
 
@@ -28,7 +30,12 @@ fn main() {
     println!("✓ Tensor shape: {:?}", input.size());
 
     // Verify it's 17 channels
-    assert_eq!(input.size()[1], 17, "Expected 17 channels, got {}", input.size()[1]);
+    assert_eq!(
+        input.size()[1],
+        17,
+        "Expected 17 channels, got {}",
+        input.size()[1]
+    );
 
     // Test forward passes
     let policy_output = policy_net.forward(&input, false);

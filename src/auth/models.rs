@@ -45,7 +45,7 @@ impl OAuthProvider {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "google" => Some(OAuthProvider::Google),
             "github" => Some(OAuthProvider::Github),
@@ -80,7 +80,7 @@ impl TokenType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "email_verification" => Some(TokenType::EmailVerification),
             "password_reset" => Some(TokenType::PasswordReset),
@@ -92,11 +92,11 @@ impl TokenType {
 /// JWT claims
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,        // user_id
+    pub sub: String, // user_id
     pub email: String,
     pub username: String,
-    pub exp: usize,         // expiration timestamp
-    pub iat: usize,         // issued at timestamp
+    pub exp: usize, // expiration timestamp
+    pub iat: usize, // issued at timestamp
 }
 
 /// API request/response types

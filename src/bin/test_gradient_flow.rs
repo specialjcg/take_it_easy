@@ -1,9 +1,9 @@
 //! Test diagnostique : Vérifie si les poids du policy network sont mis à jour
 
 use flexi_logger::Logger;
-use tch::{Device, Tensor};
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
+use tch::{Device, Tensor};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Logger::try_with_env_or_str("info")?
@@ -25,7 +25,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get initial weights snapshot
     log::info!("\n📸 Snapshot initial des poids policy");
     let vs = manager.policy_varstore();
-    let initial_weights: Vec<(String, Tensor)> = vs.variables()
+    let initial_weights: Vec<(String, Tensor)> = vs
+        .variables()
         .iter()
         .map(|(name, tensor)| (name.clone(), tensor.shallow_clone()))
         .collect();
@@ -35,7 +36,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let size: Vec<i64> = tensor.size();
         let mean = tensor.mean(tch::Kind::Float).double_value(&[]);
         let std = tensor.std(false).double_value(&[]);
-        log::info!("   {} - shape {:?}, mean={:.6}, std={:.6}", name, size, mean, std);
+        log::info!(
+            "   {} - shape {:?}, mean={:.6}, std={:.6}",
+            name,
+            size,
+            mean,
+            std
+        );
     }
 
     // Create simple training batch
@@ -91,7 +98,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             weights_changed = true;
         }
 
-        let status = if changed { "✅ CHANGED" } else { "❌ UNCHANGED" };
+        let status = if changed {
+            "✅ CHANGED"
+        } else {
+            "❌ UNCHANGED"
+        };
         log::info!("   {} - max_diff={:.2e} {}", name, diff_value, status);
     }
 

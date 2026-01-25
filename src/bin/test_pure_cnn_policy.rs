@@ -1,11 +1,10 @@
 ///! Test pure CNN policy (no MCTS, no rollouts) to evaluate bag awareness impact
 ///! This bypasses MCTS weighting to directly test if StochZero learns useful patterns
-
 use rand::prelude::*;
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::Plateau;
-use take_it_easy::game::remove_tile_from_deck::{replace_tile_in_deck, get_available_tiles};
+use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::manager::NeuralManager;
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
@@ -17,8 +16,7 @@ fn main() {
     println!("Tests if StochZero bag awareness improves greedy policy\n");
 
     // Load StochZero CNN
-    let neural_manager = NeuralManager::new()
-        .expect("Failed to load CNN");
+    let neural_manager = NeuralManager::new().expect("Failed to load CNN");
 
     let policy_net = neural_manager.policy_net();
 
@@ -63,7 +61,8 @@ fn main() {
             // Get CNN policy prediction
             let state = convert_plateau_to_tensor(&plateau, &tile, &deck, turn, 19);
             let policy = policy_net.forward(&state, false);
-            let policy_probs: Vec<f32> = policy.view([-1])
+            let policy_probs: Vec<f32> = policy
+                .view([-1])
                 .to_kind(Kind::Float)
                 .try_into()
                 .unwrap_or_else(|_| vec![]);
@@ -81,8 +80,14 @@ fn main() {
             }
 
             if debug && turn < 5 {
-                println!("  Turn {}: tile={:?}, legal={:?}, chose pos {} (logit={:.2})",
-                         turn, tile, &legal_moves[..legal_moves.len().min(5)], best_pos, best_prob);
+                println!(
+                    "  Turn {}: tile={:?}, legal={:?}, chose pos {} (logit={:.2})",
+                    turn,
+                    tile,
+                    &legal_moves[..legal_moves.len().min(5)],
+                    best_pos,
+                    best_prob
+                );
             }
 
             // Place tile
@@ -94,7 +99,9 @@ fn main() {
             for i in 0..19 {
                 if plateau.tiles[i] != Tile(0, 0, 0) {
                     print!("    pos {}: {:?}", i, plateau.tiles[i]);
-                    if (i + 1) % 5 == 0 { println!(); }
+                    if (i + 1) % 5 == 0 {
+                        println!();
+                    }
                 }
             }
             println!();
@@ -105,8 +112,13 @@ fn main() {
 
         if (game_idx + 1) % 5 == 0 {
             let avg: f32 = scores.iter().sum::<i32>() as f32 / scores.len() as f32;
-            println!("  Game {}/{}: score={} (avg so far: {:.1})",
-                     game_idx + 1, num_games, score, avg);
+            println!(
+                "  Game {}/{}: score={} (avg so far: {:.1})",
+                game_idx + 1,
+                num_games,
+                score,
+                avg
+            );
         }
     }
 
@@ -115,12 +127,14 @@ fn main() {
     let min = *scores.iter().min().unwrap();
     let max = *scores.iter().max().unwrap();
 
-    let variance: f32 = scores.iter()
+    let variance: f32 = scores
+        .iter()
         .map(|&s| {
             let diff = s as f32 - mean;
             diff * diff
         })
-        .sum::<f32>() / scores.len() as f32;
+        .sum::<f32>()
+        / scores.len() as f32;
     let std_dev = variance.sqrt();
 
     println!("\n📊 Pure CNN Policy Results:");

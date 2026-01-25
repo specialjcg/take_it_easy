@@ -67,7 +67,12 @@ struct ErrorResponse {
 }
 
 fn error_response(status: StatusCode, message: &str) -> impl IntoResponse {
-    (status, Json(ErrorResponse { error: message.to_string() }))
+    (
+        status,
+        Json(ErrorResponse {
+            error: message.to_string(),
+        }),
+    )
 }
 
 /// POST /auth/register - Register new user
@@ -82,11 +87,8 @@ async fn register(
 
     // Validate username
     if req.username.len() < 3 || req.username.len() > 30 {
-        return error_response(
-            StatusCode::BAD_REQUEST,
-            "Username must be 3-30 characters",
-        )
-        .into_response();
+        return error_response(StatusCode::BAD_REQUEST, "Username must be 3-30 characters")
+            .into_response();
     }
 
     // Validate password
@@ -161,7 +163,10 @@ async fn register(
     }
 
     // Generate JWT (user can login but some features may require verified email)
-    let jwt_token = match state.jwt.create_token(&user.id, &user.email, &user.username) {
+    let jwt_token = match state
+        .jwt
+        .create_token(&user.id, &user.email, &user.username)
+    {
         Ok(token) => token,
         Err(e) => {
             log::error!("JWT creation error: {}", e);
@@ -202,11 +207,8 @@ async fn login(
     let password_hash = match &user.password_hash {
         Some(hash) => hash,
         None => {
-            return error_response(
-                StatusCode::UNAUTHORIZED,
-                "Account uses OAuth login only",
-            )
-            .into_response()
+            return error_response(StatusCode::UNAUTHORIZED, "Account uses OAuth login only")
+                .into_response()
         }
     };
 
@@ -223,7 +225,10 @@ async fn login(
     }
 
     // Generate JWT
-    let token = match state.jwt.create_token(&user.id, &user.email, &user.username) {
+    let token = match state
+        .jwt
+        .create_token(&user.id, &user.email, &user.username)
+    {
         Ok(token) => token,
         Err(e) => {
             log::error!("JWT creation error: {}", e);
@@ -354,7 +359,10 @@ async fn reset_password(
     };
 
     // Update password
-    if let Err(e) = state.db.update_password(&reset_token.user_id, &password_hash) {
+    if let Err(e) = state
+        .db
+        .update_password(&reset_token.user_id, &password_hash)
+    {
         log::error!("Failed to update password: {}", e);
         return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Reset failed").into_response();
     }
@@ -373,7 +381,7 @@ async fn oauth_redirect(
     State(state): State<Arc<AuthState>>,
     Path(provider): Path<String>,
 ) -> impl IntoResponse {
-    let provider = match OAuthProvider::from_str(&provider) {
+    let provider = match OAuthProvider::parse(&provider) {
         Some(p) => p,
         None => {
             return error_response(StatusCode::BAD_REQUEST, "Unknown OAuth provider")
@@ -399,7 +407,7 @@ async fn oauth_callback(
     Path(provider): Path<String>,
     Query(callback): Query<OAuthCallback>,
 ) -> impl IntoResponse {
-    let provider = match OAuthProvider::from_str(&provider) {
+    let provider = match OAuthProvider::parse(&provider) {
         Some(p) => p,
         None => {
             return error_response(StatusCode::BAD_REQUEST, "Unknown OAuth provider")
@@ -463,7 +471,7 @@ async fn oauth_callback(
                         id: uuid::Uuid::new_v4().to_string(),
                         email: user_info.email.clone(),
                         username: user_info.username.clone(),
-                        password_hash: None, // OAuth-only account
+                        password_hash: None,  // OAuth-only account
                         email_verified: true, // OAuth emails are trusted
                         created_at: now.clone(),
                         updated_at: now,
@@ -509,7 +517,10 @@ async fn oauth_callback(
     };
 
     // Generate JWT
-    let token = match state.jwt.create_token(&user.id, &user.email, &user.username) {
+    let token = match state
+        .jwt
+        .create_token(&user.id, &user.email, &user.username)
+    {
         Ok(token) => token,
         Err(e) => {
             log::error!("JWT creation error: {}", e);
@@ -556,11 +567,15 @@ async fn get_current_user(
     let token = match headers.get("Authorization") {
         Some(value) => {
             let value = value.to_str().unwrap_or("");
-            if value.starts_with("Bearer ") {
-                &value[7..]
-            } else {
-                return error_response(StatusCode::UNAUTHORIZED, "Invalid authorization header")
+            match value.strip_prefix("Bearer ") {
+                Some(token) => token,
+                None => {
+                    return error_response(
+                        StatusCode::UNAUTHORIZED,
+                        "Invalid authorization header",
+                    )
                     .into_response();
+                }
             }
         }
         None => {
@@ -581,9 +596,7 @@ async fn get_current_user(
     // Get user from database
     match state.db.find_user_by_id(&claims.sub) {
         Ok(Some(user)) => Json(user).into_response(),
-        Ok(None) => {
-            error_response(StatusCode::NOT_FOUND, "User not found").into_response()
-        }
+        Ok(None) => error_response(StatusCode::NOT_FOUND, "User not found").into_response(),
         Err(e) => {
             log::error!("Database error: {}", e);
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get user").into_response()

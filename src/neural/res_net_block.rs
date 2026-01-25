@@ -3,9 +3,9 @@ use tch::{nn, Tensor};
 /// Residual Block with GroupNorm (more stable than BatchNorm for gradients)
 pub struct ResNetBlock {
     pub(crate) conv1: nn::Conv2D,
-    pub(crate) gn1: nn::GroupNorm,  // Changed from BatchNorm to GroupNorm
+    pub(crate) gn1: nn::GroupNorm, // Changed from BatchNorm to GroupNorm
     pub(crate) conv2: nn::Conv2D,
-    pub(crate) gn2: nn::GroupNorm,  // Changed from BatchNorm to GroupNorm
+    pub(crate) gn2: nn::GroupNorm, // Changed from BatchNorm to GroupNorm
     downsample: Option<nn::Conv2D>, // Optional downsampling for skip connections
 }
 
@@ -27,12 +27,7 @@ impl ResNetBlock {
             },
         );
         // GroupNorm: 16 groups, more stable than BatchNorm for gradient flow
-        let gn1 = nn::group_norm(
-            &(path / "gn1"),
-            16,
-            channels_out,
-            Default::default(),
-        );
+        let gn1 = nn::group_norm(&(path / "gn1"), 16, channels_out, Default::default());
         let conv2 = nn::conv2d(
             &(path / "conv2"),
             channels_out,
@@ -44,12 +39,7 @@ impl ResNetBlock {
             },
         );
         // GroupNorm: 16 groups, more stable than BatchNorm for gradient flow
-        let gn2 = nn::group_norm(
-            &(path / "gn2"),
-            16,
-            channels_out,
-            Default::default(),
-        );
+        let gn2 = nn::group_norm(&(path / "gn2"), 16, channels_out, Default::default());
 
         // Downsample if input/output channels differ
         let downsample = if channels_in != channels_out {
@@ -82,15 +72,10 @@ impl ResNetBlock {
         };
 
         // First conv block
-        let out = x
-            .apply(&self.conv1)
-            .apply_t(&self.gn1, train)
-            .relu();
+        let out = x.apply(&self.conv1).apply_t(&self.gn1, train).relu();
 
         // Second conv block (no activation yet)
-        let out = out
-            .apply(&self.conv2)
-            .apply_t(&self.gn2, train);
+        let out = out.apply(&self.conv2).apply_t(&self.gn2, train);
 
         // Add skip connection and activate
         (out + identity).relu()

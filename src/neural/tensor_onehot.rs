@@ -10,7 +10,7 @@ use crate::game::plateau::Plateau;
 use crate::game::tile::Tile;
 use tch::Tensor;
 
-use super::tensor_conversion::{LINE_DEFS, GRAPH_NODE_COUNT};
+use super::tensor_conversion::{GRAPH_NODE_COUNT, LINE_DEFS};
 
 const GRID_SIZE: usize = 5;
 
@@ -51,11 +51,25 @@ pub const ONEHOT_CHANNELS: usize = 37;
 
 /// Hexagonal to 5×5 grid mapping (same as tensor_conversion.rs)
 const HEX_TO_GRID_MAP: [(usize, usize); GRAPH_NODE_COUNT] = [
-    (1, 0), (2, 0), (3, 0),           // Column 0
-    (1, 1), (2, 1), (3, 1), (4, 1),   // Column 1
-    (0, 2), (1, 2), (2, 2), (3, 2), (4, 2), // Column 2
-    (1, 3), (2, 3), (3, 3), (4, 3),   // Column 3
-    (1, 4), (2, 4), (3, 4),           // Column 4
+    (1, 0),
+    (2, 0),
+    (3, 0), // Column 0
+    (1, 1),
+    (2, 1),
+    (3, 1),
+    (4, 1), // Column 1
+    (0, 2),
+    (1, 2),
+    (2, 2),
+    (3, 2),
+    (4, 2), // Column 2
+    (1, 3),
+    (2, 3),
+    (3, 3),
+    (4, 3), // Column 3
+    (1, 4),
+    (2, 4),
+    (3, 4), // Column 4
 ];
 
 #[inline]
@@ -84,7 +98,11 @@ pub fn convert_plateau_onehot(
     _current_turn: usize,
 ) -> Tensor {
     let mut features = vec![0.0f32; ONEHOT_CHANNELS * GRID_SIZE * GRID_SIZE];
-    let num_placed = plateau.tiles.iter().filter(|&&t| t != Tile(0, 0, 0)).count();
+    let num_placed = plateau
+        .tiles
+        .iter()
+        .filter(|&&t| t != Tile(0, 0, 0))
+        .count();
     let turn_progress = num_placed as f32 / 19.0;
 
     // PLATEAU STATE: One-hot encoding for each placed tile
@@ -171,7 +189,7 @@ pub fn convert_plateau_onehot(
 
         // Map to compressed channels (29-36 = 8 channels for 15 lines)
         // We use line potential as the main signal
-        let channel = 29 + (line_idx % 8);  // Compress 15 lines into 8 channels
+        let channel = 29 + (line_idx % 8); // Compress 15 lines into 8 channels
 
         for &pos in positions {
             let grid_idx = hex_to_grid_idx(pos);
@@ -181,13 +199,18 @@ pub fn convert_plateau_onehot(
         }
     }
 
-    Tensor::from_slice(&features).view([1, ONEHOT_CHANNELS as i64, GRID_SIZE as i64, GRID_SIZE as i64])
+    Tensor::from_slice(&features).view([
+        1,
+        ONEHOT_CHANNELS as i64,
+        GRID_SIZE as i64,
+        GRID_SIZE as i64,
+    ])
 }
 
 struct BagCountsOnehot {
-    dir1: [f32; 3],  // Counts for [1, 5, 9] normalized
-    dir2: [f32; 3],  // Counts for [2, 6, 7] normalized
-    dir3: [f32; 3],  // Counts for [3, 4, 8] normalized
+    dir1: [f32; 3], // Counts for [1, 5, 9] normalized
+    dir2: [f32; 3], // Counts for [2, 6, 7] normalized
+    dir3: [f32; 3], // Counts for [3, 4, 8] normalized
 }
 
 fn compute_bag_counts_onehot(deck: &Deck, current_tile: &Tile) -> BagCountsOnehot {
@@ -279,9 +302,9 @@ fn compute_line_features_onehot(plateau: &Plateau, tile: &Tile) -> Vec<f32> {
 
         // Compute line potential
         let potential = if is_blocked {
-            0.0  // Line blocked, no value
+            0.0 // Line blocked, no value
         } else if filled_count == 0 {
-            0.5  // Empty line, moderate potential
+            0.5 // Empty line, moderate potential
         } else {
             let line_value = value_in_line.unwrap_or(0);
             let fill_ratio = filled_count as f32 / line_len as f32;
@@ -328,7 +351,7 @@ mod tests {
         assert_eq!(value_to_onehot_idx(1, 0), Some(0));
         assert_eq!(value_to_onehot_idx(5, 0), Some(1));
         assert_eq!(value_to_onehot_idx(9, 0), Some(2));
-        assert_eq!(value_to_onehot_idx(2, 0), None);  // Not a Dir1 value
+        assert_eq!(value_to_onehot_idx(2, 0), None); // Not a Dir1 value
 
         // Dir2: [2, 6, 7]
         assert_eq!(value_to_onehot_idx(2, 1), Some(0));

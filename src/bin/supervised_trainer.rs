@@ -106,8 +106,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize neural network
     log::info!("Initializing neural network...");
-    let policy_lr = args.learning_rate * 10.0;  // 10x higher for policy network (was stuck)
-    let value_lr = args.learning_rate;          // Keep value LR as-is (it learns fine)
+    let policy_lr = args.learning_rate * 10.0; // 10x higher for policy network (was stuck)
+    let value_lr = args.learning_rate; // Keep value LR as-is (it learns fine)
 
     // Use 9 channels for CNN (with position ID), 8 for GNN (not yet adapted)
     let input_channels = if nn_arch == NNArchitecture::Gnn { 8 } else { 9 };
@@ -120,8 +120,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
     let mut manager = NeuralManager::with_config(neural_config)?;
-    log::info!("✅ Neural network initialized ({} channels) with policy_LR={}, value_LR={}",
-               input_channels, policy_lr, value_lr);
+    log::info!(
+        "✅ Neural network initialized ({} channels) with policy_LR={}, value_LR={}",
+        input_channels,
+        policy_lr,
+        value_lr
+    );
 
     // Load curriculum phases
     let data_files: Vec<&str> = args.data.split(',').collect();
@@ -162,7 +166,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // Train on this phase
-        train_phase(&mut manager, train_games, val_games, &args, phase_num, input_channels)?;
+        train_phase(
+            &mut manager,
+            train_games,
+            val_games,
+            &args,
+            phase_num,
+            input_channels,
+        )?;
 
         // Save checkpoint after each phase
         let checkpoint_path = format!("{}/phase{}", args.checkpoint_dir, phase_num);
@@ -294,7 +305,8 @@ fn train_epoch(
 
     for batch_moves in moves.chunks(batch_size) {
         // Prepare batch tensors
-        let (state_tensors, policy_targets, value_targets) = prepare_batch(batch_moves, device, input_channels)?;
+        let (state_tensors, policy_targets, value_targets) =
+            prepare_batch(batch_moves, device, input_channels)?;
 
         // Train policy network
         let policy_loss = if train_policy {
@@ -390,7 +402,11 @@ fn prepare_batch(
 
     for (i, expert_move) in moves.iter().enumerate() {
         // Encode plateau state
-        let state = encode_state(&expert_move.plateau_before, &expert_move.tile, include_position_id);
+        let state = encode_state(
+            &expert_move.plateau_before,
+            &expert_move.tile,
+            include_position_id,
+        );
         let offset = i * input_channels as usize * 5 * 5;
         states[offset..offset + input_channels as usize * 5 * 5].copy_from_slice(&state);
 

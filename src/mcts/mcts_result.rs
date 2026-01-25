@@ -29,7 +29,10 @@ impl Clone for MCTSResult {
             plateau: self.plateau.clone(),
             current_turn: self.current_turn,
             total_turns: self.total_turns,
-            q_value_distribution: self.q_value_distribution.as_ref().map(|t| t.shallow_clone()),
+            q_value_distribution: self
+                .q_value_distribution
+                .as_ref()
+                .map(|t| t.shallow_clone()),
         }
     }
 }

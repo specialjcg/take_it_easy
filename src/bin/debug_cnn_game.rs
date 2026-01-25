@@ -1,5 +1,4 @@
 ///! Play ONE game with CNN and track all decisions
-
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::Plateau;
@@ -13,8 +12,7 @@ use tch::Kind;
 fn main() {
     println!("🎮 Playing ONE game with CNN to debug score=23\n");
 
-    let neural_manager = NeuralManager::new()
-        .expect("Failed to load CNN");
+    let neural_manager = NeuralManager::new().expect("Failed to load CNN");
     let policy_net = neural_manager.policy_net();
 
     let mut plateau = Plateau {
@@ -43,14 +41,18 @@ fn main() {
         // Get CNN prediction
         let state = convert_plateau_to_tensor(&plateau, &tile, &deck, turn, 19);
         let policy = policy_net.forward(&state, false);
-        let policy_logits: Vec<f32> = policy.view([-1])
+        let policy_logits: Vec<f32> = policy
+            .view([-1])
             .to_kind(Kind::Float)
             .try_into()
             .unwrap_or_else(|_| vec![]);
 
         // Find best legal move
         let mut best_pos = legal_moves[0];
-        let mut best_logit = policy_logits.get(best_pos).copied().unwrap_or(f32::NEG_INFINITY);
+        let mut best_logit = policy_logits
+            .get(best_pos)
+            .copied()
+            .unwrap_or(f32::NEG_INFINITY);
 
         for &pos in &legal_moves {
             let logit = policy_logits.get(pos).copied().unwrap_or(f32::NEG_INFINITY);
@@ -61,21 +63,29 @@ fn main() {
         }
 
         // Get top 3 logits
-        let mut logits_with_pos: Vec<(usize, f32)> = policy_logits.iter()
+        let mut logits_with_pos: Vec<(usize, f32)> = policy_logits
+            .iter()
             .enumerate()
             .map(|(i, &v)| (i, v))
             .collect();
         logits_with_pos.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-        let top3 = format!("{}:{:.2}, {}:{:.2}, {}:{:.2}",
-                          logits_with_pos[0].0, logits_with_pos[0].1,
-                          logits_with_pos[1].0, logits_with_pos[1].1,
-                          logits_with_pos[2].0, logits_with_pos[2].1);
+        let top3 = format!(
+            "{}:{:.2}, {}:{:.2}, {}:{:.2}",
+            logits_with_pos[0].0,
+            logits_with_pos[0].1,
+            logits_with_pos[1].0,
+            logits_with_pos[1].1,
+            logits_with_pos[2].0,
+            logits_with_pos[2].1
+        );
 
         let legal_str = format!("{:?}", legal_moves);
 
-        println!("{:4} | ({},{},{}) | {:<11} | {} | {}",
-                 turn, tile.0, tile.1, tile.2, legal_str, top3, best_pos);
+        println!(
+            "{:4} | ({},{},{}) | {:<11} | {} | {}",
+            turn, tile.0, tile.1, tile.2, legal_str, top3, best_pos
+        );
 
         // Place tile
         plateau.tiles[best_pos] = tile;
@@ -93,7 +103,9 @@ fn main() {
     }
 
     println!("\n🔍 Position usage pattern:");
-    let positions_used: Vec<usize> = plateau.tiles.iter()
+    let positions_used: Vec<usize> = plateau
+        .tiles
+        .iter()
         .enumerate()
         .filter(|(_, tile)| tile.0 != 0)
         .map(|(i, _)| i)
@@ -103,5 +115,8 @@ fn main() {
     // Check which positions are 0-5
     let count_0_5 = positions_used.iter().filter(|&&p| p <= 5).count();
     println!("Positions 0-5 used: {}/6", count_0_5);
-    println!("Other positions used: {}/13", positions_used.len() - count_0_5);
+    println!(
+        "Other positions used: {}/13",
+        positions_used.len() - count_0_5
+    );
 }

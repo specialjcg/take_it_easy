@@ -12,7 +12,9 @@ use crate::game::plateau::{create_plateau_empty, Plateau};
 use crate::game::plateau_is_full::is_plateau_full;
 use crate::game::remove_tile_from_deck::replace_tile_in_deck;
 use crate::game::tile::Tile;
-use crate::mcts::algorithm::{mcts_find_best_position_for_tile_uct, mcts_find_best_position_for_tile_with_qnet};
+use crate::mcts::algorithm::{
+    mcts_find_best_position_for_tile_uct, mcts_find_best_position_for_tile_with_qnet,
+};
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
 use crate::scoring::scoring::result;
@@ -167,7 +169,8 @@ pub fn apply_player_move(
     player_move: PlayerMove,
 ) -> Result<TakeItEasyGameState, String> {
     // Vérifications utilisant vos fonctions - idiomatique Rust avec ?
-    let current_tile = game_state.current_tile
+    let current_tile = game_state
+        .current_tile
         .ok_or_else(|| "NO_CURRENT_TILE".to_string())?;
 
     if player_move.tile != current_tile {
@@ -818,7 +821,11 @@ mod tests {
 
     #[test]
     fn test_create_take_it_easy_game_multiplayer() {
-        let players = vec!["player1".to_string(), "player2".to_string(), "player3".to_string()];
+        let players = vec![
+            "player1".to_string(),
+            "player2".to_string(),
+            "player3".to_string(),
+        ];
         let game = create_take_it_easy_game("session2".to_string(), players);
 
         assert_eq!(game.session_id, "session2");
@@ -835,7 +842,13 @@ mod tests {
         let all_status = get_all_players_status(&game_state);
 
         assert_eq!(all_status.len(), 2);
-        assert!(matches!(all_status.get("player1"), Some(PlayerStatus::CanPlay)));
-        assert!(matches!(all_status.get("player2"), Some(PlayerStatus::CanPlay)));
+        assert!(matches!(
+            all_status.get("player1"),
+            Some(PlayerStatus::CanPlay)
+        ));
+        assert!(matches!(
+            all_status.get("player2"),
+            Some(PlayerStatus::CanPlay)
+        ));
     }
 }
