@@ -20,6 +20,7 @@ lib_tests.log
 integration_tests.log
 
 # Data files
+*.csv
 game_data.csv
 results.csv
 *.pt
@@ -27,11 +28,19 @@ game_data_states.pt
 game_data_positions.pt
 game_data_subscores.pt
 diff_output.txt
+filtered_datasets/
 
 # Model & Training
 model_weights/
+model_weights.backup*/
+model_weights_backup*/
 *.ckpt
 *.safetensors
+
+# Local/backup directories
+local_target/
+.local_target/
+logs_archive*/
 
 # Images & Media
 
