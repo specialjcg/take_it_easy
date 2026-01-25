@@ -29,6 +29,8 @@ game_data_positions.pt
 game_data_subscores.pt
 diff_output.txt
 filtered_datasets/
+data/
+expert_data*.json
 
 # Model & Training
 model_weights/
