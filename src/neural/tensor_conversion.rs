@@ -55,12 +55,14 @@ pub const GRAPH_EDGES: &[(usize, usize)] = &[
 
 /// Hexagonal plateau layout - VERTICAL columns with 3-4-5-4-3 tiles:
 ///
+/// ```text
 ///      Col0    Col1    Col2    Col3    Col4
 ///                       7
 ///        0      3      8       12      16
 ///        1      4      9       13      17
 ///        2      5     10       14      18
 ///               6     11       15
+/// ```
 ///
 /// Positions 0-2: Column 0 (3 tiles, centered vertically)
 /// Positions 3-6: Column 1 (4 tiles)

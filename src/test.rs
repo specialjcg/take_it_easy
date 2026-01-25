@@ -193,7 +193,7 @@ pub(crate) mod tests {
         let tensor = convert_plateau_to_tensor(
             &plateau, &tile, &deck, /* usize */ 0, 19, /* usize */
         );
-        assert_eq!(tensor.size(), vec![1, 8, 5, 5]); // 8 channels, 5x5 grid (CNN/GNN format)
+        assert_eq!(tensor.size(), vec![1, 47, 5, 5]); // 47 channels (17 base + 30 line features), 5x5 grid
     }
 
     #[test]
