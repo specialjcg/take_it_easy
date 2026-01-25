@@ -7,6 +7,7 @@ use tonic::{Request, Response, Status};
 use crate::generated::takeiteasygame::v1::game_service_server::GameService;
 use crate::generated::takeiteasygame::v1::*;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::neural::qvalue_net::QValueNet;
 use crate::services::session_manager::SessionManager;
 
 // Modules internes
@@ -30,7 +31,9 @@ pub struct GameServiceImpl {
     session_manager: Arc<SessionManager>,
     policy_net: Arc<Mutex<PolicyNet>>,
     value_net: Arc<Mutex<ValueNet>>,
+    qvalue_net: Option<Arc<Mutex<QValueNet>>>,
     num_simulations: usize,
+    top_k: usize,
 }
 
 impl GameServiceImpl {
@@ -44,7 +47,28 @@ impl GameServiceImpl {
             session_manager,
             policy_net,
             value_net,
+            qvalue_net: None,
             num_simulations,
+            top_k: 6,
+        }
+    }
+
+    /// Create with Q-Net hybrid MCTS for optimal performance
+    pub fn new_with_qnet(
+        session_manager: Arc<SessionManager>,
+        policy_net: Arc<Mutex<PolicyNet>>,
+        value_net: Arc<Mutex<ValueNet>>,
+        qvalue_net: Option<Arc<Mutex<QValueNet>>>,
+        num_simulations: usize,
+        top_k: usize,
+    ) -> Self {
+        GameServiceImpl {
+            session_manager,
+            policy_net,
+            value_net,
+            qvalue_net,
+            num_simulations,
+            top_k,
         }
     }
 }
@@ -61,12 +85,14 @@ impl GameService for GameServiceImpl {
     ) -> Result<Response<MakeMoveResponse>, Status> {
         let req = request.into_inner();
 
-        // ✅ NOUVEAU: Utiliser le handler asynchrone pour feedback immédiat
+        // ✅ Utiliser le handler asynchrone avec support Q-Net hybrid
         async_move_handler::make_move_async_logic(
             &self.session_manager,
             &self.policy_net,
             &self.value_net,
+            self.qvalue_net.clone(),
             self.num_simulations,
+            self.top_k,
             async_move_handler::AsyncMoveRequest {
                 session_id: req.session_id,
                 player_id: req.player_id,
@@ -99,7 +125,9 @@ impl GameService for GameServiceImpl {
             &self.session_manager,
             &self.policy_net,
             &self.value_net,
+            self.qvalue_net.clone(),
             self.num_simulations,
+            self.top_k,
             req.session_id,
         )
         .await

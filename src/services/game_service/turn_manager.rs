@@ -6,6 +6,7 @@ use tonic::{Response, Status};
 
 use crate::generated::takeiteasygame::v1::*;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::neural::qvalue_net::QValueNet;
 use crate::services::game_manager::{
     create_take_it_easy_game, start_new_turn, TakeItEasyGameState,
 };
@@ -16,17 +17,20 @@ use crate::utils::image::generate_tile_image_names;
 
 use super::response_builders::{start_turn_error_response, start_turn_success_response};
 use super::session_utils::get_session_by_code_or_id_from_store;
-// use super::mcts_integration::process_mcts_move_only; // Pas utilisé dans cette approche réactive
 
 // ============================================================================
 // LOGIQUE DE GESTION DES TOURS
 // ============================================================================
 
+/// Start a new turn - MCTS plays reactively after human move, not here
+#[allow(clippy::too_many_arguments)]
 pub async fn start_turn_logic(
     session_manager: &Arc<SessionManager>,
     _policy_net: &Arc<Mutex<PolicyNet>>,
     _value_net: &Arc<Mutex<ValueNet>>,
+    _qvalue_net: Option<Arc<Mutex<QValueNet>>>,
     _num_simulations: usize,
+    _top_k: usize,
     session_id: String,
 ) -> Result<Response<StartTurnResponse>, Status> {
     let store = get_store_from_manager(session_manager);

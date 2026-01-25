@@ -20,7 +20,7 @@ use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
-use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_uct;
+use take_it_easy::mcts::algorithm::{mcts_find_best_position_for_tile_pure, mcts_find_best_position_for_tile_uct};
 use take_it_easy::neural::gnn::convert_plateau_for_gnn;
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
@@ -89,6 +89,11 @@ struct Args {
     /// Output file for training history
     #[arg(long, default_value = "training_history.csv")]
     output: String,
+
+    /// Number of warmup iterations using pure MCTS (no network guidance)
+    /// This generates high-quality data to bootstrap the network
+    #[arg(long, default_value_t = 0)]
+    warmup_iterations: usize,
 }
 
 struct TrainingExample {
@@ -211,13 +216,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         log::info!("{}", "=".repeat(60));
 
         // Step 1: Self-play to generate training data
-        log::info!("\n🎮 Phase 1: Self-play ({} games)", args.games_per_iter);
+        let is_warmup = iteration < args.warmup_iterations;
+        if is_warmup {
+            log::info!("\n🔥 Phase 1: WARMUP Self-play ({} games, pure MCTS)", args.games_per_iter);
+        } else {
+            log::info!("\n🎮 Phase 1: Self-play ({} games)", args.games_per_iter);
+        }
         let training_data = generate_self_play_games(
             &manager,
             args.games_per_iter,
             args.mcts_simulations,
             args.seed + iteration as u64,
             args.use_q_value_targets,
+            is_warmup,  // Use pure MCTS during warmup
         )?;
 
         log::info!("   Generated {} training examples", training_data.len());
@@ -303,6 +314,7 @@ fn generate_self_play_games(
     mcts_sims: usize,
     seed: u64,
     use_q_value_targets: bool,
+    use_pure_mcts: bool,  // True = warmup mode (no network)
 ) -> Result<Vec<TrainingExample>, Box<dyn std::error::Error>> {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut training_data = Vec::new();
@@ -364,20 +376,34 @@ fn generate_self_play_games(
                 log::info!("   Noise values: {:?}", noise_values.iter().map(|v| format!("{:.3}", v)).collect::<Vec<_>>());
             }
 
-            // Use UCT MCTS with current network to find best position
-            // The exploration_priors will be mixed with network policy
-            let mcts_result = mcts_find_best_position_for_tile_uct(
-                &mut plateau,
-                &mut deck,
-                chosen_tile,
-                manager.policy_net(),
-                manager.value_net(),
-                mcts_sims,
-                turn,
-                turns_per_game,
-                None, // Use default hyperparameters
-                Some(exploration_priors), // Pass Dirichlet noise for exploration
-            );
+            // Choose MCTS strategy: Pure (warmup) or UCT (with network)
+            let mcts_result = if use_pure_mcts {
+                // WARMUP: Use pure MCTS without network guidance
+                // This generates high-quality data to bootstrap the network
+                mcts_find_best_position_for_tile_pure(
+                    &mut plateau,
+                    &mut deck,
+                    chosen_tile,
+                    mcts_sims,
+                    turn,
+                    turns_per_game,
+                    None,
+                )
+            } else {
+                // NORMAL: Use UCT MCTS with network guidance
+                mcts_find_best_position_for_tile_uct(
+                    &mut plateau,
+                    &mut deck,
+                    chosen_tile,
+                    manager.policy_net(),
+                    manager.value_net(),
+                    mcts_sims,
+                    turn,
+                    turns_per_game,
+                    None,
+                    Some(exploration_priors),
+                )
+            };
 
             // Record training example (use architecture-aware tensor conversion)
             // Both CNN and GNN use same encoding (includes tile), GNN reshapes in forward()
@@ -477,11 +503,11 @@ fn train_on_data(
             let states: Vec<&Tensor> = batch.iter().map(|ex| &ex.state).collect();
             let mut states_batch = Tensor::stack(&states, 0);
 
-            // GNN tensors have shape [1, 19, 8] which stacks to [batch, 1, 19, 8]
-            // Need to squeeze dimension 1 to get [batch, 19, 8]
-            if is_gnn {
-                states_batch = states_batch.squeeze_dim(1);
-            }
+            // All tensors have shape [1, ...] which stacks to [batch, 1, ...]
+            // Need to squeeze dimension 1 to get proper batch shape
+            // CNN: [batch, 1, 47, 5, 5] -> [batch, 47, 5, 5]
+            // GNN: [batch, 1, 19, 8] -> [batch, 19, 8]
+            states_batch = states_batch.squeeze_dim(1);
 
             let states_batch = states_batch.to_device(device);
 
@@ -514,9 +540,10 @@ fn train_on_data(
             let policy_opt = manager.policy_optimizer_mut();
             policy_opt.backward_step(&policy_loss);
 
-            // Train value network
+            // Train value network (use detached input to avoid graph interference)
             let value_net = manager.value_net();
-            let value_pred = value_net.forward(&states_batch, true);
+            let states_for_value = states_batch.detach();  // Detach to avoid graph sharing
+            let value_pred = value_net.forward(&states_for_value, true);
             let value_loss = value_pred.mse_loss(&value_targets_batch, tch::Reduction::Mean);
 
             let value_opt = manager.value_optimizer_mut();

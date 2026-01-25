@@ -18,6 +18,7 @@ use crate::mcts::progressive_widening::{max_actions_to_explore, ProgressiveWiden
 use crate::neural::gnn::convert_plateau_for_gnn;
 use crate::neural::manager::NNArchitecture;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::neural::qvalue_net::QValueNet;
 use crate::neural::tensor_conversion::convert_plateau_to_tensor;
 use crate::scoring::scoring::result;
 use crate::strategy::contextual_boost::calculate_contextual_boost_entropy;
@@ -53,6 +54,13 @@ pub enum MctsEvaluator<'a> {
     Neural {
         policy_net: &'a PolicyNet,
         value_net: &'a ValueNet,
+    },
+    /// Neural + Q-net for action pruning (hybrid mode)
+    NeuralWithQNet {
+        policy_net: &'a PolicyNet,
+        value_net: &'a ValueNet,
+        qvalue_net: &'a QValueNet,
+        prune_top_k: usize,
     },
     #[allow(dead_code)]
     Pure,
@@ -91,6 +99,106 @@ pub fn mcts_find_best_position_for_tile_with_nn(
         total_turns,
         hyperparams,
     )
+}
+
+/// Run MCTS with neural networks AND Q-net pruning (hybrid mode).
+/// Q-net prunes low-quality positions, then CNN policy/value guide MCTS on remaining.
+/// Uses adaptive pruning: more aggressive early game, less late game.
+#[allow(clippy::too_many_arguments)]
+pub fn mcts_find_best_position_for_tile_with_qnet(
+    plateau: &mut Plateau,
+    deck: &mut Deck,
+    chosen_tile: Tile,
+    policy_net: &PolicyNet,
+    value_net: &ValueNet,
+    qvalue_net: &QValueNet,
+    num_simulations: usize,
+    current_turn: usize,
+    total_turns: usize,
+    prune_top_k: usize,
+    hyperparams: Option<&MCTSHyperparameters>,
+) -> MCTSResult {
+    let default_hyperparams = MCTSHyperparameters::default();
+    let hyperparams = hyperparams.unwrap_or(&default_hyperparams);
+
+    // Count empty positions
+    let empty_count = plateau.tiles.iter().filter(|t| **t == Tile(0, 0, 0)).count();
+
+    // Adaptive pruning: only prune if enough positions and early game
+    // Fine-tuned: turn_threshold=10 is optimal (prune turns 0-9 only)
+    let should_prune = empty_count > prune_top_k + 2 && current_turn < 10;
+
+    if should_prune {
+        // Q-net pruning - get top-K positions by ranking
+        let top_positions = qvalue_net.get_top_positions(&plateau.tiles, &chosen_tile, prune_top_k);
+
+        // Run simpler MCTS with rollouts only on top positions
+        // (CNN doesn't work well with masked positions)
+        let mut best_pos = top_positions[0];
+        let mut best_score = f64::NEG_INFINITY;
+
+        let sims_per_pos = num_simulations / top_positions.len().max(1);
+
+        for &pos in &top_positions {
+            let mut temp_plateau = plateau.clone();
+            temp_plateau.tiles[pos] = chosen_tile;
+            let temp_deck = replace_tile_in_deck(deck, &chosen_tile);
+
+            let mut total = 0.0;
+            for _ in 0..sims_per_pos {
+                total += simulate_games_smart(temp_plateau.clone(), temp_deck.clone(), None) as f64;
+            }
+            let avg = total / sims_per_pos as f64;
+
+            if avg > best_score {
+                best_score = avg;
+                best_pos = pos;
+            }
+        }
+
+        // Create result with best position from Q-net filtered rollouts
+        let board_tensor = convert_plateau_by_arch(
+            policy_net.arch,
+            plateau,
+            &chosen_tile,
+            deck,
+            current_turn,
+            total_turns,
+        );
+
+        // Create uniform distribution for filtered positions
+        let mut distribution = vec![0.0f32; 19];
+        for &pos in &top_positions {
+            distribution[pos] = 1.0 / top_positions.len() as f32;
+        }
+
+        MCTSResult {
+            best_position: best_pos,
+            board_tensor,
+            subscore: best_score,
+            policy_distribution: Tensor::from_slice(&distribution).view([19]),
+            policy_distribution_boosted: Tensor::from_slice(&distribution).view([19]),
+            boost_intensity: 0.0,
+            graph_features: None,
+            plateau: Some(plateau.clone()),
+            current_turn: Some(current_turn),
+            total_turns: Some(total_turns),
+            q_value_distribution: None,
+        }
+    } else {
+        // Late game or few positions: use full CNN MCTS without pruning
+        mcts_find_best_position_for_tile_with_nn(
+            plateau,
+            deck,
+            chosen_tile,
+            policy_net,
+            value_net,
+            num_simulations,
+            current_turn,
+            total_turns,
+            Some(hyperparams),
+        )
+    }
 }
 
 /// Run MCTS without neural priors/value predictions (pure Monte Carlo rollouts).
@@ -167,6 +275,7 @@ fn mcts_core(
     // Extract architecture from evaluator
     let arch = match &evaluator {
         MctsEvaluator::Neural { policy_net, .. } => policy_net.arch,
+        MctsEvaluator::NeuralWithQNet { policy_net, .. } => policy_net.arch,
         MctsEvaluator::Pure => NNArchitecture::Cnn, // default
     };
 
@@ -198,8 +307,8 @@ fn mcts_core(
         };
     }
 
-    let (input_tensor, graph_features) = match evaluator {
-        MctsEvaluator::Neural { policy_net, .. } => {
+    let (input_tensor, graph_features) = match &evaluator {
+        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let PolicyNet { arch, .. } = policy_net;
             match arch {
                 NNArchitecture::Cnn => (
@@ -266,8 +375,8 @@ fn mcts_core(
     let mut sum_values = 0.0;
 
     // ADAPTIVE ENTROPY WEIGHTING: Calculate policy entropy for dynamic weight adjustment
-    let adaptive_weights = match evaluator {
-        MctsEvaluator::Neural { policy_net, .. } => {
+    let adaptive_weights = match &evaluator {
+        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let policy_logits = policy_net.forward(&input_tensor, false);
             let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
 
@@ -310,10 +419,14 @@ fn mcts_core(
         _ => None,
     };
 
-    let (policy, entropy_factor) = match evaluator {
+    let (policy, entropy_factor) = match &evaluator {
         MctsEvaluator::Neural {
             policy_net,
             value_net,
+        } | MctsEvaluator::NeuralWithQNet {
+            policy_net,
+            value_net,
+            ..
         } => {
             let policy_logits = policy_net.forward(&input_tensor, false);
             let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
@@ -713,6 +826,7 @@ fn mcts_core_cow(
     // Extract architecture from evaluator
     let arch = match &evaluator {
         MctsEvaluator::Neural { policy_net, .. } => policy_net.arch,
+        MctsEvaluator::NeuralWithQNet { policy_net, .. } => policy_net.arch,
         MctsEvaluator::Pure => NNArchitecture::Cnn, // default
     };
 
@@ -748,8 +862,8 @@ fn mcts_core_cow(
         };
     }
 
-    let (input_tensor, graph_features) = match evaluator {
-        MctsEvaluator::Neural { policy_net, .. } => {
+    let (input_tensor, graph_features) = match &evaluator {
+        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let PolicyNet { arch, .. } = policy_net;
             match arch {
                 NNArchitecture::Cnn => (
@@ -777,7 +891,7 @@ fn mcts_core_cow(
                 }
             }
         }
-        MctsEvaluator::Pure => (
+        MctsEvaluator::Pure | MctsEvaluator::NeuralWithQNet { .. } => (
             convert_plateau_to_tensor(
                 plateau,
                 &chosen_tile,
@@ -795,8 +909,8 @@ fn mcts_core_cow(
     let mut sum_values = 0.0;
 
     // ADAPTIVE ENTROPY WEIGHTING: Calculate policy entropy for dynamic weight adjustment
-    let adaptive_weights = match evaluator {
-        MctsEvaluator::Neural { policy_net, .. } => {
+    let adaptive_weights = match &evaluator {
+        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let policy_logits = policy_net.forward(&input_tensor, false);
             let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
 
@@ -839,10 +953,14 @@ fn mcts_core_cow(
         _ => None,
     };
 
-    let (policy, _policy_entropy) = match evaluator {
+    let (policy, _policy_entropy) = match &evaluator {
         MctsEvaluator::Neural {
             policy_net,
             value_net,
+        } | MctsEvaluator::NeuralWithQNet {
+            policy_net,
+            value_net,
+            ..
         } => {
             let policy_logits = policy_net.forward(&input_tensor, false);
             let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
@@ -1341,6 +1459,7 @@ fn mcts_core_gumbel(
     // Extract architecture from evaluator
     let arch = match &evaluator {
         MctsEvaluator::Neural { policy_net, .. } => policy_net.arch,
+        MctsEvaluator::NeuralWithQNet { policy_net, .. } => policy_net.arch,
         MctsEvaluator::Pure => NNArchitecture::Cnn, // default
     };
 
@@ -1372,8 +1491,8 @@ fn mcts_core_gumbel(
         };
     }
 
-    let (input_tensor, graph_features) = match evaluator {
-        MctsEvaluator::Neural { policy_net, .. } => {
+    let (input_tensor, graph_features) = match &evaluator {
+        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let PolicyNet { arch, .. } = policy_net;
             match arch {
                 NNArchitecture::Cnn => (
@@ -1411,10 +1530,14 @@ fn mcts_core_gumbel(
     let mut min_value = f64::INFINITY;
     let mut max_value = f64::NEG_INFINITY;
 
-    let (_policy, _entropy_factor) = match evaluator {
+    let (_policy, _entropy_factor) = match &evaluator {
         MctsEvaluator::Neural {
             policy_net,
             value_net,
+        } | MctsEvaluator::NeuralWithQNet {
+            policy_net,
+            value_net,
+            ..
         } => {
             let policy_logits = policy_net.forward(&input_tensor, false);
             let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();

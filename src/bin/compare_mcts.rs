@@ -75,9 +75,17 @@ struct Args {
     #[arg(long, default_value = "compare_mcts_log.csv")]
     log_path: String,
 
-    /// Architecture du réseau de neurones (cnn ou gnn)
+    /// Architecture du réseau de neurones (cnn ou gnn) - used if policy/value not specified
     #[arg(long, value_enum, default_value = "cnn")]
     nn_architecture: NnArchitectureCli,
+
+    /// Policy network architecture (optional, for hybrid mode)
+    #[arg(long, value_enum)]
+    policy_architecture: Option<NnArchitectureCli>,
+
+    /// Value network architecture (optional, for hybrid mode)
+    #[arg(long, value_enum)]
+    value_architecture: Option<NnArchitectureCli>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -100,9 +108,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let nn_arch: take_it_easy::neural::manager::NNArchitecture = args.nn_architecture.clone().into();
+    let policy_arch = args.policy_architecture.clone().map(|a| a.into());
+    let value_arch = args.value_architecture.clone().map(|a| a.into());
+
+    let is_hybrid = policy_arch.is_some() || value_arch.is_some();
+    if is_hybrid {
+        log::info!(
+            "🔀 HYBRID MODE: policy={}, value={}",
+            policy_arch.unwrap_or(nn_arch),
+            value_arch.unwrap_or(nn_arch)
+        );
+    }
+
     let neural_config = NeuralConfig {
-        input_dim: nn_arch.input_dim(),  // Use architecture-specific input dimensions
+        input_dim: nn_arch.input_dim(),  // Base input dimensions
         nn_architecture: nn_arch,
+        policy_architecture: policy_arch,
+        value_architecture: value_arch,
         ..Default::default()
     };
     let manager = NeuralManager::with_config(neural_config)?;

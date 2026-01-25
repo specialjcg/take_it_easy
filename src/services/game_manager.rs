@@ -12,8 +12,9 @@ use crate::game::plateau::{create_plateau_empty, Plateau};
 use crate::game::plateau_is_full::is_plateau_full;
 use crate::game::remove_tile_from_deck::replace_tile_in_deck;
 use crate::game::tile::Tile;
-use crate::mcts::algorithm::mcts_find_best_position_for_tile_uct;
+use crate::mcts::algorithm::{mcts_find_best_position_for_tile_uct, mcts_find_best_position_for_tile_with_qnet};
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::neural::qvalue_net::QValueNet;
 use crate::scoring::scoring::result;
 use rand::Rng;
 // ============================================================================
@@ -286,7 +287,77 @@ pub async fn process_mcts_turn(
     Ok((game_state, mcts_move))
 }
 
-// Dans game_manager.rs - NOUVELLE fonction de debug complète
+/// Process MCTS turn using hybrid Q-Net for superior play quality
+/// Uses Q-Net for position pruning before CNN policy/value evaluation
+pub async fn process_mcts_turn_hybrid(
+    mut game_state: TakeItEasyGameState,
+    policy_net: &Mutex<PolicyNet>,
+    value_net: &Mutex<ValueNet>,
+    qvalue_net: &Mutex<QValueNet>,
+    num_simulations: usize,
+    top_k: usize,
+) -> Result<(TakeItEasyGameState, MctsMove), String> {
+    let current_tile = game_state.current_tile.ok_or("NO_CURRENT_TILE")?;
+
+    if !game_state
+        .waiting_for_players
+        .contains(&"mcts_ai".to_string())
+    {
+        return Err("MCTS_NOT_WAITING".to_string());
+    }
+
+    let mcts_plateau = game_state
+        .player_plateaus
+        .get_mut("mcts_ai")
+        .ok_or("MCTS_PLAYER_NOT_FOUND")?;
+
+    let legal_moves = get_legal_moves(mcts_plateau);
+    if legal_moves.is_empty() {
+        return Err("NO_LEGAL_MOVES_FOR_MCTS".to_string());
+    }
+    let mut deck_clone = game_state.deck.clone();
+
+    let policy_locked = policy_net.lock().await;
+    let value_locked = value_net.lock().await;
+    let qvalue_locked = qvalue_net.lock().await;
+
+    // Use Q-Net hybrid MCTS for best performance
+    let mcts_result = mcts_find_best_position_for_tile_with_qnet(
+        mcts_plateau,
+        &mut deck_clone,
+        current_tile,
+        &policy_locked,
+        &value_locked,
+        &qvalue_locked,
+        num_simulations,
+        game_state.current_turn,
+        game_state.total_turns,
+        top_k,
+        None,
+    );
+
+    if !legal_moves.contains(&mcts_result.best_position) {
+        log::error!(
+            "❌ MCTS HYBRID a choisi un mouvement illégal: {} (légaux: {:?})",
+            mcts_result.best_position,
+            legal_moves
+        );
+        return Err("MCTS_ILLEGAL_MOVE".to_string());
+    }
+
+    mcts_plateau.tiles[mcts_result.best_position] = current_tile;
+    game_state.waiting_for_players.retain(|id| id != "mcts_ai");
+
+    let mcts_move = MctsMove {
+        position: mcts_result.best_position,
+        tile: current_tile,
+        evaluation_score: mcts_result.subscore as f32,
+        search_depth: num_simulations,
+        variations_considered: num_simulations,
+    };
+    Ok((game_state, mcts_move))
+}
+
 // ============================================================================
 // NOUVELLE LOGIQUE : Séparer fin de tour et proposition de tuile
 // ============================================================================
@@ -435,6 +506,75 @@ pub async fn process_player_move_with_mcts(
     new_state = check_turn_completion(new_state)?;
 
     // 4. Calculer et mettre à jour les scores en temps réel
+    for (player_id, plateau) in &new_state.player_plateaus {
+        let current_score = result(plateau);
+        new_state.scores.insert(player_id.clone(), current_score);
+    }
+
+    let initial_score = *new_state.scores.get(&player_move.player_id).unwrap_or(&0);
+    let points_earned = if let Some(plateau) = new_state.player_plateaus.get(&player_move.player_id)
+    {
+        result(plateau) - initial_score
+    } else {
+        0
+    };
+
+    Ok(MoveResult {
+        new_game_state: new_state.clone(),
+        points_earned,
+        mcts_response,
+        is_game_over: is_game_finished(&new_state),
+        turn_completed: new_state.waiting_for_players.is_empty(),
+    })
+}
+
+/// Process player move with hybrid Q-Net MCTS for superior AI play
+#[allow(clippy::too_many_arguments)]
+pub async fn process_player_move_with_hybrid_mcts(
+    game_state: TakeItEasyGameState,
+    player_move: PlayerMove,
+    policy_net: &Mutex<PolicyNet>,
+    value_net: &Mutex<ValueNet>,
+    qvalue_net: &Mutex<QValueNet>,
+    num_simulations: usize,
+    top_k: usize,
+) -> Result<MoveResult, String> {
+    // 1. Appliquer le mouvement du joueur
+    let mut new_state = apply_player_move(game_state, player_move.clone())?;
+
+    // 2. MCTS Hybrid joue automatiquement
+    let mcts_response = if player_move.player_id != "mcts_ai"
+        && new_state
+            .waiting_for_players
+            .contains(&"mcts_ai".to_string())
+    {
+        match process_mcts_turn_hybrid(
+            new_state.clone(),
+            policy_net,
+            value_net,
+            qvalue_net,
+            num_simulations,
+            top_k,
+        )
+        .await
+        {
+            Ok((updated_state, mcts_move)) => {
+                new_state = updated_state;
+                Some(mcts_move)
+            }
+            Err(_e) => {
+                new_state.waiting_for_players.retain(|id| id != "mcts_ai");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // 3. Vérifier la fin du tour
+    new_state = check_turn_completion(new_state)?;
+
+    // 4. Calculer et mettre à jour les scores
     for (player_id, plateau) in &new_state.player_plateaus {
         let current_score = result(plateau);
         new_state.scores.insert(player_id.clone(), current_score);

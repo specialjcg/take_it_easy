@@ -18,12 +18,24 @@ pub struct GameSession {
     pub current_player_id: Option<String>,
     pub state: i32,
     pub max_players: i32,
-    #[allow(dead_code)]
     pub game_mode: String,
+    pub num_simulations: usize,  // MCTS simulations per move (from game_mode)
     #[allow(dead_code)]
     pub created_at: std::time::Instant,
     pub board_state: String,
     pub turn_number: i32,
+}
+
+/// Map game mode to MCTS simulation count
+pub fn get_simulations_for_mode(game_mode: &str) -> usize {
+    match game_mode {
+        "single-player-easy" | "solo-rapide" => 50,
+        "single-player-medium" | "solo-normal" => 300,
+        "single-player-hard" | "solo-expert" => 1000,
+        "multiplayer" => 150,
+        "training" => 100,
+        _ => 200  // Default fallback
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +119,9 @@ pub fn find_session_by_id<'a>(
 // ============================================================================
 
 pub fn create_game_session(max_players: i32, game_mode: String) -> GameSession {
+    let num_simulations = get_simulations_for_mode(&game_mode);
+    log::info!("🎮 Session créée: mode={}, simulations={}", game_mode, num_simulations);
+
     GameSession {
         id: Uuid::new_v4().to_string(),
         code: generate_session_code(),
@@ -115,6 +130,7 @@ pub fn create_game_session(max_players: i32, game_mode: String) -> GameSession {
         state: 0, // WAITING
         max_players,
         game_mode,
+        num_simulations,
         created_at: std::time::Instant::now(),
         board_state: "{}".to_string(),
         turn_number: 0,

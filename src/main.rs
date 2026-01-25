@@ -3,7 +3,7 @@ use clap::Parser;
 use flexi_logger::Logger;
 use tokio::net::TcpListener;
 
-use crate::neural::{NeuralConfig, NeuralManager};
+use crate::neural::{NeuralConfig, NeuralManager, QNetManager};
 use crate::training::session::{train_and_evaluate, train_and_evaluate_offline};
 
 #[cfg(test)]
@@ -90,6 +90,18 @@ struct Config {
     /// Architecture du réseau de neurones (cnn ou gnn)
     #[arg(long, value_enum, default_value = "cnn")]
     nn_architecture: NnArchitectureCli,
+
+    /// Enable Q-Net hybrid MCTS for improved AI performance (recommended)
+    #[arg(long, default_value_t = true)]
+    hybrid_mcts: bool,
+
+    /// Path to Q-value network weights for hybrid MCTS
+    #[arg(long, default_value = "model_weights/qvalue_net.params")]
+    qnet_path: String,
+
+    /// Top-K positions for Q-net pruning (6 is optimal)
+    #[arg(long, default_value_t = 6)]
+    top_k: usize,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -120,9 +132,11 @@ async fn start_web_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
 async fn start_multiplayer_server(
     neural_manager: NeuralManager,
+    qnet_manager: Option<QNetManager>,
     num_simulations: usize,
     port: u16,
     single_player: bool,
+    top_k: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     log::info!("🎯 Interface web : http://localhost:{}", port + 1000);
 
@@ -137,13 +151,28 @@ async fn start_multiplayer_server(
     // Extract components from neural manager
     let components = neural_manager.into_components();
 
-    let grpc_server = servers::GrpcServer::new(
-        grpc_config,
-        components.policy_net,
-        components.value_net,
-        num_simulations,
-        single_player,
-    );
+    // Create server with or without Q-Net hybrid
+    let grpc_server = if let Some(qnet) = qnet_manager {
+        log::info!("🚀 MCTS Hybrid activé avec Q-Net (top-{})", top_k);
+        servers::GrpcServer::new_hybrid(
+            grpc_config,
+            components.policy_net,
+            components.value_net,
+            qnet.into_net(),
+            num_simulations,
+            single_player,
+            top_k,
+        )
+    } else {
+        log::info!("📊 MCTS CNN standard (sans Q-Net)");
+        servers::GrpcServer::new(
+            grpc_config,
+            components.policy_net,
+            components.value_net,
+            num_simulations,
+            single_player,
+        )
+    };
 
     grpc_server.start().await
 }
@@ -222,6 +251,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         GameMode::Multiplayer => {
+            // Load Q-Net for hybrid MCTS if enabled
+            let qnet_manager = if config.hybrid_mcts {
+                match QNetManager::new(&config.qnet_path) {
+                    Ok(qnet) => {
+                        log::info!("✅ Q-Net chargé depuis {}", config.qnet_path);
+                        Some(qnet)
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ Impossible de charger Q-Net ({}), mode CNN standard", e);
+                        None
+                    }
+                }
+            } else {
+                log::info!("ℹ️ Mode Hybrid désactivé, utilisation du MCTS CNN standard");
+                None
+            };
+
             // Lancer le serveur web en arrière-plan
             let web_port = config.port;
             tokio::spawn(async move {
@@ -233,12 +279,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Donner un peu de temps au serveur web pour démarrer
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-            // Lancer le serveur gRPC (bloquant)
+            // Lancer le serveur gRPC (bloquant) avec support hybrid
             start_multiplayer_server(
                 neural_manager,
+                qnet_manager,
                 config.num_simulations,
                 config.port,
                 config.single_player,
+                config.top_k,
             )
             .await?;
         }

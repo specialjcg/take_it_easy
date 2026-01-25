@@ -61,6 +61,10 @@ struct Args {
     /// Early stopping patience (epochs without improvement)
     #[arg(long, default_value_t = 10)]
     patience: usize,
+
+    /// Use Q-values for value training (requires qvalue dataset format)
+    #[arg(long, default_value_t = false)]
+    qvalue_mode: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +73,7 @@ struct TrainingExample {
     tile: (i32, i32, i32),    // Current tile
     position: usize,          // Target position (policy label)
     final_score: i32,         // Final game score (value label)
+    qvalues: Option<[f32; 19]>, // Q-values for each position (if qvalue_mode)
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -96,8 +101,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Load training data from CSV
     log::info!("\n📂 Loading training data from CSV...");
-    let examples = load_csv_data(&args.data)?;
+    if args.qvalue_mode {
+        log::info!("🎯 Q-VALUE MODE: Using Q-values as value targets");
+    }
+    let examples = load_csv_data(&args.data, args.qvalue_mode)?;
     log::info!("✅ Loaded {} training examples", examples.len());
+    if args.qvalue_mode {
+        let with_qv = examples.iter().filter(|e| e.qvalues.is_some()).count();
+        log::info!("   {} examples have Q-values", with_qv);
+    }
 
     if args.augmentation {
         log::info!("🔄 Data augmentation: ON-THE-FLY (random transformation per batch)");
@@ -211,7 +223,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn load_csv_data(path: &str) -> Result<Vec<TrainingExample>, Box<dyn Error>> {
+fn load_csv_data(path: &str, qvalue_mode: bool) -> Result<Vec<TrainingExample>, Box<dyn Error>> {
     let file = File::open(path)?;
     let mut reader = ReaderBuilder::new()
         .has_headers(true)
@@ -237,14 +249,27 @@ fn load_csv_data(path: &str) -> Result<Vec<TrainingExample>, Box<dyn Error>> {
         );
 
         // Parse position and final_score
+        // In qvalue_mode: col 24 is best_position, col 25 is final_score, cols 26-44 are qvalues
+        // In normal mode: col 24 is position, col 25 is final_score
         let position: usize = record[24].parse()?;
         let final_score: i32 = record[25].parse()?;
+
+        let qvalues = if qvalue_mode && record.len() > 26 {
+            let mut qv = [0.0f32; 19];
+            for i in 0..19 {
+                qv[i] = record[26 + i].parse().unwrap_or(0.0);
+            }
+            Some(qv)
+        } else {
+            None
+        };
 
         examples.push(TrainingExample {
             plateau_state,
             tile,
             position,
             final_score,
+            qvalues,
         });
     }
 
@@ -283,6 +308,7 @@ fn train_epoch(
                     tile: new_tile,
                     position: new_position,
                     final_score: score,
+                    qvalues: None, // Q-values not preserved after augmentation
                 }
             }).collect()
         } else {
@@ -367,9 +393,16 @@ fn prepare_batch_with_arch(
     arch: NNArchitecture,
 ) -> Result<(Tensor, Tensor, Tensor), Box<dyn Error>> {
     let batch_size = examples.len();
+
+    // GNN uses different tensor shape: [batch, 19, 8] instead of [batch, channels, 5, 5]
+    if arch == NNArchitecture::Gnn {
+        return prepare_batch_gnn(examples, device);
+    }
+
     let (input_channels, encode_fn): (i64, fn(&[i32], &(i32, i32, i32)) -> Vec<f32>) = match arch {
-        NNArchitecture::Cnn | NNArchitecture::Gnn => (47, encode_state),
+        NNArchitecture::Cnn => (47, encode_state),
         NNArchitecture::CnnOnehot => (37, encode_state_onehot),
+        NNArchitecture::Gnn => unreachable!(), // Handled above
     };
 
     let state_size = (input_channels as usize) * 5 * 5;
@@ -388,14 +421,66 @@ fn prepare_batch_with_arch(
         // Policy target: position
         policy_targets[i] = example.position as i64;
 
-        // Value target: normalize final_score to [0, 1] range
-        // Scores typically range from 0-180, normalize to approximately [0, 1]
-        value_targets[i] = (example.final_score as f32) / 180.0;
+        // Value target: use Q-value if available, otherwise normalized final_score
+        if let Some(qv) = &example.qvalues {
+            // Use the Q-value of the chosen position as target
+            // Q-values are already normalized to [0, 1]
+            let qval = qv[example.position];
+            value_targets[i] = if qval >= 0.0 { qval } else { 0.0 };
+        } else {
+            // Fallback: normalize final_score to [0, 1] range
+            value_targets[i] = (example.final_score as f32) / 180.0;
+        }
     }
 
     // CNN expects [batch, channels, height, width] = [batch, channels, 5, 5]
     let state_tensor = Tensor::from_slice(&states)
         .view([batch_size as i64, input_channels, 5, 5])
+        .to_device(device);
+
+    let policy_tensor = Tensor::from_slice(&policy_targets).to_device(device);
+
+    let value_tensor = Tensor::from_slice(&value_targets)
+        .view([batch_size as i64, 1])
+        .to_device(device);
+
+    Ok((state_tensor, policy_tensor, value_tensor))
+}
+
+/// Prepare batch specifically for GNN architecture
+/// GNN uses shape [batch, 19, 8] instead of [batch, channels, 5, 5]
+fn prepare_batch_gnn(
+    examples: &[TrainingExample],
+    device: Device,
+) -> Result<(Tensor, Tensor, Tensor), Box<dyn Error>> {
+    let batch_size = examples.len();
+    const NODE_COUNT: usize = 19;
+    const FEATURES: usize = 8;
+    let state_size = NODE_COUNT * FEATURES;
+
+    let mut states = vec![0.0f32; batch_size * state_size];
+    let mut policy_targets = vec![0i64; batch_size];
+    let mut value_targets = vec![0.0f32; batch_size];
+
+    for (i, example) in examples.iter().enumerate() {
+        let state = encode_state_gnn(&example.plateau_state, &example.tile);
+        let offset = i * state_size;
+        states[offset..offset + state_size].copy_from_slice(&state);
+
+        policy_targets[i] = example.position as i64;
+
+        // Value target: use Q-value if available
+        if let Some(qv) = &example.qvalues {
+            let qval = qv[example.position];
+            value_targets[i] = if qval >= 0.0 { qval } else { 0.0 };
+        } else {
+            value_targets[i] = (example.final_score as f32) / 180.0;
+        }
+    }
+
+    // GNN expects [batch, nodes, features] = [batch, 19, 8]
+    let state_tensor = Tensor::from_slice(&states)
+        .view([batch_size as i64, NODE_COUNT as i64, FEATURES as i64])
         .to_device(device);
 
     let policy_tensor = Tensor::from_slice(&policy_targets).to_device(device);
@@ -827,5 +912,117 @@ fn encode_state_onehot(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
     }
 
     state
+}
+
+/// Encode state for GNN: 19 nodes × 8 features
+/// Features per node:
+///   [0]: tile.0 / 10 (direction 1 value, normalized)
+///   [1]: tile.1 / 10 (direction 2 value, normalized)
+///   [2]: tile.2 / 10 (direction 3 value, normalized)
+///   [3]: empty mask (0 if empty, 1 if filled)
+///   [4]: orientation_score direction 1
+///   [5]: orientation_score direction 2
+///   [6]: orientation_score direction 3
+///   [7]: turn progress (normalized)
+fn encode_state_gnn(plateau: &[i32], _tile: &(i32, i32, i32)) -> Vec<f32> {
+    const NODE_COUNT: usize = 19;
+    const FEATURES: usize = 8;
+    let mut features = vec![0.0f32; NODE_COUNT * FEATURES];
+
+    let num_placed = plateau.iter().filter(|&&x| x != 0).count();
+    let turn_progress = num_placed as f32 / 19.0;
+
+    // Compute orientation scores for each direction
+    let orientation_scores = compute_orientation_scores_from_encoded(plateau);
+
+    for node in 0..NODE_COUNT {
+        let base = node * FEATURES;
+        let encoded = plateau[node];
+
+        if encoded == 0 {
+            // Empty cell
+            features[base] = 0.0;
+            features[base + 1] = 0.0;
+            features[base + 2] = 0.0;
+            features[base + 3] = 0.0; // Empty
+        } else {
+            // Decode: encoded = v1*100 + v2*10 + v3
+            let v1 = encoded / 100;
+            let v2 = (encoded % 100) / 10;
+            let v3 = encoded % 10;
+
+            features[base] = (v1 as f32 / 10.0).clamp(0.0, 1.0);
+            features[base + 1] = (v2 as f32 / 10.0).clamp(0.0, 1.0);
+            features[base + 2] = (v3 as f32 / 10.0).clamp(0.0, 1.0);
+            features[base + 3] = 1.0; // Filled
+        }
+
+        // Orientation scores
+        features[base + 4] = orientation_scores[0][node];
+        features[base + 5] = orientation_scores[1][node];
+        features[base + 6] = orientation_scores[2][node];
+
+        // Turn progress
+        features[base + 7] = turn_progress;
+    }
+
+    features
+}
+
+/// Compute orientation scores from encoded plateau (for GNN)
+fn compute_orientation_scores_from_encoded(plateau: &[i32]) -> [[f32; 19]; 3] {
+    let mut orientation_scores = [[0.0f32; 19]; 3];
+
+    for &(positions, orientation) in LINE_DEFS.iter() {
+        let len = positions.len() as f32;
+        if len <= 0.0 {
+            continue;
+        }
+
+        let mut counts = [0usize; 10];
+        let mut filled = 0usize;
+
+        for &pos in positions {
+            let encoded = plateau[pos];
+            if encoded == 0 {
+                continue;
+            }
+
+            let value = match orientation {
+                0 => encoded / 100,           // Direction 1
+                1 => (encoded % 100) / 10,    // Direction 2
+                2 => encoded % 10,            // Direction 3
+                _ => 0,
+            };
+
+            if value > 0 && value <= 9 {
+                counts[value as usize] += 1;
+            }
+            filled += 1;
+        }
+
+        // Find dominant value and compute line quality
+        let max_count = *counts.iter().max().unwrap_or(&0);
+        let is_blocked = filled > max_count && max_count > 0;
+
+        let line_quality = if filled == 0 {
+            0.5 // Neutral potential
+        } else if is_blocked {
+            0.0 // Blocked line
+        } else {
+            // Progress toward completion
+            (filled as f32 / len).min(1.0)
+        };
+
+        // Assign score to all positions in the line
+        for &pos in positions {
+            if pos < 19 {
+                orientation_scores[orientation][pos] =
+                    orientation_scores[orientation][pos].max(line_quality);
+            }
+        }
+    }
+
+    orientation_scores
 }
 

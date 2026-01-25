@@ -8,9 +8,10 @@ use tonic::{Response, Status};
 
 use crate::generated::takeiteasygame::v1::*;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::neural::qvalue_net::QValueNet;
 use crate::services::game_manager::{
-    ensure_current_tile, player_move_from_json, process_player_move_with_mcts, MoveResult,
-    PlayerMove, TakeItEasyGameState,
+    ensure_current_tile, player_move_from_json, process_player_move_with_mcts,
+    process_player_move_with_hybrid_mcts, MoveResult, PlayerMove, TakeItEasyGameState,
 };
 use crate::services::session_manager::{
     get_store_from_manager, update_session_in_store, SessionManager,
@@ -27,12 +28,14 @@ pub struct AsyncMoveRequest {
 }
 
 /// Version asynchrone qui retourne immédiatement une confirmation
-/// et traite MCTS en arrière-plan
+/// et traite MCTS en arrière-plan (supporte Q-Net hybrid)
 pub async fn make_move_async_logic(
     session_manager: &Arc<SessionManager>,
     policy_net: &Arc<Mutex<PolicyNet>>,
     value_net: &Arc<Mutex<ValueNet>>,
+    qvalue_net: Option<Arc<Mutex<QValueNet>>>,
     num_simulations: usize,
+    top_k: usize,
     request: AsyncMoveRequest,
 ) -> Result<Response<MakeMoveResponse>, Status> {
     let store = get_store_from_manager(session_manager);
@@ -95,19 +98,26 @@ pub async fn make_move_async_logic(
     // ✅ NOUVEAU: Retourner immédiatement une confirmation de mouvement
     let immediate_response = create_immediate_move_confirmation(&player_move, &game_state);
 
-    // ✅ NOUVEAU: Lancer MCTS en arrière-plan pour traitement asynchrone
+    // ✅ Lancer MCTS en arrière-plan (hybrid si Q-Net disponible)
+    // Utiliser le num_simulations de la session (configuré par le frontend)
+    let session_simulations = session.num_simulations;
     let session_manager_clone = session_manager.clone();
     let policy_net_clone = policy_net.clone();
     let value_net_clone = value_net.clone();
+    let qvalue_net_clone = qvalue_net.clone();
     let session_id_clone = request.session_id.clone();
     let game_mode = session.game_mode.clone();
+
+    log::info!("🎯 MCTS avec {} simulations (mode: {})", session_simulations, game_mode);
 
     task::spawn(async move {
         process_mcts_in_background(
             session_manager_clone,
             policy_net_clone,
             value_net_clone,
-            num_simulations,
+            qvalue_net_clone,
+            session_simulations,  // Utilise la config de session
+            top_k,
             game_state,
             player_move,
             session_id_clone,
@@ -149,32 +159,50 @@ fn create_immediate_move_confirmation(
     response
 }
 
-/// Traite MCTS en arrière-plan et met à jour la session
+/// Traite MCTS en arrière-plan et met à jour la session (hybrid si Q-Net disponible)
 #[allow(clippy::too_many_arguments)]
 async fn process_mcts_in_background(
     session_manager: Arc<SessionManager>,
     policy_net: Arc<Mutex<PolicyNet>>,
     value_net: Arc<Mutex<ValueNet>>,
+    qvalue_net: Option<Arc<Mutex<QValueNet>>>,
     num_simulations: usize,
+    top_k: usize,
     game_state: TakeItEasyGameState,
     player_move: PlayerMove,
     session_id: String,
     _game_mode: String,
 ) {
+    let mcts_type = if qvalue_net.is_some() { "HYBRID" } else { "CNN" };
     log::info!(
-        "🔄 Démarrage traitement MCTS en arrière-plan pour joueur {}",
-        player_move.player_id
+        "🔄 Démarrage traitement MCTS {} en arrière-plan pour joueur {}",
+        mcts_type, player_move.player_id
     );
 
-    match process_player_move_with_mcts(
-        game_state,
-        player_move,
-        &policy_net,
-        &value_net,
-        num_simulations,
-    )
-    .await
-    {
+    // Use hybrid MCTS if Q-Net is available, otherwise standard CNN MCTS
+    let result = if let Some(qnet) = qvalue_net {
+        process_player_move_with_hybrid_mcts(
+            game_state,
+            player_move,
+            &policy_net,
+            &value_net,
+            &qnet,
+            num_simulations,
+            top_k,
+        )
+        .await
+    } else {
+        process_player_move_with_mcts(
+            game_state,
+            player_move,
+            &policy_net,
+            &value_net,
+            num_simulations,
+        )
+        .await
+    };
+
+    match result {
         Ok(move_result) => {
             let final_state = move_result.new_game_state.clone();
             let store = get_store_from_manager(&session_manager);

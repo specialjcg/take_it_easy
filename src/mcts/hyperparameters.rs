@@ -318,14 +318,14 @@ impl MCTSHyperparameters {
         let other_weights = self.weight_heuristic + self.weight_contextual;
 
         let (w_cnn, w_rollout) = if current_turn <= 5 {
-            // Early game: CNN DISABLED for testing
-            (0.00, 0.90)
+            // Early game: Rollout-heavy (GNN weak at start)
+            (0.10, 0.80)
         } else if current_turn <= 11 {
-            // Mid game: CNN DISABLED for testing
-            (0.00, 0.90)
+            // Mid game: More balanced
+            (0.20, 0.70)
         } else {
-            // Late game: CNN DISABLED for testing
-            (0.00, 0.90)
+            // Late game: CNN more trusted
+            (0.35, 0.55)
         };
 
         // Ensure weights sum to 1.0 with other weights

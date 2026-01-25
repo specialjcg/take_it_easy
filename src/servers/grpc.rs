@@ -1,6 +1,7 @@
 use crate::generated::takeiteasygame::v1::game_service_server::GameServiceServer;
 use crate::generated::takeiteasygame::v1::session_service_server::SessionServiceServer;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
+use crate::neural::qvalue_net::QValueNet;
 use crate::services::game_service::GameServiceImpl;
 use crate::services::session_manager;
 use crate::services::session_service::SessionServiceImpl;
@@ -137,8 +138,10 @@ pub struct GrpcServer {
     session_manager: Arc<session_manager::SessionManager>,
     policy_net: Arc<tokio::sync::Mutex<PolicyNet>>,
     value_net: Arc<tokio::sync::Mutex<ValueNet>>,
+    qvalue_net: Option<Arc<tokio::sync::Mutex<QValueNet>>>,
     num_simulations: usize,
     single_player: bool,
+    top_k: usize,
 }
 
 impl GrpcServer {
@@ -158,8 +161,37 @@ impl GrpcServer {
             session_manager,
             policy_net: policy_net_arc,
             value_net: value_net_arc,
+            qvalue_net: None,
             num_simulations,
             single_player,
+            top_k: 6,
+        }
+    }
+
+    /// Create a new GrpcServer with Q-Net hybrid MCTS (recommended for best performance)
+    pub fn new_hybrid(
+        config: GrpcConfig,
+        policy_net: PolicyNet,
+        value_net: ValueNet,
+        qvalue_net: QValueNet,
+        num_simulations: usize,
+        single_player: bool,
+        top_k: usize,
+    ) -> Self {
+        let session_manager = Arc::new(session_manager::new_session_manager());
+        let policy_net_arc = Arc::new(tokio::sync::Mutex::new(policy_net));
+        let value_net_arc = Arc::new(tokio::sync::Mutex::new(value_net));
+        let qvalue_net_arc = Arc::new(tokio::sync::Mutex::new(qvalue_net));
+
+        Self {
+            config,
+            session_manager,
+            policy_net: policy_net_arc,
+            value_net: value_net_arc,
+            qvalue_net: Some(qvalue_net_arc),
+            num_simulations,
+            single_player,
+            top_k,
         }
     }
 
@@ -190,23 +222,31 @@ impl GrpcServer {
             self.session_manager.clone(),
             self.single_player,
         );
-        let game_service = GameServiceImpl::new(
+        let game_service = GameServiceImpl::new_with_qnet(
             self.session_manager.clone(),
             self.policy_net.clone(),
             self.value_net.clone(),
+            self.qvalue_net.clone(),
             self.num_simulations,
+            self.top_k,
         );
 
         // Log server startup info
+        let mcts_mode = if self.qvalue_net.is_some() {
+            format!("HYBRID Q-Net (top-{}, {} sims)", self.top_k, self.num_simulations)
+        } else {
+            format!("CNN ({} sims)", self.num_simulations)
+        };
+
         if self.single_player {
             log::info!(
-                "🤖 Mode SINGLE-PLAYER démarré : 1 joueur vs MCTS ({} simulations)",
-                self.num_simulations
+                "🤖 Mode SINGLE-PLAYER démarré : 1 joueur vs MCTS {}",
+                mcts_mode
             );
         } else {
             log::info!(
-                "👥 Mode MULTIJOUEUR démarré : Plusieurs joueurs + MCTS ({} simulations)",
-                self.num_simulations
+                "👥 Mode MULTIJOUEUR démarré : Plusieurs joueurs + MCTS {}",
+                mcts_mode
             );
         }
         let web_layer_info = if self.config.enable_web_layer {
