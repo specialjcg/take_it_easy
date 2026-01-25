@@ -106,10 +106,10 @@ pub const LINE_DEFS: &[(&[usize], usize)] = &[
 const CHANNELS: usize = 47;  // 17 base + 30 line features
 const GRID_SIZE: usize = 5;
 
-/// Line features: For each of 15 scoring lines:
-/// - Ch 17+i*2: Line completion potential (0=blocked, 0.5=partial, 1=complete match)
-/// - Ch 18+i*2: Current tile compatibility (1 if tile value matches line direction)
-/// This gives the CNN direct access to line geometry without needing convolution
+// Line features: For each of 15 scoring lines:
+// - Ch 17+i*2: Line completion potential (0=blocked, 0.5=partial, 1=complete match)
+// - Ch 18+i*2: Current tile compatibility (1 if tile value matches line direction)
+// This gives the CNN direct access to line geometry without needing convolution
 
 /// Convert hex position (0-18) to 5×5 grid index using proper hexagonal mapping
 /// This preserves spatial relationships so CNN can learn line patterns
@@ -123,7 +123,7 @@ pub fn convert_plateau_to_tensor(
     plateau: &Plateau,
     tile: &Tile,
     deck: &Deck,
-    current_turn: usize,
+    _current_turn: usize,
     _total_turns: usize,
 ) -> Tensor {
     // STOCHZERO: Extended encoding with bag awareness (17 channels):
@@ -374,6 +374,7 @@ pub fn convert_plateau_to_graph_features(
     let orientation_scores = compute_orientation_scores(plateau);
     let turn_normalized = current_turn as f32 / total_turns as f32;
 
+    #[allow(clippy::needless_range_loop)]
     for node in 0..GRAPH_NODE_COUNT {
         let base = node * 8;
         if node < plateau.tiles.len() {

@@ -623,9 +623,9 @@ fn prepare_supervised_batch(batch: &[SupervisedSample]) -> (Tensor, Tensor, Tens
         let mut plateau = create_plateau_empty();
         for (i, &encoded) in sample.plateau.iter().enumerate() {
             if encoded != 0 {
-                let t0 = (encoded / 100) as i32;
-                let t1 = ((encoded / 10) % 10) as i32;
-                let t2 = (encoded % 10) as i32;
+                let t0 = (encoded / 100);
+                let t1 = ((encoded / 10) % 10);
+                let t2 = (encoded % 10);
                 plateau.tiles[i] = Tile(t0, t1, t2);
             }
         }

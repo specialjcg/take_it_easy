@@ -1,7 +1,6 @@
 //! Test if trained network makes sensible predictions
 
 use flexi_logger::Logger;
-use tch::{Device, Tensor};
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::tile::Tile;
 use take_it_easy::game::create_deck::create_deck;

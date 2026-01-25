@@ -9,7 +9,6 @@ use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::game::tile::Tile;
 use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
-use take_it_easy::mcts::hyperparameters::MCTSHyperparameters;
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;

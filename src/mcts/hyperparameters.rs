@@ -345,7 +345,7 @@ impl MCTSHyperparameters {
     /// Returns (weight_cnn, weight_rollout) for the given turn and policy
     pub fn get_hybrid_adaptive_weights(&self, current_turn: usize, policy_probs: &[f32]) -> (f64, f64) {
         // Start with turn-based weights
-        let (base_w_cnn, base_w_rollout) = self.get_turn_adaptive_weights(current_turn);
+        let (base_w_cnn, _base_w_rollout) = self.get_turn_adaptive_weights(current_turn);
 
         // Calculate policy entropy for fine-tuning
         let mut entropy = 0.0;
@@ -451,7 +451,7 @@ mod tests {
         let params = MCTSHyperparameters::default();
         let config = params.to_config_string();
         assert!(config.contains("c_puct[4.20,3.80,3.00]"));
-        // Updated after Phase 1 optimization: 0.65,0.25,0.05,0.05
-        assert!(config.contains("weights[0.65,0.25,0.05,0.05]"));
+        // CNN disabled for debugging: 0.10,0.80,0.05,0.05
+        assert!(config.contains("weights[0.10,0.80,0.05,0.05]"));
     }
 }

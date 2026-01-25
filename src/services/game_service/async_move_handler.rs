@@ -34,7 +34,7 @@ pub async fn make_move_async_logic(
     policy_net: &Arc<Mutex<PolicyNet>>,
     value_net: &Arc<Mutex<ValueNet>>,
     qvalue_net: Option<Arc<Mutex<QValueNet>>>,
-    num_simulations: usize,
+    _num_simulations: usize,  // Unused - simulations come from session config
     top_k: usize,
     request: AsyncMoveRequest,
 ) -> Result<Response<MakeMoveResponse>, Status> {

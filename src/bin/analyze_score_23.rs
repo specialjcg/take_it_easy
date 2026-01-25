@@ -17,14 +17,12 @@ fn main() {
     };
 
     // Place 6 tiles at positions 0-5
-    let test_tiles = vec![
-        Tile(1, 2, 3),
+    let test_tiles = [Tile(1, 2, 3),
         Tile(5, 6, 7),
         Tile(9, 7, 8),
         Tile(1, 6, 4),
         Tile(5, 2, 8),
-        Tile(9, 6, 3),
-    ];
+        Tile(9, 6, 3)];
 
     for (i, &tile) in test_tiles.iter().enumerate() {
         plateau1.tiles[i] = tile;
@@ -68,7 +66,7 @@ fn main() {
 
     // Strategy 3: Check if 23 = one complete line
     println!("\n📋 Strategy 3: Common line scores");
-    println!("Line with all 1s: {}", 1*7);
+    println!("Line with all 1s: {}", 7);
     println!("Line with all 5s: {}", 5*7);
     println!("Line with all 9s: {}", 9*7);
     println!("Line with 1,1,5,5,5,9,9: {}", 1+1+5+5+5+9+9);

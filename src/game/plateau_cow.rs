@@ -1,9 +1,9 @@
-/// Copy-on-Write wrapper for Plateau to eliminate clone overhead in MCTS
-///
-/// Problem: MCTS algorithm performs 36,750+ clones per call, consuming 30% CPU time
-/// Solution: Use Rc<RefCell<>> to share immutable data, only clone when mutating
-///
-/// Performance impact: Expected -80% allocations, +40-60% throughput
+//! Copy-on-Write wrapper for Plateau to eliminate clone overhead in MCTS
+//!
+//! Problem: MCTS algorithm performs 36,750+ clones per call, consuming 30% CPU time
+//! Solution: Use Rc<RefCell<>> to share immutable data, only clone when mutating
+//!
+//! Performance impact: Expected -80% allocations, +40-60% throughput
 
 use crate::game::plateau::Plateau;
 use crate::game::tile::Tile;

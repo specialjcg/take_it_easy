@@ -54,8 +54,8 @@ fn main() {
     // Compare encodings for BAD tile (Dir1=9)
     println!("=== BAD TILE: (9, 6, 3) - Dir1 conflicts with line ===\n");
 
-    let old_tensor_bad = convert_plateau_to_tensor(&plateau, &bad_tile, &deck, 2, 19);
-    let new_tensor_bad = convert_plateau_onehot(&plateau, &bad_tile, &deck, 2);
+    let _old_tensor_bad = convert_plateau_to_tensor(&plateau, &bad_tile, &deck, 2, 19);
+    let _new_tensor_bad = convert_plateau_onehot(&plateau, &bad_tile, &deck, 2);
 
     println!("Old Encoding (normalized values):");
     println!("  Ch 0 (Dir1 placed): 5/9 = {:.3}", 5.0 / 9.0);
@@ -72,7 +72,7 @@ fn main() {
     println!("=== TENSOR VALUES AT POSITION 2 (empty cell) ===\n");
 
     // Position 2 in hex maps to grid (3,0) = row 3, col 0 = index 15
-    let grid_idx = 3 * 5 + 0;  // = 15
+    let grid_idx = 3 * 5;  // = 15
 
     println!("Grid index for hex pos 2: {}", grid_idx);
     println!("\nOld encoding at position 2:");

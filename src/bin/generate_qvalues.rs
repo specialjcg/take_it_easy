@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map(|ex| {
             let result = compute_qvalues(ex, args.rollouts);
             let count = processed.fetch_add(1, Ordering::Relaxed);
-            if count % 500 == 0 {
+            if count.is_multiple_of(500) {
                 println!("Progress: {}/{} ({:.1}%)", count, total, count as f64 / total as f64 * 100.0);
             }
             result

@@ -4,7 +4,7 @@ use take_it_easy::neural::manager::NNArchitecture;
 
 fn main() {
     let vs = nn::VarStore::new(Device::Cpu);
-    let policy_net = PolicyNet::new(&vs, (9, 5, 5), NNArchitecture::Cnn);
+    let _policy_net = PolicyNet::new(&vs, (9, 5, 5), NNArchitecture::Cnn);
     
     println!("\nPolicyNetCNN parameters after creation:");
     for (name, param) in vs.variables() {

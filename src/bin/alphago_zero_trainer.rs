@@ -21,7 +21,6 @@ use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::mcts::algorithm::{mcts_find_best_position_for_tile_pure, mcts_find_best_position_for_tile_uct};
-use take_it_easy::neural::gnn::convert_plateau_for_gnn;
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
@@ -146,9 +145,9 @@ fn save_training_data(
     let subscores_tensor = Tensor::from_slice(&subscores);
 
     // Save tensors
-    states_tensor.save(&format!("{}_states.pt", prefixed_path))?;
-    positions_tensor.save(&format!("{}_positions.pt", prefixed_path))?;
-    subscores_tensor.save(&format!("{}_subscores.pt", prefixed_path))?;
+    states_tensor.save(format!("{}_states.pt", prefixed_path))?;
+    positions_tensor.save(format!("{}_positions.pt", prefixed_path))?;
+    subscores_tensor.save(format!("{}_subscores.pt", prefixed_path))?;
 
     log::info!("✅ Training data saved successfully");
     Ok(())
@@ -489,7 +488,7 @@ fn train_on_data(
     batch_size: usize,
     device: Device,
 ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
-    let is_gnn = manager.config().nn_architecture == NNArchitecture::Gnn;
+    let _is_gnn = manager.config().nn_architecture == NNArchitecture::Gnn;
     let mut final_policy_loss = 0.0;
     let mut final_value_loss = 0.0;
 

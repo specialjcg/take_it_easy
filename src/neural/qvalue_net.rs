@@ -60,6 +60,7 @@ impl QValueNet {
         let output_softmax = output.softmax(-1, Kind::Float);
 
         let mut probs = [0.0f64; 19];
+        #[allow(clippy::needless_range_loop)]
         for i in 0..19 {
             probs[i] = output_softmax.double_value(&[0, i as i64]);
         }
@@ -130,6 +131,7 @@ fn encode_state(plateau: &[Tile], tile: &Tile) -> Vec<f32> {
 
 /// Q-Net manager for loading and caching
 pub struct QNetManager {
+    #[allow(dead_code)] // VarStore must stay alive to keep weights loaded
     vs: nn::VarStore,
     net: QValueNet,
 }

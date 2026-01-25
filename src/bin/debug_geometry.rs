@@ -142,7 +142,7 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════════════════════\n");
 
     // Create a test game state
-    let mut plateau = create_plateau_empty();
+    let plateau = create_plateau_empty();
     let deck = create_deck();
     let test_tile = Tile(9, 7, 8);  // High-value tile
 

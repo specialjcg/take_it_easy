@@ -2,7 +2,7 @@ use tch::{nn, Device};
 
 fn main() {
     let vs = nn::VarStore::new(Device::Cpu);
-    let gn = nn::group_norm(&vs.root() / "test_gn", 16, 128, Default::default());
+    let _gn = nn::group_norm(&vs.root() / "test_gn", 16, 128, Default::default());
     
     println!("GroupNorm parameters after creation:");
     for (name, param) in vs.variables() {

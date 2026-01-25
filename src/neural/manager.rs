@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn test_neural_config_default() {
         let config = NeuralConfig::default();
-        assert_eq!(config.input_dim, (8, 5, 5));
+        assert_eq!(config.input_dim, (47, 5, 5));
         assert_eq!(config.device, Device::Cpu);
         assert_eq!(config.model_path, "model_weights");
         assert_eq!(config.policy_lr, 1e-3);
@@ -397,6 +397,8 @@ mod tests {
             value_lr: 1e-5,
             value_wd: 1e-7,
             nn_architecture: NNArchitecture::Gnn,
+            policy_architecture: None,
+            value_architecture: None,
         };
 
         assert_eq!(config.input_dim, (3, 64, 64));
@@ -411,7 +413,7 @@ mod tests {
         assert!(manager.is_ok());
 
         let manager = manager.unwrap();
-        assert_eq!(manager.config().input_dim, (8, 5, 5));
+        assert_eq!(manager.config().input_dim, (47, 5, 5));
         assert_eq!(manager.config().model_path, "model_weights");
         assert_eq!(manager.config().nn_architecture, NNArchitecture::Cnn);
     }
@@ -426,6 +428,8 @@ mod tests {
             value_lr: 1e-4,
             value_wd: 5e-7,
             nn_architecture: NNArchitecture::Gnn,
+            policy_architecture: None,
+            value_architecture: None,
         };
 
         let manager = NeuralManager::with_config(config);
@@ -472,7 +476,7 @@ mod tests {
 
         // Test summary
         let summary = manager.summary();
-        assert_eq!(summary.input_dim, (8, 5, 5));
+        assert_eq!(summary.input_dim, (47, 5, 5));
         assert_eq!(summary.model_path, "model_weights");
     }
 
@@ -494,7 +498,7 @@ mod tests {
         let manager = NeuralManager::new().unwrap();
         let components = manager.into_components();
 
-        assert_eq!(components.config.input_dim, (8, 5, 5));
+        assert_eq!(components.config.input_dim, (47, 5, 5));
         assert_eq!(components.config.model_path, "model_weights");
         // Components should be properly moved
     }

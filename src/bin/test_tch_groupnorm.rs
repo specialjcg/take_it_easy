@@ -6,7 +6,7 @@ fn main() {
     let vs = nn::VarStore::new(Device::Cpu);
     
     // Create multiple GroupNorms to see if it's consistent    let gn1 = nn::group_norm(&vs.root() / "gn1", 16, 128, Default::default());
-    let gn2 = nn::group_norm(&vs.root() / "gn2", 16, 96, Default::default());
+    let _gn2 = nn::group_norm(&vs.root() / "gn2", 16, 96, Default::default());
     
     println!("\nGroupNorm parameters:");
     for (name, param) in vs.variables() {

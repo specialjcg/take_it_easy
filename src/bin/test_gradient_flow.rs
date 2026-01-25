@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let batch_size = 32;
 
     // Random states (9 channels × 5 × 5)
-    let states = Tensor::randn(&[batch_size, 9, 5, 5], (tch::Kind::Float, device));
+    let states = Tensor::randn([batch_size, 9, 5, 5], (tch::Kind::Float, device));
 
     // Targets: first 16 examples → position 0, next 16 → position 10
     let mut targets_vec = vec![0i64; 16];

@@ -1,9 +1,9 @@
-/// ONE-HOT ORIENTED ENCODING FOR TAKE IT EASY
-///
-/// Recommended encoding that makes pattern learning much easier:
-/// - Each direction gets separate one-hot channels
-/// - Network can easily match tile values to line requirements
-/// - Convolutions can detect "same value" patterns via identical one-hot vectors
+//! ONE-HOT ORIENTED ENCODING FOR TAKE IT EASY
+//!
+//! Recommended encoding that makes pattern learning much easier:
+//! - Each direction gets separate one-hot channels
+//! - Network can easily match tile values to line requirements
+//! - Convolutions can detect "same value" patterns via identical one-hot vectors
 
 use crate::game::deck::Deck;
 use crate::game::plateau::Plateau;
@@ -81,7 +81,7 @@ pub fn convert_plateau_onehot(
     plateau: &Plateau,
     tile: &Tile,
     deck: &Deck,
-    current_turn: usize,
+    _current_turn: usize,
 ) -> Tensor {
     let mut features = vec![0.0f32; ONEHOT_CHANNELS * GRID_SIZE * GRID_SIZE];
     let num_placed = plateau.tiles.iter().filter(|&&t| t != Tile(0, 0, 0)).count();
@@ -303,12 +303,14 @@ fn compute_line_features_onehot(plateau: &Plateau, tile: &Tile) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::create_deck::create_deck;
+    use crate::game::plateau::create_plateau_empty;
 
     #[test]
     fn test_onehot_encoding() {
-        let plateau = Plateau::new();
+        let plateau = create_plateau_empty();
         let tile = Tile(5, 6, 4);
-        let deck = Deck::new();
+        let deck = create_deck();
 
         let tensor = convert_plateau_onehot(&plateau, &tile, &deck, 0);
 

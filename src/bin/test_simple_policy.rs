@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for epoch in 0..20 {
         // Batch: 32 samples, 10 features
-        let x = Tensor::randn(&[32, 10], (tch::Kind::Float, device));
+        let x = Tensor::randn([32, 10], (tch::Kind::Float, device));
 
         // Targets: first 16 → pos 5, last 16 → pos 12
         let mut targets = vec![5i64; 16];

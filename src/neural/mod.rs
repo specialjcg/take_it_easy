@@ -9,4 +9,4 @@ pub mod training;
 
 // Re-export key components for convenience
 pub use manager::{NeuralConfig, NeuralManager};
-pub use qvalue_net::{QValueNet, QNetManager};
+pub use qvalue_net::QNetManager;

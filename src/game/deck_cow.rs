@@ -1,6 +1,6 @@
-/// Copy-on-Write wrapper for Deck to eliminate clone overhead in MCTS
-///
-/// Companion to PlateauCoW - same principle applied to Deck structure
+//! Copy-on-Write wrapper for Deck to eliminate clone overhead in MCTS
+//!
+//! Companion to PlateauCoW - same principle applied to Deck structure
 
 use crate::game::deck::Deck;
 use std::cell::RefCell;
@@ -47,6 +47,11 @@ impl DeckCoW {
     /// Get number of tiles remaining
     pub fn len(&self) -> usize {
         self.read(|d| d.tiles.len())
+    }
+
+    /// Check if deck is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Unwrap to get owned Deck (consumes the CoW wrapper)

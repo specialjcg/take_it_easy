@@ -13,7 +13,7 @@ fn load_policy() -> Result<(), String> {
     }
 
     let mut vs = nn::VarStore::new(Device::Cpu);
-    let policy_net = PolicyNet::new(&vs, EXPECTED_DIM, NNArchitecture::CNN);
+    let policy_net = PolicyNet::new(&vs, EXPECTED_DIM, NNArchitecture::Cnn);
     policy_net
         .load_model(&mut vs, path.to_str().unwrap())
         .map_err(|err| format!("policy weights mismatch: {:?}", err))
@@ -26,7 +26,7 @@ fn load_value() -> Result<(), String> {
     }
 
     let mut vs = nn::VarStore::new(Device::Cpu);
-    let value_net = ValueNet::new(&vs, EXPECTED_DIM, NNArchitecture::CNN);
+    let value_net = ValueNet::new(&vs, EXPECTED_DIM, NNArchitecture::Cnn);
     value_net
         .load_model(&mut vs, path.to_str().unwrap())
         .map_err(|err| format!("value weights mismatch: {:?}", err))

@@ -87,11 +87,11 @@ impl PolicyNet {
                     input
                         .view([batch_size, 8, 25])
                         .narrow(2, 0, 19)
-                        .permute(&[0, 2, 1])
+                        .permute([0, 2, 1])
                 } else {
                     // Already [batch, 19, 8] or [batch, 8, 19], check and permute if needed
                     if input_shape[1] == 8 {
-                        input.permute(&[0, 2, 1])  // [batch, 8, 19] -> [batch, 19, 8]
+                        input.permute([0, 2, 1])  // [batch, 8, 19] -> [batch, 19, 8]
                     } else {
                         input.shallow_clone()  // Already [batch, 19, 8]
                     }
@@ -125,6 +125,7 @@ pub struct PolicyNetCNN {
     res_blocks: Vec<ResNetBlock>,
     // SPATIAL POLICY HEAD: Maintains spatial correspondence 5×5 → 19 positions
     policy_conv: nn::Conv2D,  // 1×1 conv: 64→1 channel (keeps 5×5 spatial structure)
+    #[allow(dead_code)] // Kept for future dropout implementation
     dropout_rate: f64,
 }
 // AlphaZero architecture with ResNet blocks
@@ -250,7 +251,7 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             let fan_out = (size[0] * size[2] * size[3]) as f64;
             let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                param.f_uniform_(-bound, bound)
+                let _ = param.f_uniform_(-bound, bound)
                     .expect("Xavier initialization should not fail for conv weights");
             });
         } else if size.len() == 2 {
@@ -259,14 +260,14 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             let fan_out = size[0] as f64;
             let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                param.f_uniform_(-bound, bound)
+                let _ = param.f_uniform_(-bound, bound)
                     .expect("Xavier initialization should not fail for conv weights");
             });
         } else if size.len() == 1 {
             // Zero initialization for biases ONLY (not GroupNorm weights!)
             if name.ends_with(".bias") {
                 tch::no_grad(|| {
-                    param.f_zero_()
+                    let _ = param.f_zero_()
                         .expect("Zero initialization should not fail for bias");
                 });
             }
@@ -320,11 +321,11 @@ impl ValueNet {
                     input
                         .view([batch_size, 8, 25])
                         .narrow(2, 0, 19)
-                        .permute(&[0, 2, 1])
+                        .permute([0, 2, 1])
                 } else {
                     // Already [batch, 19, 8] or [batch, 8, 19], check and permute if needed
                     if input_shape[1] == 8 {
-                        input.permute(&[0, 2, 1])  // [batch, 8, 19] -> [batch, 19, 8]
+                        input.permute([0, 2, 1])  // [batch, 8, 19] -> [batch, 19, 8]
                     } else {
                         input.shallow_clone()  // Already [batch, 19, 8]
                     }
@@ -491,7 +492,7 @@ impl ValueNetCNN {
 fn kaiming_uniform(tensor: &mut Tensor, fan_in: f64) {
     let bound = (6.0f64).sqrt() / fan_in.sqrt();
     tch::no_grad(|| {
-        tensor.f_uniform_(-bound, bound)
+        let _ = tensor.f_uniform_(-bound, bound)
             .expect("Kaiming initialization should not fail");
     });
 }

@@ -262,6 +262,7 @@ pub fn mcts_find_best_position_for_tile_gumbel(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)] // Keeping for potential future use
 fn mcts_core(
     plateau: &mut Plateau,
     deck: &mut Deck,
@@ -607,7 +608,7 @@ fn mcts_core(
     // Formula: k(n) = C × n^α where n = total_visits
     // Adapts exploration breadth to confidence level (more visits = wider exploration)
     let pw_config = ProgressiveWideningConfig::adaptive(current_turn, total_turns);
-    let max_actions = max_actions_to_explore(
+    let _max_actions = max_actions_to_explore(
         total_visits as usize,
         legal_moves.len(),
         &pw_config,
@@ -891,7 +892,7 @@ fn mcts_core_cow(
                 }
             }
         }
-        MctsEvaluator::Pure | MctsEvaluator::NeuralWithQNet { .. } => (
+        MctsEvaluator::Pure => (
             convert_plateau_to_tensor(
                 plateau,
                 &chosen_tile,
@@ -956,10 +957,10 @@ fn mcts_core_cow(
     let (policy, _policy_entropy) = match &evaluator {
         MctsEvaluator::Neural {
             policy_net,
-            value_net,
+            value_net: _,
         } | MctsEvaluator::NeuralWithQNet {
             policy_net,
-            value_net,
+            value_net: _,
             ..
         } => {
             let policy_logits = policy_net.forward(&input_tensor, false);
@@ -1116,7 +1117,7 @@ fn mcts_core_cow(
     let temperature = hyperparams.get_temperature(current_turn);
 
     let pw_config = ProgressiveWideningConfig::adaptive(current_turn, total_turns);
-    let max_actions = max_actions_to_explore(
+    let _max_actions = max_actions_to_explore(
         total_visits as usize,
         legal_moves.len(),
         &pw_config,
@@ -1127,7 +1128,7 @@ fn mcts_core_cow(
     if debug_first_turn {
         log::info!("🔍 DEBUG MCTS turn 0:");
         log::info!("   legal_moves.len()={}, max_actions={}, adaptive_simulations={}",
-            legal_moves.len(), max_actions, adaptive_simulations);
+            legal_moves.len(), _max_actions, adaptive_simulations);
         log::info!("   pruning_ratio={:.3}, value_threshold={:.3}, min_value={:.3}, max_value={:.3}",
             pruning_ratio, value_threshold, min_value, max_value);
     }
@@ -1179,7 +1180,7 @@ fn mcts_core_cow(
                 let tile2_index = random_index(deck_tiles_len);
                 let tile2 = lookahead_deck_cow.read(|d| d.tiles[tile2_index]);
 
-                let second_moves = lookahead_plateau_cow.read(|p| get_legal_moves(p));
+                let second_moves = lookahead_plateau_cow.read(get_legal_moves);
 
                 let mut best_score_for_tile2: f64 = 0.0;
 
