@@ -413,6 +413,56 @@ pub fn convert_plateau_to_graph_features(
     Tensor::from_slice(&features).view([1, GRAPH_NODE_COUNT as i64, 8])
 }
 
+/// Convert plateau to GNN features INCLUDING the current tile to place.
+/// This matches the encoding used in train_from_human_games.rs:
+/// - Features 0-2: tile values (v1, v2, v3) / 9.0
+/// - Feature 3: empty mask (1.0 if empty, 0.0 if filled)
+/// - Features 4-6: current tile values / 9.0 (broadcast to all nodes)
+/// - Feature 7: turn progress
+pub fn convert_plateau_for_gnn_with_tile(
+    plateau: &Plateau,
+    current_tile: &Tile,
+    _current_turn: usize,
+    total_turns: usize,
+) -> Tensor {
+    let mut features = vec![0f32; GRAPH_NODE_COUNT * 8];
+    let num_placed = plateau
+        .tiles
+        .iter()
+        .filter(|t| **t != Tile(0, 0, 0))
+        .count();
+    let turn_progress = num_placed as f32 / total_turns as f32;
+
+    #[allow(clippy::needless_range_loop)]
+    for node in 0..GRAPH_NODE_COUNT {
+        let base = node * 8;
+        if node < plateau.tiles.len() {
+            let tile = plateau.tiles[node];
+
+            if tile == Tile(0, 0, 0) {
+                // Empty cell: [0, 0, 0, 1, tile, turn]
+                features[base + 3] = 1.0; // empty mask
+            } else {
+                // Filled cell: values normalized /9
+                features[base] = tile.0 as f32 / 9.0;
+                features[base + 1] = tile.1 as f32 / 9.0;
+                features[base + 2] = tile.2 as f32 / 9.0;
+                // features[base + 3] stays 0.0 for filled cells
+            }
+
+            // Current tile to place (broadcast to all nodes)
+            features[base + 4] = current_tile.0 as f32 / 9.0;
+            features[base + 5] = current_tile.1 as f32 / 9.0;
+            features[base + 6] = current_tile.2 as f32 / 9.0;
+
+            // Turn progress
+            features[base + 7] = turn_progress;
+        }
+    }
+
+    Tensor::from_slice(&features).view([GRAPH_NODE_COUNT as i64, 8])
+}
+
 pub fn compute_orientation_scores(plateau: &Plateau) -> [[f32; GRAPH_NODE_COUNT]; 3] {
     let mut orientation_scores = [[0f32; GRAPH_NODE_COUNT]; 3];
 

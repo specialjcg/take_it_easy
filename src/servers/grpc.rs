@@ -1,3 +1,4 @@
+use crate::auth::JwtManager;
 use crate::generated::takeiteasygame::v1::game_service_server::GameServiceServer;
 use crate::generated::takeiteasygame::v1::session_service_server::SessionServiceServer;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
@@ -64,7 +65,7 @@ where
                     .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS")
                     .header(
                         header::ACCESS_CONTROL_ALLOW_HEADERS,
-                        "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding",
+                        "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding, authorization",
                     )
                     .header(header::ACCESS_CONTROL_MAX_AGE, "86400")
                     .body(TonicBody::empty())
@@ -85,7 +86,7 @@ where
             headers.insert(
                 header::ACCESS_CONTROL_ALLOW_HEADERS,
                 header::HeaderValue::from_static(
-                    "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding",
+                    "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding, authorization",
                 ),
             );
             headers.insert(
@@ -142,6 +143,8 @@ pub struct GrpcServer {
     num_simulations: usize,
     single_player: bool,
     top_k: usize,
+    jwt_manager: Option<Arc<JwtManager>>,
+    require_auth: bool,
 }
 
 impl GrpcServer {
@@ -165,6 +168,8 @@ impl GrpcServer {
             num_simulations,
             single_player,
             top_k: 6,
+            jwt_manager: None,
+            require_auth: false,
         }
     }
 
@@ -192,7 +197,16 @@ impl GrpcServer {
             num_simulations,
             single_player,
             top_k,
+            jwt_manager: None,
+            require_auth: false,
         }
+    }
+
+    /// Enable authentication for session management
+    pub fn with_auth(mut self, jwt_manager: Arc<JwtManager>, require_auth: bool) -> Self {
+        self.jwt_manager = Some(jwt_manager);
+        self.require_auth = require_auth;
+        self
     }
 
     /// Get a reference to the server configuration
@@ -217,11 +231,25 @@ impl GrpcServer {
         // Initialize single-player session if needed
         self.init_single_player_session().await?;
 
-        // Create gRPC services
-        let session_service = SessionServiceImpl::new_with_manager_and_mode(
-            self.session_manager.clone(),
-            self.single_player,
-        );
+        // Create gRPC services with optional authentication
+        let session_service = match &self.jwt_manager {
+            Some(jwt) => {
+                log::info!(
+                    "🔐 Session service with authentication enabled (require_auth={})",
+                    self.require_auth
+                );
+                SessionServiceImpl::with_auth(
+                    self.session_manager.clone(),
+                    self.single_player,
+                    jwt.clone(),
+                    self.require_auth,
+                )
+            }
+            None => SessionServiceImpl::new_with_manager_and_mode(
+                self.session_manager.clone(),
+                self.single_player,
+            ),
+        };
         let game_service = GameServiceImpl::new_with_qnet(
             self.session_manager.clone(),
             self.policy_net.clone(),

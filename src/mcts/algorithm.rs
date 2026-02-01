@@ -15,11 +15,12 @@ use crate::game::tile::Tile;
 use crate::mcts::hyperparameters::MCTSHyperparameters;
 use crate::mcts::mcts_result::MCTSResult;
 use crate::mcts::progressive_widening::{max_actions_to_explore, ProgressiveWideningConfig};
-use crate::neural::gnn::convert_plateau_for_gnn;
 use crate::neural::manager::NNArchitecture;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
-use crate::neural::tensor_conversion::convert_plateau_to_tensor;
+use crate::neural::tensor_conversion::{
+    convert_plateau_to_graph_features, convert_plateau_to_tensor,
+};
 use crate::scoring::scoring::result;
 use crate::strategy::contextual_boost::calculate_contextual_boost_entropy;
 use crate::strategy::position_evaluation::enhanced_position_evaluation;
@@ -41,8 +42,13 @@ fn convert_plateau_by_arch(
             convert_plateau_to_tensor(plateau, chosen_tile, deck, current_turn, total_turns)
         }
         NNArchitecture::Gnn => {
-            // GNN uses same encoding as CNN (includes tile), then reshaped to [batch, 19, 8]
-            convert_plateau_to_tensor(plateau, chosen_tile, deck, current_turn, total_turns)
+            // GNN uses graph format [1, 19, 8] - batch of 1, 19 nodes, 8 features
+            // Encoding (supervised_trainer_csv.rs format):
+            // Features 0-2: tile values / 10.0
+            // Feature 3: occupied mask (1 if filled)
+            // Features 4-6: orientation scores per direction
+            // Feature 7: turn progress
+            convert_plateau_to_graph_features(plateau, current_turn, total_turns)
         }
         NNArchitecture::CnnOnehot => {
             // Use one-hot oriented encoding (37 channels)
@@ -344,7 +350,7 @@ fn mcts_core(
                     None,
                 ),
                 NNArchitecture::Gnn => {
-                    let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
+                    let gnn_feat = convert_plateau_to_graph_features(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
             }
@@ -490,7 +496,7 @@ fn mcts_core(
                         )
                     }
                     NNArchitecture::Gnn => {
-                        convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
+                        convert_plateau_to_graph_features(&temp_plateau, current_turn, total_turns)
                     }
                 };
 
@@ -547,7 +553,7 @@ fn mcts_core(
                     // Note: clone needed here as temp_plateau/temp_deck used multiple times in loop
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
-                let normalized_value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+                let normalized_value = ((avg_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
 
                 min_value = min_value.min(normalized_value);
                 max_value = max_value.max(normalized_value);
@@ -710,7 +716,7 @@ fn mcts_core(
             let enhanced_eval =
                 enhanced_position_evaluation(&temp_plateau, position, &chosen_tile, current_turn);
 
-            let normalized_rollout = ((average_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+            let normalized_rollout = ((average_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
             let normalized_value = value_estimate.clamp(-1.0, 1.0);
             let normalized_heuristic = (enhanced_eval / 30.0).clamp(-1.0, 1.0);
             let contextual = calculate_contextual_boost_entropy(
@@ -920,7 +926,7 @@ fn mcts_core_cow(
                     None,
                 ),
                 NNArchitecture::Gnn => {
-                    let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
+                    let gnn_feat = convert_plateau_to_graph_features(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
             }
@@ -1032,7 +1038,7 @@ fn mcts_core_cow(
                     ) as f64;
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
-                let value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+                let value = ((avg_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
 
                 min_value = min_value.min(value);
                 max_value = max_value.max(value);
@@ -1082,7 +1088,7 @@ fn mcts_core_cow(
                     ) as f64;
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
-                let normalized_value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+                let normalized_value = ((avg_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
 
                 min_value = min_value.min(normalized_value);
                 max_value = max_value.max(normalized_value);
@@ -1285,7 +1291,7 @@ fn mcts_core_cow(
             let enhanced_eval =
                 enhanced_position_evaluation(&temp_plateau, position, &chosen_tile, current_turn);
 
-            let normalized_rollout = ((average_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+            let normalized_rollout = ((average_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
             let normalized_value = value_estimates[&position];
             let normalized_heuristic = (enhanced_eval / 30.0).clamp(-1.0, 1.0);
 
@@ -1595,7 +1601,7 @@ fn mcts_core_gumbel(
                     None,
                 ),
                 NNArchitecture::Gnn => {
-                    let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
+                    let gnn_feat = convert_plateau_to_graph_features(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
             }
@@ -1647,7 +1653,7 @@ fn mcts_core_gumbel(
                         )
                     }
                     NNArchitecture::Gnn => {
-                        convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
+                        convert_plateau_to_graph_features(&temp_plateau, current_turn, total_turns)
                     }
                 };
 
@@ -1704,7 +1710,7 @@ fn mcts_core_gumbel(
                     // Note: clone needed here as temp_plateau/temp_deck used multiple times in loop
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
-                let normalized_value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+                let normalized_value = ((avg_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
 
                 min_value = min_value.min(normalized_value);
                 max_value = max_value.max(normalized_value);
@@ -1802,7 +1808,7 @@ fn mcts_core_gumbel(
         *visits += 1;
 
         let q_value = q_values.entry(selected_position).or_insert(0.0);
-        let normalized_score = ((simulated_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+        let normalized_score = ((simulated_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
         *q_value += (normalized_score - *q_value) / (*visits as f64);
     }
 
@@ -2091,7 +2097,7 @@ pub fn mcts_find_best_position_for_tile_uct(
 
         // Combined Q-value (normalized to [-1, 1] range)
         let q_value = (score_gain * 0.5) + (completion_potential * 0.3) + (hex_degree * 0.2);
-        let normalized_value = (q_value / 100.0).clamp(-1.0, 1.0);
+        let normalized_value = (q_value / 50.0).clamp(-1.0, 1.0);
 
         // Update statistics
         *visit_counts.get_mut(&best_position).unwrap() += 1;

@@ -12,6 +12,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 
 use crate::auth::{auth_router, AuthState};
+use crate::recording::get_recorder;
 
 // Structures pour l'API Web
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -32,6 +33,15 @@ pub struct LaunchOptions {
 pub struct ApiResponse {
     pub status: String,
     pub message: String,
+}
+
+/// Response for recording statistics
+#[derive(Serialize, Debug, Clone)]
+pub struct RecordingStats {
+    pub enabled: bool,
+    pub active_games: usize,
+    pub recording_dir: String,
+    pub today_file: Option<String>,
 }
 
 // Configuration pour le serveur Web UI
@@ -96,7 +106,8 @@ impl WebUiServer {
             .route("/api/status", get(api_status))
             .route("/api/launch-mode", post(api_launch_mode))
             .route("/api/stop-all", post(api_stop_all))
-            .route("/api/logs", get(api_logs));
+            .route("/api/logs", get(api_logs))
+            .route("/api/recording-stats", get(api_recording_stats));
 
         // Add auth routes if auth is enabled
         if let Some(auth_state) = &self.auth_state {
@@ -284,6 +295,31 @@ async fn api_stop_all() -> ResponseJson<ApiResponse> {
     ResponseJson(ApiResponse {
         status: "stopped".to_string(),
         message: "All processes stopped".to_string(),
+    })
+}
+
+/// Get recording statistics
+async fn api_recording_stats() -> ResponseJson<RecordingStats> {
+    let (enabled, active_games) = match get_recorder() {
+        Some(recorder) => (recorder.is_enabled(), recorder.active_game_count()),
+        None => (false, 0),
+    };
+
+    // Get today's recording file
+    let today = chrono::Utc::now().format("%Y%m%d").to_string();
+    let recording_dir = "data/recorded_games".to_string();
+    let today_file = format!("{}/games_{}.csv", recording_dir, today);
+    let today_file_exists = std::path::Path::new(&today_file).exists();
+
+    ResponseJson(RecordingStats {
+        enabled,
+        active_games,
+        recording_dir,
+        today_file: if today_file_exists {
+            Some(today_file)
+        } else {
+            None
+        },
     })
 }
 

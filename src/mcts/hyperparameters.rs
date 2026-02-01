@@ -160,9 +160,9 @@ impl Default for MCTSHyperparameters {
             rollout_default: 7,
             rollout_weak: 9,
 
-            // Evaluation weights - CNN DISABLED for debugging
-            // Set weight_cnn=0 to isolate CNN impact
-            weight_cnn: 0.10,        // CNN DISABLED for testing
+            // Evaluation weights - Rollout-dominant (CNN has geometry issues)
+            // Q-net handles pruning, rollouts handle evaluation
+            weight_cnn: 0.10,        // CNN minimal (geometry issues)
             weight_rollout: 0.80,    // Rollout simulations (primary)
             weight_heuristic: 0.05,  // Domain heuristics
             weight_contextual: 0.05, // Contextual boost

@@ -17,6 +17,7 @@ use crate::mcts::algorithm::{
 };
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
+use crate::recording::{get_recorder, PlayerType as RecorderPlayerType};
 use crate::scoring::scoring::result;
 use rand::Rng;
 // ============================================================================
@@ -25,6 +26,7 @@ use rand::Rng;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TakeItEasyGameState {
+    #[serde(default)]
     pub session_id: String,
     pub deck: Deck,
     pub player_plateaus: HashMap<String, Plateau>, // player_id -> plateau
@@ -86,8 +88,31 @@ pub fn create_take_it_easy_game(
     }
 
     // Ajouter MCTS comme joueur automatique si pas déjà présent
-    if !player_ids.contains(&"mcts_ai".to_string()) {
+    let has_mcts = !player_ids.contains(&"mcts_ai".to_string());
+    if has_mcts {
         player_plateaus.insert("mcts_ai".to_string(), create_plateau_empty());
+    }
+
+    // Start recording the game
+    if let Some(recorder) = get_recorder() {
+        let mut players_for_recording: Vec<(String, RecorderPlayerType)> = player_ids
+            .iter()
+            .map(|id| {
+                let player_type = if id.contains("mcts") || id.contains("ai") || id.contains("bot")
+                {
+                    RecorderPlayerType::Mcts
+                } else {
+                    RecorderPlayerType::Human
+                };
+                (id.clone(), player_type)
+            })
+            .collect();
+
+        if has_mcts {
+            players_for_recording.push(("mcts_ai".to_string(), RecorderPlayerType::Mcts));
+        }
+
+        recorder.start_game(&session_id, "human_vs_mcts", players_for_recording);
     }
 
     TakeItEasyGameState {
@@ -188,6 +213,29 @@ pub fn apply_player_move(
         return Err("ILLEGAL_MOVE".to_string());
     }
 
+    // Record the move before modifying the plateau
+    if let Some(recorder) = get_recorder() {
+        let player_type = if player_move.player_id.contains("mcts")
+            || player_move.player_id.contains("ai")
+            || player_move.player_id.contains("bot")
+        {
+            RecorderPlayerType::Mcts
+        } else {
+            RecorderPlayerType::Human
+        };
+
+        recorder.record_move(
+            &game_state.session_id,
+            game_state.current_turn,
+            &player_move.player_id,
+            player_type,
+            player_plateau,
+            &player_move.tile,
+            player_move.position,
+            None,
+        );
+    }
+
     // Récupérer le plateau du joueur pour modification
     let player_plateau = game_state
         .player_plateaus
@@ -274,6 +322,20 @@ pub async fn process_mcts_turn(
         return Err("MCTS_ILLEGAL_MOVE".to_string());
     }
 
+    // Record MCTS move before placing tile
+    if let Some(recorder) = get_recorder() {
+        recorder.record_move(
+            &game_state.session_id,
+            game_state.current_turn,
+            "mcts_ai",
+            RecorderPlayerType::Mcts,
+            mcts_plateau,
+            &current_tile,
+            mcts_result.best_position,
+            Some(mcts_result.subscore as f32),
+        );
+    }
+
     // ✅ PLACEMENT UNIQUE DE LA TUILE
     mcts_plateau.tiles[mcts_result.best_position] = current_tile;
 
@@ -348,6 +410,20 @@ pub async fn process_mcts_turn_hybrid(
         return Err("MCTS_ILLEGAL_MOVE".to_string());
     }
 
+    // Record hybrid MCTS move before placing tile
+    if let Some(recorder) = get_recorder() {
+        recorder.record_move(
+            &game_state.session_id,
+            game_state.current_turn,
+            "mcts_ai",
+            RecorderPlayerType::Hybrid,
+            mcts_plateau,
+            &current_tile,
+            mcts_result.best_position,
+            Some(mcts_result.subscore as f32),
+        );
+    }
+
     mcts_plateau.tiles[mcts_result.best_position] = current_tile;
     game_state.waiting_for_players.retain(|id| id != "mcts_ai");
 
@@ -388,18 +464,22 @@ pub fn check_turn_completion(
             game_state.player_plateaus.values().all(is_plateau_full)
         );
 
-        if game_state.current_turn >= game_state.total_turns {
+        let game_finished = game_state.current_turn >= game_state.total_turns
+            || game_state.player_plateaus.values().all(is_plateau_full);
+
+        if game_finished {
             game_state.game_status = GameStatus::Finished;
             log::info!(
-                "🏁 Jeu terminé par tours! Scores finaux: {:?}",
+                "🏁 Jeu terminé! Scores finaux: {:?}",
                 game_state.scores
             );
-        } else if game_state.player_plateaus.values().all(is_plateau_full) {
-            game_state.game_status = GameStatus::Finished;
-            log::info!(
-                "🏁 Jeu terminé par plateaux pleins! Scores finaux: {:?}",
-                game_state.scores
-            );
+
+            // Finalize game recording
+            if let Some(recorder) = get_recorder() {
+                if let Err(e) = recorder.finalize_game(&game_state.session_id, game_state.scores.clone()) {
+                    log::error!("Failed to finalize game recording: {}", e);
+                }
+            }
         } else {
             // ✅ RETOUR À L'AUTOMATISME : Démarrer immédiatement le tour suivant
             game_state = start_new_turn(game_state)?;

@@ -41,6 +41,11 @@ impl AuthState {
             email,
         })
     }
+
+    /// Get the JWT manager as an Arc for sharing with other services
+    pub fn jwt_manager(&self) -> Arc<JwtManager> {
+        Arc::new(self.jwt.clone())
+    }
 }
 
 /// Create auth router
@@ -53,8 +58,8 @@ pub fn auth_router(state: Arc<AuthState>) -> Router {
         .route("/forgot-password", post(forgot_password))
         .route("/reset-password", post(reset_password))
         // OAuth
-        .route("/oauth/:provider", get(oauth_redirect))
-        .route("/callback/:provider", get(oauth_callback))
+        .route("/oauth/{provider}", get(oauth_redirect))
+        .route("/callback/{provider}", get(oauth_callback))
         .route("/providers", get(get_providers))
         // User info
         .route("/me", get(get_current_user))

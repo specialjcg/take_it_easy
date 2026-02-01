@@ -11,6 +11,7 @@ use crate::generated::takeiteasygame::v1::join_session_response;
 use crate::generated::takeiteasygame::v1::session_service_server::SessionService;
 use crate::generated::takeiteasygame::v1::*;
 
+use crate::auth::{try_authenticate_request, JwtManager};
 use crate::services::session_manager::{
     add_player_to_session, all_players_ready, create_session_functional_with_manager,
     get_session_by_code_with_manager, get_session_by_id_with_manager, get_store_from_manager,
@@ -22,6 +23,8 @@ use crate::services::session_manager::{
 pub struct SessionServiceImpl {
     session_manager: Arc<SessionManager>,
     single_player_mode: bool,
+    jwt_manager: Option<Arc<JwtManager>>,
+    require_auth: bool,
 }
 
 impl SessionServiceImpl {
@@ -32,6 +35,48 @@ impl SessionServiceImpl {
         Self {
             session_manager,
             single_player_mode: single_player,
+            jwt_manager: None,
+            require_auth: false,
+        }
+    }
+
+    /// Create with authentication enabled
+    pub fn with_auth(
+        session_manager: Arc<SessionManager>,
+        single_player: bool,
+        jwt_manager: Arc<JwtManager>,
+        require_auth: bool,
+    ) -> Self {
+        Self {
+            session_manager,
+            single_player_mode: single_player,
+            jwt_manager: Some(jwt_manager),
+            require_auth,
+        }
+    }
+
+    /// Authenticate request if auth is enabled
+    fn authenticate<T>(&self, request: &Request<T>) -> Result<Option<String>, Status> {
+        match &self.jwt_manager {
+            Some(jwt) => match try_authenticate_request(jwt, request)? {
+                Some(claims) => {
+                    log::debug!(
+                        "🔐 Authenticated user: {} ({})",
+                        claims.username,
+                        claims.sub
+                    );
+                    Ok(Some(claims.sub))
+                }
+                None => {
+                    if self.require_auth {
+                        Err(Status::unauthenticated("Authentication required"))
+                    } else {
+                        log::debug!("🔓 Anonymous request (auth not required)");
+                        Ok(None)
+                    }
+                }
+            },
+            None => Ok(None), // Auth disabled
         }
     }
 }
@@ -480,15 +525,29 @@ impl SessionService for SessionServiceImpl {
         &self,
         request: Request<CreateSessionRequest>,
     ) -> Result<Response<CreateSessionResponse>, Status> {
+        // Authenticate if enabled
+        let user_id = self.authenticate(&request)?;
+        if let Some(ref uid) = user_id {
+            log::info!("🔐 CREATE_SESSION by authenticated user: {}", uid);
+        }
+
         let req = request.into_inner();
-        create_session_logic_with_manager(self, req.player_name, req.max_players, req.game_mode)
-            .await
+
+        let player_name = req.player_name;
+
+        create_session_logic_with_manager(self, player_name, req.max_players, req.game_mode).await
     }
 
     async fn join_session(
         &self,
         request: Request<JoinSessionRequest>,
     ) -> Result<Response<JoinSessionResponse>, Status> {
+        // Authenticate if enabled
+        let user_id = self.authenticate(&request)?;
+        if let Some(ref uid) = user_id {
+            log::info!("🔐 JOIN_SESSION by authenticated user: {}", uid);
+        }
+
         let req = request.into_inner();
         log::info!(
             "🔄 Tentative JOIN_SESSION: code='{}', joueur='{}'",
@@ -502,6 +561,9 @@ impl SessionService for SessionServiceImpl {
         &self,
         request: Request<SetReadyRequest>,
     ) -> Result<Response<SetReadyResponse>, Status> {
+        // Authenticate if enabled (optional for set_ready)
+        let _ = self.authenticate(&request);
+
         let req = request.into_inner();
         set_ready_logic(self, req.session_id, req.player_id, req.ready).await
     }

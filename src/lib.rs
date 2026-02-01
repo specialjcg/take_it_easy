@@ -22,6 +22,7 @@ pub mod game;
 pub mod generated;
 pub mod mcts;
 pub mod neural;
+pub mod recording;
 pub mod scoring;
 pub mod servers;
 pub mod services;

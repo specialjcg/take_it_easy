@@ -17,6 +17,7 @@ mod game;
 mod logging;
 mod mcts;
 mod neural;
+mod recording;
 mod scoring;
 mod strategy;
 mod training;
@@ -112,6 +113,14 @@ struct Config {
     /// Path to SQLite database for authentication
     #[arg(long, default_value = "data/auth.db")]
     auth_db_path: String,
+
+    /// Enable game recording for training data collection
+    #[arg(long, default_value_t = true)]
+    enable_recording: bool,
+
+    /// Directory for recorded game data
+    #[arg(long, default_value = "data/recorded_games")]
+    recording_dir: String,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -154,6 +163,7 @@ async fn start_multiplayer_server(
     port: u16,
     single_player: bool,
     top_k: usize,
+    auth_state: Option<Arc<auth::AuthState>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     log::info!("🎯 Interface web : http://localhost:{}", port + 1000);
 
@@ -169,7 +179,7 @@ async fn start_multiplayer_server(
     let components = neural_manager.into_components();
 
     // Create server with or without Q-Net hybrid
-    let grpc_server = if let Some(qnet) = qnet_manager {
+    let mut grpc_server = if let Some(qnet) = qnet_manager {
         log::info!("🚀 MCTS Hybrid activé avec Q-Net (top-{})", top_k);
         servers::GrpcServer::new_hybrid(
             grpc_config,
@@ -190,6 +200,12 @@ async fn start_multiplayer_server(
             single_player,
         )
     };
+
+    // Add authentication if enabled
+    if let Some(state) = auth_state {
+        log::info!("🔐 gRPC server with session authentication");
+        grpc_server = grpc_server.with_auth(state.jwt_manager(), false);
+    }
 
     grpc_server.start().await
 }
@@ -285,6 +301,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             };
 
+            // Initialize game recording if enabled
+            if config.enable_recording {
+                match recording::init_recorder(&config.recording_dir) {
+                    Ok(()) => {
+                        log::info!("📹 Game recording enabled (dir: {})", config.recording_dir);
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ Failed to initialize game recorder ({}), continuing without", e);
+                    }
+                }
+            } else {
+                log::info!("ℹ️ Game recording disabled");
+            }
+
             // Initialize authentication if enabled
             let auth_state = if config.enable_auth {
                 // Ensure data directory exists
@@ -319,7 +349,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Donner un peu de temps au serveur web pour démarrer
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-            // Lancer le serveur gRPC (bloquant) avec support hybrid
+            // Lancer le serveur gRPC (bloquant) avec support hybrid et auth
             start_multiplayer_server(
                 neural_manager,
                 qnet_manager,
@@ -327,6 +357,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 config.port,
                 config.single_player,
                 config.top_k,
+                auth_state,
             )
             .await?;
         }

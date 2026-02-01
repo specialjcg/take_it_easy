@@ -10,6 +10,10 @@ interface HexagonalGameBoardProps {
     onTileClick: (position: number) => void;
     currentTile?: () => string | null;
     isGameStarted?: () => boolean;
+    // Pour afficher un plateau spécifique (mode lecture seule à la fin)
+    displayPlayerId?: string;
+    readOnly?: boolean;
+    size?: 'normal' | 'small';
 }
 
 export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) => {
@@ -31,16 +35,32 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
         [1.4, 2], [1.1, 4], [0.8, 6]
     ];
 
-    const hexRadius = 35;
+    // Taille adaptative selon le mode
+    const isSmall = props.size === 'small';
+    const hexRadius = isSmall ? 28 : 42;
     const hexWidth = Math.sqrt(3) * hexRadius;
     const hexHeight = 2 * hexRadius;
     const offsetY = 0.45 * hexHeight;
+    const canvasSize = isSmall ? 400 : 600;
 
     /**
      * 🚀 MEMO ULTRA-OPTIMISÉ POUR PERFORMANCE UX
      */
     type TilesData = { key: string, tiles: string[] };
     const stableTilesData = createMemo<TilesData | undefined>((prev?: TilesData) => {
+        const allPlateaus = props.plateauTiles();
+
+        // Si displayPlayerId est fourni, l'utiliser directement
+        if (props.displayPlayerId) {
+            const playerTiles = allPlateaus[props.displayPlayerId] || [];
+            const realTiles = playerTiles.map((t, i) =>
+                (t && t !== '' && !t.includes('000')) ? `${i}:${t.slice(-6)}` : ''
+            ).filter(Boolean);
+            const contentKey = `display-${props.displayPlayerId}-${playerTiles.length}-${realTiles.join('|')}`;
+            const result: TilesData = { key: contentKey, tiles: playerTiles };
+            return (prev && prev.key === contentKey) ? prev : result;
+        }
+
         const currentSession = props.session();
         if (!currentSession) {
             const result: TilesData = { key: 'no-session', tiles: [] };
@@ -48,17 +68,15 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
         }
 
         const isViewerMode = currentSession.playerId.includes('viewer');
-        const allPlateaus = props.plateauTiles();
-        
-        const playerTiles = isViewerMode ? 
-            (allPlateaus['mcts_ai'] || []) : 
+        const playerTiles = isViewerMode ?
+            (allPlateaus['mcts_ai'] || []) :
             (allPlateaus[currentSession.playerId] || []);
 
         // ✅ HASH LÉGER - Seulement positions avec tuiles + longueur
-        const realTiles = playerTiles.map((t, i) => 
+        const realTiles = playerTiles.map((t, i) =>
             (t && t !== '' && !t.includes('000')) ? `${i}:${t.slice(-6)}` : ''
         ).filter(Boolean);
-        
+
         const contentKey = `${currentSession.playerId}-${playerTiles.length}-${realTiles.join('|')}`;
 
         const result: TilesData = { key: contentKey, tiles: playerTiles };
@@ -133,6 +151,9 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
      * 🚀 GESTION CLIC ULTRA-RAPIDE AVEC FEEDBACK VISUEL + DEBUG
      */
     const handleCanvasClick = (e: MouseEvent) => {
+        // Ignorer les clics en mode lecture seule
+        if (props.readOnly) return;
+
         const timestamp = performance.now();
         console.log(`🎯 [${timestamp.toFixed(0)}ms] CLIC DÉTECTÉ sur canvas`);
 
@@ -272,10 +293,11 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
                     ctx.closePath();
                     ctx.clip();
 
-                    // Fond + image
+                    // Fond + image - échelle adaptée à la taille des hexagones
                     drawHexagon(ctx, x, y, true);
-                    const scaledWidth = img.width / 2.4;
-                    const scaledHeight = img.height / 2.4;
+                    const scaleFactor = isSmall ? 3.0 : 2.0;
+                    const scaledWidth = img.width / scaleFactor;
+                    const scaledHeight = img.height / scaleFactor;
                     ctx.drawImage(img, x - scaledWidth/2, y - scaledHeight/2, scaledWidth, scaledHeight);
                     ctx.restore();
                     
@@ -308,18 +330,17 @@ export const HexagonalGameBoard: Component<HexagonalGameBoardProps> = (props) =>
         <div class="classic-board-area">
             <canvas
                 ref={canvasRef!}
-                width="500"
-                height="500"
+                width={canvasSize}
+                height={canvasSize}
                 class="classic-game-canvas"
                 onClick={handleCanvasClick}
                 style={{
-                    border: '2px solid #333',
-                    'border-radius': '8px',
-                    cursor: (props.myTurn() && !props.session()?.playerId.includes('viewer')) ? 'pointer' : 'default',
-                    'will-change': 'transform' // GPU acceleration
+                    cursor: (!props.readOnly && props.myTurn() && !props.session()?.playerId.includes('viewer')) ? 'pointer' : 'default',
+                    'will-change': 'transform',
+                    width: `${canvasSize}px`,
+                    height: `${canvasSize}px`
                 }}
             />
-
         </div>
     );
 };
