@@ -1,7 +1,11 @@
-# Take It Easy – Installation & Runbook
+# Take It Easy
 
-This repository hosts the Rust backend (gRPC + MCTS AI) and the SolidJS frontend for the **Take It Easy** multiplayer board game.  
-The goal of this README is to help you clone the project from GitHub, install dependencies, and launch the full stack in just a few commands.
+A comprehensive **Take It Easy** board game implementation featuring:
+- Rust backend with gRPC API
+- MCTS AI with neural network (CNN + Q-Net hybrid)
+- Two frontend options: Elm (recommended) and SolidJS
+- User authentication (email/password + OAuth)
+- Multiplayer support
 
 ---
 
@@ -10,11 +14,12 @@ The goal of this README is to help you clone the project from GitHub, install de
 | Component | Version | Notes |
 |-----------|---------|-------|
 | Rust toolchain | 1.70+ | `rustup default stable` |
-| Node.js + npm | Node 18 / npm 9+ | Required for the SolidJS client |
-| protoc | 3.21+ | Needed because the backend uses gRPC/tonic |
-| libtorch | 2.1+ (CPU build is enough) | Required by the `tch` crate for neural inference |
+| Node.js + npm | Node 18+ | Required for frontends |
+| Elm | 0.19.1 | For Elm frontend |
+| protoc | 3.21+ | gRPC/tonic code generation |
+| libtorch | 2.1+ (CPU) | Required by `tch` crate for neural inference |
 
-> **Linux/macOS**: After extracting libtorch, export the path (adjust to your install):
+> **Linux/macOS**: Export libtorch path:
 > ```bash
 > export LIBTORCH_HOME="$HOME/libtorch"
 > export LD_LIBRARY_PATH="$LIBTORCH_HOME/lib:$LD_LIBRARY_PATH"
@@ -31,7 +36,12 @@ cd take_it_easy
 # Backend dependencies
 cargo fetch
 
-# Frontend dependencies
+# Elm frontend (recommended)
+cd frontend-elm
+npm install
+cd ..
+
+# OR SolidJS frontend
 cd frontend
 npm install
 cd ..
@@ -41,88 +51,150 @@ cd ..
 
 ## 3. Running the Application
 
-### Option A – One-liner (recommended for dev)
+### Backend
+
 ```bash
-make dev
+# Development
+cargo run -- --mode multiplayer --port 50051 --num-simulations 300
+
+# Production (release build)
+cargo run --release -- --mode multiplayer --port 50051 --num-simulations 300
 ```
-This starts:
-- the Rust backend (gRPC server on `localhost:50051`)
-- the SolidJS frontend (Vite dev server on `localhost:3000`)
 
-### Option B – Manual terminals
-1. **Backend**
-   ```bash
-   cargo run -- --mode multiplayer --port 50051 --num-simulations 200
-   ```
-2. **Frontend**
-   ```bash
-   cd frontend
-   npm run dev -- --host 0.0.0.0 --port 3000
-   ```
+The backend exposes:
+- **gRPC API** on `localhost:50051` (game sessions)
+- **Auth REST API** on `localhost:51051/auth` (login, register, OAuth)
 
-Visit `http://localhost:3000` to play. The frontend talks to the backend through gRPC-Web.
+### Frontend (Elm - Recommended)
+
+```bash
+cd frontend-elm
+
+# Development (with hot reload)
+./dev.sh
+
+# Build for production
+./build.sh
+```
+
+Then open `http://localhost:8000` (dev) or serve `public/` folder.
+
+### Frontend (SolidJS - Alternative)
+
+```bash
+cd frontend
+npm run dev -- --host 0.0.0.0 --port 3000
+```
+
+Visit `http://localhost:3000`
 
 ---
 
-## 4. Production Build / Deployment
+## 4. Game Modes
 
-```bash
-make build
-# Outputs:
-#   - backend binary (release)
-#   - frontend static bundle in frontend/dist
-```
-
-Run the backend in release mode:
-```bash
-./target/release/take_it_easy --mode multiplayer --port 50051 --num-simulations 300 --single-player false
-```
-
-Serve the frontend bundle (`frontend/dist`) with any static server (nginx, Vite preview, etc.).
+| Mode | MCTS Simulations | Description |
+|------|------------------|-------------|
+| Solo Facile | 150 | Easy AI opponent |
+| Solo Normal | 300 | Moderate AI challenge |
+| Solo Difficile | 1000 | Strong AI opponent |
+| Multijoueur | - | Play against other players online |
 
 ---
 
-## 5. Useful Commands
+## 5. Architecture
+
+```
+take_it_easy/
+├── src/                    # Rust backend
+│   ├── auth/               # Authentication (JWT, OAuth, email)
+│   ├── game/               # Game logic (tiles, plateau, scoring)
+│   ├── mcts/               # Monte Carlo Tree Search engine
+│   ├── neural/             # CNN + Q-Net neural networks
+│   ├── services/           # gRPC services (game, session)
+│   └── servers/            # HTTP + gRPC server setup
+├── frontend-elm/           # Elm frontend (MVU architecture)
+│   ├── src/Main.elm        # Main application
+│   ├── src/TileSvg.elm     # SVG tile rendering
+│   └── public/             # Static assets + JS ports
+├── frontend/               # SolidJS frontend (alternative)
+├── model_weights/          # Neural network weights
+│   ├── cnn_policy/         # Policy network
+│   ├── cnn_value/          # Value network
+│   └── qvalue/             # Q-Value network (hybrid MCTS)
+├── protos/                 # gRPC protocol definitions
+└── docs/                   # Documentation
+```
+
+---
+
+## 6. Authentication
+
+The backend supports:
+- **Email/Password** authentication with Argon2 hashing
+- **JWT tokens** for session management
+- **OAuth2** (Google, GitHub) - configure in environment variables
+
+Database: SQLite (`data/users.db`)
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth/register` | POST | Create new account |
+| `/auth/login` | POST | Login with email/password |
+| `/auth/me` | GET | Get current user (requires Bearer token) |
+| `/auth/oauth/google` | GET | OAuth2 with Google |
+| `/auth/oauth/github` | GET | OAuth2 with GitHub |
+
+---
+
+## 7. Useful Commands
 
 | Command | Description |
 |---------|-------------|
-| `cargo test` | Run Rust unit + integration tests |
-| `npm test -- --watch=false` | Run frontend tests (Vitest) |
-| `cargo run -- --single-player` | Quick solo game vs MCTS |
-| `cargo run --bin compare_mcts -- --games 50` | Benchmark neural vs pure MCTS |
-| `make fmt` / `cargo fmt` | Apply Rust formatting |
-| `npm run lint` | Lint SolidJS code |
+| `cargo test` | Run Rust tests |
+| `cargo run --bin compare_mcts_hybrid -- --games 50` | Benchmark AI |
+| `cargo fmt && cargo clippy` | Format and lint |
+| `cd frontend-elm && elm make src/Main.elm` | Compile Elm |
 
 ---
 
-## 6. Repository Layout
-
-```
-src/                # Rust backend (game logic, services, MCTS, neural bindings)
-frontend/           # SolidJS app (Vite)
-model_weights/      # Neural network weights (CNN + Q-net)
-docs/               # Research history and documentation
-Makefile            # Common dev + build shortcuts
-dev_start.sh        # Legacy helper (make dev wraps this)
-```
-
----
-
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| **`libtorch` not found** | Ensure `LD_LIBRARY_PATH` points to `libtorch/lib` before launching the backend. |
-| **`protoc` missing`** | Install via package manager (`apt install protobuf-compiler`, `brew install protobuf`). |
-| **Frontend can’t reach backend** | Confirm backend is on `localhost:50051` and run `npm run dev -- --host 0.0.0.0`. |
-| **Slow simulations** | Lower `--num-simulations` (e.g., 150) or build with `cargo run --release`. |
+| **libtorch not found** | Export `LD_LIBRARY_PATH` to `libtorch/lib` |
+| **protoc missing** | `apt install protobuf-compiler` or `brew install protobuf` |
+| **Frontend can't reach backend** | Check backend is running on ports 50051 and 51051 |
+| **Elm compilation error** | Run `elm make src/Main.elm --output=public/elm.js` |
 
 ---
 
-## 8. Next Steps
+## 9. Development
 
-- Read `docs/RESEARCH_HISTORY.md` for the complete AI research history (Nov 2025 - Jan 2026).
-- Run benchmarks with `cargo run --release --bin compare_mcts_hybrid -- --games 50 --top-k 6`.
-- Contribute fixes via pull requests (use `cargo fmt && cargo clippy && cargo test` before pushing).
+### Building Elm Frontend
 
-Have fun playing and hacking on **Take It Easy**!
+```bash
+cd frontend-elm
+elm make src/Main.elm --optimize --output=public/elm.js
+```
+
+### Building for Production
+
+```bash
+# Backend
+cargo build --release
+
+# Frontend
+cd frontend-elm && ./build.sh
+```
+
+---
+
+## License
+
+MIT
+
+---
+
+Have fun playing **Take It Easy**!

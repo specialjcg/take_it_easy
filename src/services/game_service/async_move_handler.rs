@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::task;
 use tonic::{Response, Status};
 
 use crate::generated::takeiteasygame::v1::*;
@@ -95,17 +94,8 @@ pub async fn make_move_async_logic(
         }
     };
 
-    // ✅ NOUVEAU: Retourner immédiatement une confirmation de mouvement
-    let immediate_response = create_immediate_move_confirmation(&player_move, &game_state);
-
-    // ✅ Lancer MCTS en arrière-plan (hybrid si Q-Net disponible)
     // Utiliser le num_simulations de la session (configuré par le frontend)
     let session_simulations = session.num_simulations;
-    let session_manager_clone = session_manager.clone();
-    let policy_net_clone = policy_net.clone();
-    let value_net_clone = value_net.clone();
-    let qvalue_net_clone = qvalue_net.clone();
-    let session_id_clone = request.session_id.clone();
     let game_mode = session.game_mode.clone();
 
     log::info!(
@@ -114,27 +104,27 @@ pub async fn make_move_async_logic(
         game_mode
     );
 
-    task::spawn(async move {
-        process_mcts_in_background(
-            session_manager_clone,
-            policy_net_clone,
-            value_net_clone,
-            qvalue_net_clone,
-            session_simulations, // Utilise la config de session
-            top_k,
-            game_state,
-            player_move,
-            session_id_clone,
-            game_mode,
-        )
-        .await;
-    });
+    // ✅ CORRECTION: Attendre la fin du traitement MCTS avant de retourner
+    let response = process_mcts_and_respond(
+        session_manager.clone(),
+        policy_net.clone(),
+        value_net.clone(),
+        qvalue_net.clone(),
+        session_simulations,
+        top_k,
+        game_state,
+        player_move,
+        request.session_id.clone(),
+        game_mode,
+    )
+    .await;
 
-    // Retourner immédiatement la confirmation
-    Ok(Response::new(immediate_response))
+    Ok(Response::new(response))
 }
 
 /// Crée une réponse immédiate de confirmation de mouvement
+/// NOTE: Cette fonction n'est plus utilisée, gardée pour les tests
+#[allow(dead_code)]
 fn create_immediate_move_confirmation(
     player_move: &PlayerMove,
     game_state: &TakeItEasyGameState,
@@ -163,7 +153,110 @@ fn create_immediate_move_confirmation(
     response
 }
 
+/// Traite MCTS de façon synchrone et retourne la réponse complète
+#[allow(clippy::too_many_arguments)]
+async fn process_mcts_and_respond(
+    session_manager: Arc<SessionManager>,
+    policy_net: Arc<Mutex<PolicyNet>>,
+    value_net: Arc<Mutex<ValueNet>>,
+    qvalue_net: Option<Arc<Mutex<QValueNet>>>,
+    num_simulations: usize,
+    top_k: usize,
+    game_state: TakeItEasyGameState,
+    player_move: PlayerMove,
+    session_id: String,
+    game_mode: String,
+) -> MakeMoveResponse {
+    let mcts_type = if qvalue_net.is_some() {
+        "HYBRID"
+    } else {
+        "CNN"
+    };
+    log::info!(
+        "🔄 Traitement MCTS {} synchrone pour joueur {}",
+        mcts_type,
+        player_move.player_id
+    );
+
+    // Use hybrid MCTS if Q-Net is available, otherwise standard CNN MCTS
+    let result = if let Some(ref qnet) = qvalue_net {
+        process_player_move_with_hybrid_mcts(
+            game_state.clone(),
+            player_move.clone(),
+            &policy_net,
+            &value_net,
+            qnet,
+            num_simulations,
+            top_k,
+        )
+        .await
+    } else {
+        process_player_move_with_mcts(
+            game_state.clone(),
+            player_move.clone(),
+            &policy_net,
+            &value_net,
+            num_simulations,
+        )
+        .await
+    };
+
+    match result {
+        Ok(move_result) => {
+            let final_state = move_result.new_game_state.clone();
+            let store = get_store_from_manager(&session_manager);
+
+            if let Some(mut session) =
+                get_session_by_code_or_id_from_store(store, &session_id).await
+            {
+                // Sauvegarder l'état final
+                session.board_state = serde_json::to_string(&final_state).unwrap_or_default();
+
+                // Mettre à jour l'état de la session quand le jeu est terminé
+                use crate::services::game_manager::is_game_finished;
+                if is_game_finished(&final_state) {
+                    session.state = 2; // SessionState::FINISHED
+                    log::info!("🏁 Session {} marquée comme FINISHED", session_id);
+                }
+
+                // Synchroniser les scores
+                for (player_id, score) in &final_state.scores {
+                    if let Some(player) = session.players.get_mut(player_id) {
+                        player.score = *score;
+                        log::info!(
+                            "🏆 Score mis à jour: {} = {} points",
+                            player_id,
+                            score
+                        );
+                    }
+                }
+
+                if let Err(e) = update_session_in_store(store, session).await {
+                    log::error!("❌ Échec mise à jour session: {}", e);
+                } else {
+                    log::info!(
+                        "✅ Traitement MCTS terminé avec succès pour session {}",
+                        session_id
+                    );
+                }
+            }
+
+            // Retourner la vraie réponse avec les résultats MCTS
+            make_move_success_response(move_result, &game_mode)
+        }
+        Err(error_code) => {
+            log::error!("❌ Échec traitement MCTS: {}", error_code);
+            make_move_error_response(
+                error_code.clone(),
+                format!("MCTS processing failed: {}", error_code),
+            )
+        }
+    }
+}
+
 /// Traite MCTS en arrière-plan et met à jour la session (hybrid si Q-Net disponible)
+/// NOTE: Cette fonction n'est plus utilisée, gardée pour référence
+#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 async fn process_mcts_in_background(
     session_manager: Arc<SessionManager>,

@@ -106,7 +106,8 @@ export const getToken = (): string | null => {
 // API CALLS
 // ============================================================================
 
-const API_BASE = '/auth';
+// En développement, utiliser l'URL directe du backend car le proxy Vite a des problèmes
+const API_BASE = import.meta.env.DEV ? 'http://localhost:51051/auth' : '/auth';
 
 export const authApi = {
     async login(email: string, password: string): Promise<{ success: boolean; user?: User; token?: string; error?: string }> {

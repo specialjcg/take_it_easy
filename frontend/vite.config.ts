@@ -10,6 +10,15 @@ export default defineConfig({
       '/auth': {
         target: 'http://localhost:51051',
         changeOrigin: true,
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('Proxying:', req.method, req.url, '-> localhost:51051');
+          });
+        },
       },
       // Proxy pour gRPC-Web - redirige vers votre serveur Rust
       '/takeiteasygame.v1.SessionService': {

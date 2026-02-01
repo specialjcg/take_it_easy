@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Take It Easy - Elm</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="elm-app"></div>
+
+    <!-- gRPC-Web client (bundled from TypeScript) -->
+    <script src="grpc-client.js"></script>
+
+    <!-- Elm compiled app -->
+    <script src="elm.js"></script>
+
+    <!-- JavaScript interop for gRPC-Web and Auth API -->
+    <script src="ports.js"></script>
+
+    <script>
+        // Initialize Elm app
+        const app = Elm.Main.init({
+            node: document.getElementById('elm-app')
+        });
+
+        // Initialize ports
+        initPorts(app);
+    </script>
+</body>
+</html>
