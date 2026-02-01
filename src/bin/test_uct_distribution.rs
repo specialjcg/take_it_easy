@@ -1,18 +1,18 @@
 //! Test UCT MCTS to verify it creates NON-UNIFORM distributions
-//! 
+//!
 //! This test confirms that the UCT approach solves the circular learning problem
 //! by showing that the policy network influences exploration.
 
+use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use rand::prelude::IndexedRandom;
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_uct;
 use take_it_easy::mcts::hyperparameters::MCTSHyperparameters;
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::scoring::scoring::result;
 
 fn chi_squared_test(observed: &[usize], expected: f64) -> f64 {
@@ -52,7 +52,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut total_positions = 0;
     let mut scores: Vec<i32> = Vec::new();
 
-    println!("🎮 Running {} games with UCT MCTS ({} sims)...\n", num_games, simulations);
+    println!(
+        "🎮 Running {} games with UCT MCTS ({} sims)...\n",
+        num_games, simulations
+    );
 
     for game_idx in 0..num_games {
         let mut plateau = create_plateau_empty();
@@ -94,17 +97,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         scores.push(score);
 
         if (game_idx + 1) % 20 == 0 {
-            let recent_mean = scores[scores.len().saturating_sub(20)..].iter().sum::<i32>() as f64
+            let recent_mean = scores[scores.len().saturating_sub(20)..]
+                .iter()
+                .sum::<i32>() as f64
                 / scores.len().saturating_sub(scores.len() - 20).max(1) as f64;
-            println!("  Game {}/{}: Recent avg = {:.2} pts", game_idx + 1, num_games, recent_mean);
+            println!(
+                "  Game {}/{}: Recent avg = {:.2} pts",
+                game_idx + 1,
+                num_games,
+                recent_mean
+            );
         }
     }
 
     // Calculate statistics
     let mean_score = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
-    let std_dev = (scores.iter()
+    let std_dev = (scores
+        .iter()
         .map(|&s| (s as f64 - mean_score).powi(2))
-        .sum::<f64>() / scores.len() as f64)
+        .sum::<f64>()
+        / scores.len() as f64)
         .sqrt();
 
     // Calculate chi-squared statistic
@@ -129,27 +141,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n  Most selected positions:");
     for (pos, &count) in sorted_positions.iter().take(5) {
-        println!("    Position {}: {} times ({:.1}%)", pos, count, 
-                 count as f64 / total_positions as f64 * 100.0);
+        println!(
+            "    Position {}: {} times ({:.1}%)",
+            pos,
+            count,
+            count as f64 / total_positions as f64 * 100.0
+        );
     }
 
     println!("\n  Least selected positions:");
     for (pos, &count) in sorted_positions.iter().rev().take(5) {
-        println!("    Position {}: {} times ({:.1}%)", pos, count,
-                 count as f64 / total_positions as f64 * 100.0);
+        println!(
+            "    Position {}: {} times ({:.1}%)",
+            pos,
+            count,
+            count as f64 / total_positions as f64 * 100.0
+        );
     }
 
     // Interpretation
     println!("\n🔍 Interpretation:");
     if chi_squared < 5.0 {
-        println!("  ❌ UNIFORM distribution (chi² = {:.2} < 5.0)", chi_squared);
+        println!(
+            "  ❌ UNIFORM distribution (chi² = {:.2} < 5.0)",
+            chi_squared
+        );
         println!("  Policy network is NOT influencing exploration");
         println!("  UCT is selecting positions uniformly (problem persists)");
     } else if chi_squared < 20.0 {
         println!("  ⚠️  WEAKLY NON-UNIFORM (chi² = {:.2})", chi_squared);
         println!("  Some preference detected, but still mostly uniform");
     } else {
-        println!("  ✅ STRONGLY NON-UNIFORM (chi² = {:.2} > 20.0)", chi_squared);
+        println!(
+            "  ✅ STRONGLY NON-UNIFORM (chi² = {:.2} > 20.0)",
+            chi_squared
+        );
         println!("  Policy network IS influencing exploration!");
         println!("  UCT successfully breaks the circular learning problem");
     }
@@ -159,9 +185,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // p < 0.01 threshold: chi² > 34.81
     println!("\n📐 Statistical significance (18 degrees of freedom):");
     if chi_squared > 34.81 {
-        println!("  ✅ Highly significant (p < 0.01): chi² = {:.2} > 34.81", chi_squared);
+        println!(
+            "  ✅ Highly significant (p < 0.01): chi² = {:.2} > 34.81",
+            chi_squared
+        );
     } else if chi_squared > 28.87 {
-        println!("  ✅ Significant (p < 0.05): chi² = {:.2} > 28.87", chi_squared);
+        println!(
+            "  ✅ Significant (p < 0.05): chi² = {:.2} > 28.87",
+            chi_squared
+        );
     } else {
         println!("  ❌ Not significant: chi² = {:.2} < 28.87", chi_squared);
         println!("  Cannot reject uniform distribution hypothesis");

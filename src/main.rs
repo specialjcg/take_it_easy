@@ -1,6 +1,7 @@
 // main.rs - Version corrigée avec les bonnes compatibilités
 use clap::Parser;
 use flexi_logger::Logger;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 
 use crate::neural::{NeuralConfig, NeuralManager, QNetManager};
@@ -10,11 +11,13 @@ use crate::training::session::{train_and_evaluate, train_and_evaluate_offline};
 mod test;
 
 // Modules existants (inchangés)
+mod auth;
 mod data;
 mod game;
 mod logging;
 mod mcts;
 mod neural;
+mod recording;
 mod scoring;
 mod strategy;
 mod training;
@@ -102,6 +105,22 @@ struct Config {
     /// Top-K positions for Q-net pruning (6 is optimal)
     #[arg(long, default_value_t = 6)]
     top_k: usize,
+
+    /// Enable authentication system
+    #[arg(long, default_value_t = true)]
+    enable_auth: bool,
+
+    /// Path to SQLite database for authentication
+    #[arg(long, default_value = "data/auth.db")]
+    auth_db_path: String,
+
+    /// Enable game recording for training data collection
+    #[arg(long, default_value_t = true)]
+    enable_recording: bool,
+
+    /// Directory for recorded game data
+    #[arg(long, default_value = "data/recorded_games")]
+    recording_dir: String,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -113,16 +132,23 @@ enum GameMode {
 }
 
 // ============================================================================
-// SERVEUR WEB POUR LES FICHIERS STATIQUES
+// SERVEUR WEB POUR LES FICHIERS STATIQUES + AUTHENTIFICATION
 // ============================================================================
 
-async fn start_web_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+async fn start_web_server(
+    port: u16,
+    auth_state: Option<Arc<auth::AuthState>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config = servers::WebUiConfig {
         port: port + 1000,
         host: "0.0.0.0".to_string(),
     };
 
-    let web_ui_server = servers::WebUiServer::new(config);
+    let web_ui_server = match auth_state {
+        Some(state) => servers::WebUiServer::with_auth(config, state),
+        None => servers::WebUiServer::new(config),
+    };
+
     web_ui_server.start().await
 }
 
@@ -137,6 +163,7 @@ async fn start_multiplayer_server(
     port: u16,
     single_player: bool,
     top_k: usize,
+    auth_state: Option<Arc<auth::AuthState>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     log::info!("🎯 Interface web : http://localhost:{}", port + 1000);
 
@@ -152,7 +179,7 @@ async fn start_multiplayer_server(
     let components = neural_manager.into_components();
 
     // Create server with or without Q-Net hybrid
-    let grpc_server = if let Some(qnet) = qnet_manager {
+    let mut grpc_server = if let Some(qnet) = qnet_manager {
         log::info!("🚀 MCTS Hybrid activé avec Q-Net (top-{})", top_k);
         servers::GrpcServer::new_hybrid(
             grpc_config,
@@ -173,6 +200,12 @@ async fn start_multiplayer_server(
             single_player,
         )
     };
+
+    // Add authentication if enabled
+    if let Some(state) = auth_state {
+        log::info!("🔐 gRPC server with session authentication");
+        grpc_server = grpc_server.with_auth(state.jwt_manager(), false);
+    }
 
     grpc_server.start().await
 }
@@ -268,10 +301,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             };
 
+            // Initialize game recording if enabled
+            if config.enable_recording {
+                match recording::init_recorder(&config.recording_dir) {
+                    Ok(()) => {
+                        log::info!("📹 Game recording enabled (dir: {})", config.recording_dir);
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ Failed to initialize game recorder ({}), continuing without", e);
+                    }
+                }
+            } else {
+                log::info!("ℹ️ Game recording disabled");
+            }
+
+            // Initialize authentication if enabled
+            let auth_state = if config.enable_auth {
+                // Ensure data directory exists
+                if let Some(parent) = std::path::Path::new(&config.auth_db_path).parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+
+                match auth::AuthState::new(&config.auth_db_path) {
+                    Ok(state) => {
+                        log::info!("🔐 Authentication enabled (db: {})", config.auth_db_path);
+                        Some(Arc::new(state))
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ Failed to initialize auth ({}), continuing without", e);
+                        None
+                    }
+                }
+            } else {
+                log::info!("ℹ️ Authentication disabled");
+                None
+            };
+
             // Lancer le serveur web en arrière-plan
             let web_port = config.port;
+            let auth_state_clone = auth_state.clone();
             tokio::spawn(async move {
-                if let Err(e) = start_web_server(web_port).await {
+                if let Err(e) = start_web_server(web_port, auth_state_clone).await {
                     log::error!("❌ Web server error: {}", e);
                 }
             });
@@ -279,7 +349,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Donner un peu de temps au serveur web pour démarrer
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-            // Lancer le serveur gRPC (bloquant) avec support hybrid
+            // Lancer le serveur gRPC (bloquant) avec support hybrid et auth
             start_multiplayer_server(
                 neural_manager,
                 qnet_manager,
@@ -287,6 +357,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 config.port,
                 config.single_player,
                 config.top_k,
+                auth_state,
             )
             .await?;
         }

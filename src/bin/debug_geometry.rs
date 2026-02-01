@@ -6,24 +6,38 @@
 //! 3. How scoring lines appear in the tensor
 //! 4. Why CNN might fail to learn the patterns
 
-use take_it_easy::game::tile::Tile;
-use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::create_deck::create_deck;
-use take_it_easy::game::simulate_game_smart::simulate_games_smart;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
+use take_it_easy::game::plateau::create_plateau_empty;
+use take_it_easy::game::simulate_game_smart::simulate_games_smart;
+use take_it_easy::game::tile::Tile;
 
 /// The HEX_TO_GRID_MAP from tensor_conversion.rs
 const HEX_TO_GRID_MAP: [(usize, usize); 19] = [
     // Column 0 (positions 0-2)
-    (1, 0), (2, 0), (3, 0),
+    (1, 0),
+    (2, 0),
+    (3, 0),
     // Column 1 (positions 3-6)
-    (1, 1), (2, 1), (3, 1), (4, 1),
+    (1, 1),
+    (2, 1),
+    (3, 1),
+    (4, 1),
     // Column 2 (positions 7-11)
-    (0, 2), (1, 2), (2, 2), (3, 2), (4, 2),
+    (0, 2),
+    (1, 2),
+    (2, 2),
+    (3, 2),
+    (4, 2),
     // Column 3 (positions 12-15)
-    (1, 3), (2, 3), (3, 3), (4, 3),
+    (1, 3),
+    (2, 3),
+    (3, 3),
+    (4, 3),
     // Column 4 (positions 16-18)
-    (1, 4), (2, 4), (3, 4),
+    (1, 4),
+    (2, 4),
+    (3, 4),
 ];
 
 /// Scoring line definitions
@@ -69,7 +83,10 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════════════════════\n");
 
     let mut grid = [["."; 5]; 5];
-    let pos_names = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18"];
+    let pos_names = [
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
+        "17", "18",
+    ];
 
     for (pos, &(row, col)) in HEX_TO_GRID_MAP.iter().enumerate() {
         grid[row][col] = pos_names[pos];
@@ -94,13 +111,16 @@ fn main() {
     let mut broken_lines = 0;
 
     for (positions, name, direction) in SCORING_LINES {
-        let grid_coords: Vec<(usize, usize)> = positions.iter()
-            .map(|&pos| HEX_TO_GRID_MAP[pos])
-            .collect();
+        let grid_coords: Vec<(usize, usize)> =
+            positions.iter().map(|&pos| HEX_TO_GRID_MAP[pos]).collect();
 
         // Check if it's a straight line (all same row, all same col, or perfect diagonal)
         let is_straight = check_straight_line(&grid_coords);
-        let status = if is_straight { "✓ STRAIGHT" } else { "✗ BROKEN" };
+        let status = if is_straight {
+            "✓ STRAIGHT"
+        } else {
+            "✗ BROKEN"
+        };
 
         if is_straight {
             straight_lines += 1;
@@ -111,7 +131,9 @@ fn main() {
         println!("{} [Dir{}] {:?}", name, direction, positions);
         print!("   Grid coords: ");
         for (i, &(row, col)) in grid_coords.iter().enumerate() {
-            if i > 0 { print!(" → "); }
+            if i > 0 {
+                print!(" → ");
+            }
             print!("({},{})", row, col);
         }
         println!("  {}", status);
@@ -133,7 +155,10 @@ fn main() {
     }
 
     println!("═══════════════════════════════════════════════════════════════════════════");
-    println!("   SUMMARY: {} straight lines, {} broken lines", straight_lines, broken_lines);
+    println!(
+        "   SUMMARY: {} straight lines, {} broken lines",
+        straight_lines, broken_lines
+    );
     println!("═══════════════════════════════════════════════════════════════════════════\n");
 
     // Section 4: What the CNN "sees" vs what rollouts compute
@@ -144,7 +169,7 @@ fn main() {
     // Create a test game state
     let plateau = create_plateau_empty();
     let deck = create_deck();
-    let test_tile = Tile(9, 7, 8);  // High-value tile
+    let test_tile = Tile(9, 7, 8); // High-value tile
 
     println!("Test scenario: Empty board, placing tile {:?}", test_tile);
     println!("This tile has high values, so placement strategy matters.\n");
@@ -173,8 +198,14 @@ fn main() {
     println!("\nRollout rankings (what the AI SHOULD learn):");
     for (rank, (pos, score)) in rollout_scores.iter().enumerate() {
         let (row, col) = HEX_TO_GRID_MAP[*pos];
-        println!("   #{:2}: Position {:2} → Grid({},{}) → Avg score: {:.1}",
-                 rank + 1, pos, row, col, score);
+        println!(
+            "   #{:2}: Position {:2} → Grid({},{}) → Avg score: {:.1}",
+            rank + 1,
+            pos,
+            row,
+            col,
+            score
+        );
     }
 
     // Section 5: Geometric insight

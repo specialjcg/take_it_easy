@@ -51,8 +51,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load trained GNN (read-only, won't modify weights)
     log::info!("\n📂 Loading trained GNN...");
     let neural_config = NeuralConfig {
-        input_dim: (17, 5, 5),  // STOCHZERO: 17 channels (8 base + 9 bag awareness)
-        nn_architecture: NNArchitecture::Cnn,  // Using CNN architecture for StochZero
+        input_dim: (17, 5, 5), // STOCHZERO: 17 channels (8 base + 9 bag awareness)
+        nn_architecture: NNArchitecture::Cnn, // Using CNN architecture for StochZero
         policy_lr: 0.001,
         value_lr: 0.0001,
         ..Default::default()
@@ -104,7 +104,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if (game_id + 1) % 5 == 0 {
             let avg = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
-            log::info!("  Game {}/{}: score={} (avg so far: {:.1})", game_id + 1, args.games, final_score, avg);
+            log::info!(
+                "  Game {}/{}: score={} (avg so far: {:.1})",
+                game_id + 1,
+                args.games,
+                final_score,
+                avg
+            );
         }
     }
 
@@ -114,12 +120,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let max_score = *scores.iter().max().unwrap();
 
     // Calculate standard deviation
-    let variance: f64 = scores.iter()
+    let variance: f64 = scores
+        .iter()
         .map(|&s| {
             let diff = s as f64 - avg_score;
             diff * diff
         })
-        .sum::<f64>() / scores.len() as f64;
+        .sum::<f64>()
+        / scores.len() as f64;
     let std_dev = variance.sqrt();
 
     log::info!("\n📊 Benchmark Results:");

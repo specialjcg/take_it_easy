@@ -8,21 +8,21 @@
 //! Starts from existing self-play weights (89.30 pts baseline)
 //! Data source: expert_data_mcts_1000games.json (1000 games, MCTS Pure 100 sims)
 
+use rand::prelude::IndexedRandom;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
-use take_it_easy::neural::manager::NNArchitecture;
-use tch::{Device, Tensor};
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
 use take_it_easy::mcts::hyperparameters::MCTSHyperparameters;
+use take_it_easy::neural::manager::NNArchitecture;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::scoring::scoring::result;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
-use rand::prelude::IndexedRandom;
+use tch::{Device, Tensor};
 
 #[derive(Serialize, Deserialize)]
 struct ExpertExample {
@@ -90,8 +90,7 @@ fn train_on_data(
                 .view([batch_indices.len() as i64, 8, 5, 5])
                 .to_device(device);
 
-            let policy_targets = Tensor::from_slice(&policy_targets_vec)
-                .to_device(device);
+            let policy_targets = Tensor::from_slice(&policy_targets_vec).to_device(device);
 
             let value_targets = Tensor::from_slice(&value_targets_vec)
                 .view([batch_indices.len() as i64, 1])
@@ -123,15 +122,26 @@ fn train_on_data(
         let avg_policy_loss = epoch_policy_loss / batch_count as f64;
         let avg_value_loss = epoch_value_loss / batch_count as f64;
 
-        println!("  Epoch {:2}: policy_loss={:.4}, value_loss={:.4}",
-                 epoch + 1, avg_policy_loss, avg_value_loss);
+        println!(
+            "  Epoch {:2}: policy_loss={:.4}, value_loss={:.4}",
+            epoch + 1,
+            avg_policy_loss,
+            avg_value_loss
+        );
     }
 
     Ok(())
 }
 
-fn benchmark_network(manager: &mut NeuralManager, num_games: usize, simulations: usize) -> Result<f64, Box<dyn std::error::Error>> {
-    println!("\n📊 Running benchmark ({} games, {} sims)...", num_games, simulations);
+fn benchmark_network(
+    manager: &mut NeuralManager,
+    num_games: usize,
+    simulations: usize,
+) -> Result<f64, Box<dyn std::error::Error>> {
+    println!(
+        "\n📊 Running benchmark ({} games, {} sims)...",
+        num_games, simulations
+    );
 
     let mut rng = StdRng::seed_from_u64(2025);
     let mut scores: Vec<i32> = Vec::new();
@@ -172,16 +182,25 @@ fn benchmark_network(manager: &mut NeuralManager, num_games: usize, simulations:
         scores.push(score);
 
         if (game_idx + 1) % 20 == 0 {
-            let recent_mean = scores[scores.len().saturating_sub(20)..].iter().sum::<i32>() as f64
+            let recent_mean = scores[scores.len().saturating_sub(20)..]
+                .iter()
+                .sum::<i32>() as f64
                 / scores.len().saturating_sub(scores.len() - 20).max(1) as f64;
-            println!("  Game {}/{}: Recent avg = {:.2} pts", game_idx + 1, num_games, recent_mean);
+            println!(
+                "  Game {}/{}: Recent avg = {:.2} pts",
+                game_idx + 1,
+                num_games,
+                recent_mean
+            );
         }
     }
 
     let mean = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
-    let std_dev = (scores.iter()
+    let std_dev = (scores
+        .iter()
         .map(|&s| (s as f64 - mean).powi(2))
-        .sum::<f64>() / scores.len() as f64)
+        .sum::<f64>()
+        / scores.len() as f64)
         .sqrt();
 
     println!("  Final: {:.2} ± {:.2} pts\n", mean, std_dev);
@@ -239,9 +258,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Benchmark after elite training
     let elite_score = benchmark_network(&mut manager, 100, 150)?;
-    println!("📊 After Elite: {:.2} pts ({:+.2} pts, {:+.1}%)\n",
-             elite_score, elite_score - baseline_score,
-             (elite_score - baseline_score) / baseline_score * 100.0);
+    println!(
+        "📊 After Elite: {:.2} pts ({:+.2} pts, {:+.1}%)\n",
+        elite_score,
+        elite_score - baseline_score,
+        (elite_score - baseline_score) / baseline_score * 100.0
+    );
 
     // Phase 2: Finetune on full large dataset
     println!("{}", "=".repeat(60));
@@ -249,7 +271,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "=".repeat(60));
 
     let expert_data = load_expert_data("expert_data_mcts_1000games.json")?;
-    println!("   Loaded {} examples (mean score 82.9 pts)", expert_data.len());
+    println!(
+        "   Loaded {} examples (mean score 82.9 pts)",
+        expert_data.len()
+    );
 
     // Train on full expert data (large dataset, standard epochs)
     train_on_data(&mut manager, &expert_data, 20, 64, "Full Dataset (19K)")?;
@@ -261,21 +286,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Final benchmark
     let final_score = benchmark_network(&mut manager, 100, 150)?;
-    println!("📊 Final Score: {:.2} pts ({:+.2} pts, {:+.1}%)\n",
-             final_score, final_score - baseline_score,
-             (final_score - baseline_score) / baseline_score * 100.0);
+    println!(
+        "📊 Final Score: {:.2} pts ({:+.2} pts, {:+.1}%)\n",
+        final_score,
+        final_score - baseline_score,
+        (final_score - baseline_score) / baseline_score * 100.0
+    );
 
     // Summary
     println!("{}", "=".repeat(60));
     println!("TRAINING SUMMARY");
     println!("{}", "=".repeat(60));
     println!("  Baseline (self-play):        {:.2} pts", baseline_score);
-    println!("  After Elite Bootstrap:       {:.2} pts ({:+.2} pts, {:+.1}%)",
-             elite_score, elite_score - baseline_score,
-             (elite_score - baseline_score) / baseline_score * 100.0);
-    println!("  After Full Dataset:          {:.2} pts ({:+.2} pts, {:+.1}%)",
-             final_score, final_score - baseline_score,
-             (final_score - baseline_score) / baseline_score * 100.0);
+    println!(
+        "  After Elite Bootstrap:       {:.2} pts ({:+.2} pts, {:+.1}%)",
+        elite_score,
+        elite_score - baseline_score,
+        (elite_score - baseline_score) / baseline_score * 100.0
+    );
+    println!(
+        "  After Full Dataset:          {:.2} pts ({:+.2} pts, {:+.1}%)",
+        final_score,
+        final_score - baseline_score,
+        (final_score - baseline_score) / baseline_score * 100.0
+    );
     println!("\n📊 Training Data:");
     println!("  Elite: 456 examples (games >140 pts)");
     println!("  Full:  19,000 examples (1000 games, mean 82.9 pts)");

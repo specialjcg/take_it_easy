@@ -70,7 +70,7 @@ impl PolicyNet {
             },
             NNArchitecture::Gnn => Self {
                 arch,
-                net: PolicyNetImpl::Gnn(GraphPolicyNet::new(vs, 8, &[64, 64, 64], 0.1)),  // 8 features per node for GNN (matches training data)
+                net: PolicyNetImpl::Gnn(GraphPolicyNet::new(vs, 8, &[64, 64, 64], 0.1)), // 8 features per node for GNN (matches training data)
             },
         }
     }
@@ -91,13 +91,13 @@ impl PolicyNet {
                 } else {
                     // Already [batch, 19, 8] or [batch, 8, 19], check and permute if needed
                     if input_shape[1] == 8 {
-                        input.permute([0, 2, 1])  // [batch, 8, 19] -> [batch, 19, 8]
+                        input.permute([0, 2, 1]) // [batch, 8, 19] -> [batch, 19, 8]
                     } else {
-                        input.shallow_clone()  // Already [batch, 19, 8]
+                        input.shallow_clone() // Already [batch, 19, 8]
                     }
                 };
                 net.forward(&reshaped, train)
-            },
+            }
         }
     }
 
@@ -124,7 +124,7 @@ pub struct PolicyNetCNN {
     gn1: nn::GroupNorm,
     res_blocks: Vec<ResNetBlock>,
     // SPATIAL POLICY HEAD: Maintains spatial correspondence 5×5 → 19 positions
-    policy_conv: nn::Conv2D,  // 1×1 conv: 64→1 channel (keeps 5×5 spatial structure)
+    policy_conv: nn::Conv2D, // 1×1 conv: 64→1 channel (keeps 5×5 spatial structure)
     #[allow(dead_code)] // Kept for future dropout implementation
     dropout_rate: f64,
 }
@@ -171,9 +171,9 @@ impl PolicyNetCNN {
         };
         let policy_conv = nn::conv2d(
             &p / "policy_conv",
-            final_channels,  // 160 channels directly from conv1
-            1,               // Output 1 channel (policy logit per spatial position)
-            1,               // 1×1 kernel (no spatial mixing)
+            final_channels, // 160 channels directly from conv1
+            1,              // Output 1 channel (policy logit per spatial position)
+            1,              // 1×1 kernel (no spatial mixing)
             Default::default(),
         );
 
@@ -211,11 +211,11 @@ impl PolicyNetCNN {
         }
 
         // Spatial policy head: 1×1 conv maintains 5×5 structure
-        h = h.apply(&self.policy_conv);  // → [batch, 1, 5, 5]
+        h = h.apply(&self.policy_conv); // → [batch, 1, 5, 5]
 
         // Flatten 5×5 spatial map to 25 logits
         let batch_size = h.size()[0];
-        h = h.view([batch_size, 25]);  // [batch, 25]
+        h = h.view([batch_size, 25]); // [batch, 25]
 
         // Extract the 19 hexagonal positions using correct VERTICAL column mapping
         // HEX_TO_GRID_MAP: hex pos → (row, col) → flat_idx = row * 5 + col
@@ -228,15 +228,15 @@ impl PolicyNetCNN {
         //                  6     11       15
         //
         let hex_grid_indices: [i64; 19] = [
-            5, 10, 15,         // hex 0-2   → col 0, rows 1-3
-            6, 11, 16, 21,     // hex 3-6   → col 1, rows 1-4
-            2, 7, 12, 17, 22,  // hex 7-11  → col 2, rows 0-4
-            8, 13, 18, 23,     // hex 12-15 → col 3, rows 1-4
-            9, 14, 19,         // hex 16-18 → col 4, rows 1-3
+            5, 10, 15, // hex 0-2   → col 0, rows 1-3
+            6, 11, 16, 21, // hex 3-6   → col 1, rows 1-4
+            2, 7, 12, 17, 22, // hex 7-11  → col 2, rows 0-4
+            8, 13, 18, 23, // hex 12-15 → col 3, rows 1-4
+            9, 14, 19, // hex 16-18 → col 4, rows 1-3
         ];
 
         let indices = Tensor::from_slice(&hex_grid_indices).to_device(h.device());
-        h.index_select(1, &indices)  // Return [batch, 19] logits in hex order
+        h.index_select(1, &indices) // Return [batch, 19] logits in hex order
     }
 }
 
@@ -251,7 +251,8 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             let fan_out = (size[0] * size[2] * size[3]) as f64;
             let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                let _ = param.f_uniform_(-bound, bound)
+                let _ = param
+                    .f_uniform_(-bound, bound)
                     .expect("Xavier initialization should not fail for conv weights");
             });
         } else if size.len() == 2 {
@@ -260,14 +261,16 @@ pub fn initialize_weights(vs: &nn::VarStore) {
             let fan_out = size[0] as f64;
             let bound = (6.0 / (fan_in + fan_out)).sqrt();
             tch::no_grad(|| {
-                let _ = param.f_uniform_(-bound, bound)
+                let _ = param
+                    .f_uniform_(-bound, bound)
                     .expect("Xavier initialization should not fail for conv weights");
             });
         } else if size.len() == 1 {
             // Zero initialization for biases ONLY (not GroupNorm weights!)
             if name.ends_with(".bias") {
                 tch::no_grad(|| {
-                    let _ = param.f_zero_()
+                    let _ = param
+                        .f_zero_()
                         .expect("Zero initialization should not fail for bias");
                 });
             }
@@ -304,7 +307,7 @@ impl ValueNet {
             },
             NNArchitecture::Gnn => Self {
                 arch,
-                net: ValueNetImpl::Gnn(GraphValueNet::new(vs, 8, &[64, 64, 64], 0.1)),  // 8 features per node for GNN (matches training data)
+                net: ValueNetImpl::Gnn(GraphValueNet::new(vs, 8, &[64, 64, 64], 0.1)), // 8 features per node for GNN (matches training data)
             },
         }
     }
@@ -325,13 +328,13 @@ impl ValueNet {
                 } else {
                     // Already [batch, 19, 8] or [batch, 8, 19], check and permute if needed
                     if input_shape[1] == 8 {
-                        input.permute([0, 2, 1])  // [batch, 8, 19] -> [batch, 19, 8]
+                        input.permute([0, 2, 1]) // [batch, 8, 19] -> [batch, 19, 8]
                     } else {
-                        input.shallow_clone()  // Already [batch, 19, 8]
+                        input.shallow_clone() // Already [batch, 19, 8]
                     }
                 };
                 net.forward(&reshaped, train)
-            },
+            }
         }
     }
 
@@ -492,7 +495,8 @@ impl ValueNetCNN {
 fn kaiming_uniform(tensor: &mut Tensor, fan_in: f64) {
     let bound = (6.0f64).sqrt() / fan_in.sqrt();
     tch::no_grad(|| {
-        let _ = tensor.f_uniform_(-bound, bound)
+        let _ = tensor
+            .f_uniform_(-bound, bound)
             .expect("Kaiming initialization should not fail");
     });
 }

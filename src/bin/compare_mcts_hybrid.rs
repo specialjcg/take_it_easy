@@ -12,15 +12,17 @@ use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::game::tile::Tile;
 use take_it_easy::mcts::algorithm::{
-    mcts_find_best_position_for_tile_pure,
-    mcts_find_best_position_for_tile_with_nn,
+    mcts_find_best_position_for_tile_pure, mcts_find_best_position_for_tile_with_nn,
     mcts_find_best_position_for_tile_with_qnet,
 };
 use take_it_easy::neural::{NeuralConfig, NeuralManager, QNetManager};
 use take_it_easy::scoring::scoring::result;
 
 #[derive(Parser, Debug)]
-#[command(name = "compare-mcts-hybrid", about = "Compare Pure vs CNN vs CNN+Q-net MCTS")]
+#[command(
+    name = "compare-mcts-hybrid",
+    about = "Compare Pure vs CNN vs CNN+Q-net MCTS"
+)]
 struct Args {
     #[arg(short, long, default_value_t = 50)]
     games: usize,
@@ -48,7 +50,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         .start()?;
 
     log::info!("🎮 MCTS Hybrid Comparison: Pure vs CNN vs CNN+Q-net");
-    log::info!("Games: {}, Simulations: {}, Top-K: {}", args.games, args.simulations, args.top_k);
+    log::info!(
+        "Games: {}, Simulations: {}, Top-K: {}",
+        args.games,
+        args.simulations,
+        args.top_k
+    );
 
     // Load CNN policy/value networks
     let neural_config = NeuralConfig::default();
@@ -108,22 +115,49 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("\n{}", "=".repeat(65));
     println!("     MCTS HYBRID COMPARISON: Pure vs CNN vs CNN+Q-net");
     println!("{}", "=".repeat(65));
-    println!("Games: {}, Simulations: {}, Top-K: {}", args.games, args.simulations, args.top_k);
+    println!(
+        "Games: {}, Simulations: {}, Top-K: {}",
+        args.games, args.simulations, args.top_k
+    );
     println!();
-    println!("{:<15} : mean={:>6.2}, std={:>5.2}", "Pure MCTS", pure_mean, pure_std);
-    println!("{:<15} : mean={:>6.2}, std={:>5.2}, delta={:+.2}, wins={}/{}",
-        "CNN MCTS", cnn_mean, cnn_std, cnn_mean - pure_mean, cnn_wins, args.games);
-    println!("{:<15} : mean={:>6.2}, std={:>5.2}, delta={:+.2}, wins={}/{} (vs Pure), {}/{} (vs CNN)",
-        "Hybrid MCTS", hybrid_mean, hybrid_std, hybrid_mean - pure_mean,
-        hybrid_wins_vs_pure, args.games, hybrid_wins_vs_cnn, args.games);
+    println!(
+        "{:<15} : mean={:>6.2}, std={:>5.2}",
+        "Pure MCTS", pure_mean, pure_std
+    );
+    println!(
+        "{:<15} : mean={:>6.2}, std={:>5.2}, delta={:+.2}, wins={}/{}",
+        "CNN MCTS",
+        cnn_mean,
+        cnn_std,
+        cnn_mean - pure_mean,
+        cnn_wins,
+        args.games
+    );
+    println!(
+        "{:<15} : mean={:>6.2}, std={:>5.2}, delta={:+.2}, wins={}/{} (vs Pure), {}/{} (vs CNN)",
+        "Hybrid MCTS",
+        hybrid_mean,
+        hybrid_std,
+        hybrid_mean - pure_mean,
+        hybrid_wins_vs_pure,
+        args.games,
+        hybrid_wins_vs_cnn,
+        args.games
+    );
     println!("{}\n", "=".repeat(65));
 
     // Interpretation
     println!("📈 INTERPRETATION:");
     if hybrid_mean > cnn_mean + 1.0 {
-        println!("  ✅ HYBRID improves over CNN by {:.2} pts - Q-net pruning helps!", hybrid_mean - cnn_mean);
+        println!(
+            "  ✅ HYBRID improves over CNN by {:.2} pts - Q-net pruning helps!",
+            hybrid_mean - cnn_mean
+        );
     } else if hybrid_mean > pure_mean + 1.0 && hybrid_mean >= cnn_mean - 1.0 {
-        println!("  ➖ HYBRID similar to CNN ({:+.2} pts) - Q-net doesn't hurt", hybrid_mean - cnn_mean);
+        println!(
+            "  ➖ HYBRID similar to CNN ({:+.2} pts) - Q-net doesn't hurt",
+            hybrid_mean - cnn_mean
+        );
     } else {
         println!("  ❌ HYBRID underperforms - Q-net pruning may be too aggressive");
     }
@@ -219,7 +253,9 @@ fn sample_tiles(rng: &mut rand::rngs::StdRng, count: usize) -> Vec<Tile> {
 
     for _ in 0..count {
         let available = get_available_tiles(&deck);
-        if available.is_empty() { break; }
+        if available.is_empty() {
+            break;
+        }
         let tile = *available.choose(rng).unwrap();
         tiles.push(tile);
         deck = replace_tile_in_deck(&deck, &tile);
@@ -234,9 +270,8 @@ fn mean(values: &[i32]) -> f64 {
 
 fn std_dev(values: &[i32]) -> f64 {
     let m = mean(values);
-    let variance = values.iter()
-        .map(|&v| (v as f64 - m).powi(2))
-        .sum::<f64>() / values.len() as f64;
+    let variance =
+        values.iter().map(|&v| (v as f64 - m).powi(2)).sum::<f64>() / values.len() as f64;
     variance.sqrt()
 }
 

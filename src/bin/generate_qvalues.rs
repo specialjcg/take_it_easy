@@ -19,7 +19,10 @@ use take_it_easy::game::simulate_game_smart::simulate_games_smart;
 use take_it_easy::game::tile::Tile;
 
 #[derive(Parser, Debug)]
-#[command(name = "generate-qvalues", about = "Generate Q-values dataset using rollouts")]
+#[command(
+    name = "generate-qvalues",
+    about = "Generate Q-values dataset using rollouts"
+)]
 struct Args {
     /// Input CSV file with supervised data
     #[arg(short, long)]
@@ -90,7 +93,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             let result = compute_qvalues(ex, args.rollouts);
             let count = processed.fetch_add(1, Ordering::Relaxed);
             if count.is_multiple_of(500) {
-                println!("Progress: {}/{} ({:.1}%)", count, total, count as f64 / total as f64 * 100.0);
+                println!(
+                    "Progress: {}/{} ({:.1}%)",
+                    count,
+                    total,
+                    count as f64 / total as f64 * 100.0
+                );
             }
             result
         })

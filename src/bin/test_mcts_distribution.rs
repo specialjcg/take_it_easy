@@ -4,9 +4,10 @@
 //! est sélectionnée. Si MCTS fonctionne bien, certaines positions
 //! devraient être préférées (centre, etc.).
 
+use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use rand::prelude::IndexedRandom;
+use std::collections::HashMap;
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
@@ -14,7 +15,6 @@ use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::scoring::scoring::result;
-use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 Test: MCTS sélectionne-t-il des positions NON-uniformes?\n");
@@ -64,7 +64,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             // Compter la position sélectionnée
-            *position_counts.entry(mcts_result.best_position).or_insert(0) += 1;
+            *position_counts
+                .entry(mcts_result.best_position)
+                .or_insert(0) += 1;
             total_selections += 1;
 
             plateau.tiles[mcts_result.best_position] = chosen_tile;
@@ -102,14 +104,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ""
         };
 
-        println!("  Position {:2}: {:4} fois ({:5.2}% | attendu: {:.2}%){}",
-                 pos, count, percentage, expected_pct, marker);
+        println!(
+            "  Position {:2}: {:4} fois ({:5.2}% | attendu: {:.2}%){}",
+            pos, count, percentage, expected_pct, marker
+        );
     }
 
     // Vérifier positions manquantes
     for pos in 0..19 {
         if !position_counts.contains_key(&pos) {
-            println!("  Position {:2}:    0 fois ( 0.00% | attendu: 5.26%) ⚠ JAMAIS", pos);
+            println!(
+                "  Position {:2}:    0 fois ( 0.00% | attendu: 5.26%) ⚠ JAMAIS",
+                pos
+            );
         }
     }
 
@@ -124,7 +131,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  MCTS sélectionne uniformément → Données d'entraînement uniformes");
         println!("  → Policy network ne peut pas apprendre (pas de signal)");
     } else if chi_squared < 50.0 {
-        println!("  → Distribution LÉGÈREMENT biaisée (chi² = {:.2})", chi_squared);
+        println!(
+            "  → Distribution LÉGÈREMENT biaisée (chi² = {:.2})",
+            chi_squared
+        );
         println!("\n⚠️ Signal d'apprentissage FAIBLE");
     } else {
         println!("  → Distribution BIAISÉE (chi² = {:.2})", chi_squared);

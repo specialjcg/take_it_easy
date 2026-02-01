@@ -6,22 +6,21 @@
 /// 3. Repeat
 ///
 /// This is simpler than supervised learning and doesn't require pre-generated expert data.
-
 use clap::Parser;
 use flexi_logger::Logger;
 use rand::prelude::*;
 use rand::rngs::StdRng;
-use rand::{SeedableRng, rng};
+use rand::{rng, SeedableRng};
 use std::error::Error;
-use tch::{Tensor, Device, Reduction};
+use tch::{Device, Reduction, Tensor};
 
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::scoring::scoring::result;
 
 #[derive(Parser, Debug)]
@@ -88,7 +87,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize neural network with StochZero 17-channel input
     let neural_config = NeuralConfig {
-        input_dim: (17, 5, 5),  // StochZero: 8 base + 9 bag awareness
+        input_dim: (17, 5, 5), // StochZero: 8 base + 9 bag awareness
         nn_architecture: NNArchitecture::Cnn,
         policy_lr: args.learning_rate,
         value_lr: args.learning_rate,
@@ -121,18 +120,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         log::info!(
             "✅ Generated {} training examples (avg score: {:.2})\n",
             training_data.len(),
-            training_data.iter().map(|ex| ex.final_score).sum::<f32>()
-                / training_data.len() as f32
+            training_data.iter().map(|ex| ex.final_score).sum::<f32>() / training_data.len() as f32
         );
 
         // Step 2: Train on self-play data
         log::info!("🏋️ Training for {} epochs...", args.epochs);
-        train_iteration(
-            &mut manager,
-            &training_data,
-            args.epochs,
-            args.batch_size,
-        )?;
+        train_iteration(&mut manager, &training_data, args.epochs, args.batch_size)?;
         log::info!("✅ Training complete\n");
 
         // Step 3: Benchmark improvement
@@ -211,7 +204,8 @@ fn generate_self_play_data(
             }
 
             // Get state before move
-            let state_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &deck, turn_idx, 19);
+            let state_tensor =
+                convert_plateau_to_tensor(&plateau, &chosen_tile, &deck, turn_idx, 19);
 
             // Run MCTS to find best move
             let mcts_result = mcts_find_best_position_for_tile_with_nn(
@@ -237,7 +231,10 @@ fn generate_self_play_data(
             let state_tensor_squeezed = state_tensor.squeeze_dim(0);
 
             // STOCHZERO: Use Q-value distribution instead of visit counts for stronger learning signal
-            let q_value_policy = mcts_result.q_value_distribution.as_ref().map(|t| t.shallow_clone());
+            let q_value_policy = mcts_result
+                .q_value_distribution
+                .as_ref()
+                .map(|t| t.shallow_clone());
 
             training_examples.push(TrainingExample {
                 state_tensor: state_tensor_squeezed,
@@ -289,7 +286,9 @@ fn train_iteration(
             let batch_states = Tensor::stack(&batch_states, 0).to_device(device);
 
             // STOCHZERO: Prepare Q-value policy targets (or fallback to position if unavailable)
-            let has_q_values = batch_indices.iter().all(|&i| training_data[i].q_value_policy.is_some());
+            let has_q_values = batch_indices
+                .iter()
+                .all(|&i| training_data[i].q_value_policy.is_some());
 
             let batch_values: Vec<f32> = batch_indices
                 .iter()
@@ -307,13 +306,21 @@ fn train_iteration(
                 // Use Q-value distributions as soft targets (stronger signal than visit counts)
                 let q_value_targets: Vec<Tensor> = batch_indices
                     .iter()
-                    .map(|&i| training_data[i].q_value_policy.as_ref().unwrap().shallow_clone())
+                    .map(|&i| {
+                        training_data[i]
+                            .q_value_policy
+                            .as_ref()
+                            .unwrap()
+                            .shallow_clone()
+                    })
                     .collect();
                 let q_value_batch = Tensor::stack(&q_value_targets, 0).to_device(device);
 
                 // KL divergence: policy learns from Q-value distribution
                 let log_probs = policy_pred.log_softmax(-1, tch::Kind::Float);
-                -(q_value_batch * log_probs).sum_dim_intlist(-1, false, tch::Kind::Float).mean(tch::Kind::Float)
+                -(q_value_batch * log_probs)
+                    .sum_dim_intlist(-1, false, tch::Kind::Float)
+                    .mean(tch::Kind::Float)
             } else {
                 // Fallback: use single best position (original behavior)
                 let batch_positions: Vec<i64> = batch_indices
@@ -358,11 +365,7 @@ fn train_iteration(
 }
 
 /// Benchmark current network performance
-fn benchmark(
-    manager: &NeuralManager,
-    num_games: usize,
-    seed: u64,
-) -> Result<f64, Box<dyn Error>> {
+fn benchmark(manager: &NeuralManager, num_games: usize, seed: u64) -> Result<f64, Box<dyn Error>> {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut scores = Vec::new();
 

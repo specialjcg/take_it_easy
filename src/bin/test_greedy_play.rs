@@ -1,15 +1,15 @@
 //! Test greedy play - select best position according to policy network
 
 use flexi_logger::Logger;
+use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use rand::prelude::IndexedRandom;
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::scoring::scoring::result;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,20 +53,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let probs_data: Vec<f32> = Vec::try_from(policy_probs.squeeze_dim(0))?;
 
             // Find valid positions (empty cells)
-            let valid_positions: Vec<usize> = plateau.tiles.iter()
+            let valid_positions: Vec<usize> = plateau
+                .tiles
+                .iter()
                 .enumerate()
                 .filter(|(_, tile)| **tile == take_it_easy::game::tile::Tile(0, 0, 0))
                 .map(|(idx, _)| idx)
                 .collect();
 
             // Select position with highest probability among valid positions
-            let (best_pos, best_prob) = valid_positions.iter()
+            let (best_pos, best_prob) = valid_positions
+                .iter()
                 .map(|&pos| (pos, probs_data[pos]))
                 .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
                 .unwrap();
 
-            log::info!("Turn {}: tile={:?}, chose pos {} (prob={:.4})",
-                turn + 1, chosen_tile, best_pos, best_prob);
+            log::info!(
+                "Turn {}: tile={:?}, chose pos {} (prob={:.4})",
+                turn + 1,
+                chosen_tile,
+                best_pos,
+                best_prob
+            );
 
             // Place tile
             plateau.tiles[best_pos] = chosen_tile;

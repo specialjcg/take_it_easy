@@ -1,6 +1,6 @@
-// src/index.tsx
+// src/index.tsx - MVU Architecture
 import { render } from 'solid-js/web';
-import App from "./components/App";
+import AppMVU from "./components/AppMVU";
 
 const root = document.getElementById('root');
 
@@ -10,4 +10,5 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   );
 }
 
-render(() => <App />, root!);
+// Render with MVU architecture
+render(() => <AppMVU />, root!);

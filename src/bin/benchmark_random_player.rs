@@ -4,7 +4,6 @@
 /// a baseline for comparison with MCTS performance.
 ///
 /// This helps answer: "How much does MCTS actually improve over random play?"
-
 use chrono::Utc;
 use clap::Parser;
 use flexi_logger::Logger;
@@ -177,10 +176,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut file = OpenOptions::new().create(true).append(true).open(path)?;
 
         if needs_header {
-            writeln!(
-                file,
-                "timestamp,games,turns,seed,mean,std_dev,min,max"
-            )?;
+            writeln!(file, "timestamp,games,turns,seed,mean,std_dev,min,max")?;
         }
 
         writeln!(

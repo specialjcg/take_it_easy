@@ -1,12 +1,12 @@
 //! Test if trained network makes sensible predictions
 
 use flexi_logger::Logger;
+use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::tile::Tile;
-use take_it_easy::game::create_deck::create_deck;
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Logger::try_with_env_or_str("info")?
@@ -44,12 +44,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("\n📈 Policy probabilities for each position:");
     for (pos, prob) in policy_data.iter().enumerate() {
-        if *prob > 0.01 {  // Only show significant probabilities
+        if *prob > 0.01 {
+            // Only show significant probabilities
             log::info!("   Position {}: {:.4}", pos, prob);
         }
     }
 
-    let (max_prob, max_pos) = policy_data.iter().enumerate()
+    let (max_prob, max_pos) = policy_data
+        .iter()
+        .enumerate()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
         .unwrap();
     log::info!("\n   Best position: {} (prob={:.4})", max_pos, max_prob);
@@ -73,7 +76,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let policy_probs2 = policy_pred2.softmax(-1, tch::Kind::Float);
     let policy_data2: Vec<f32> = Vec::try_from(policy_probs2.squeeze_dim(0))?;
 
-    let (max_prob2, max_pos2) = policy_data2.iter().enumerate()
+    let (max_prob2, max_pos2) = policy_data2
+        .iter()
+        .enumerate()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
         .unwrap();
     log::info!("   Best position: {} (prob={:.4})", max_pos2, max_prob2);

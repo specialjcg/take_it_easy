@@ -7,14 +7,14 @@
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use tch::{Device, Tensor};
 
 #[derive(Serialize, Deserialize)]
 struct ExpertExample {
     state: Vec<f32>,
-    policy_target: i64,  // Ignored
+    policy_target: i64, // Ignored
     value_target: f32,
 }
 
@@ -36,8 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let neural_config = NeuralConfig {
         input_dim: (9, 5, 5),
         nn_architecture: NNArchitecture::Cnn,
-        policy_lr: 0.0,   // No policy training
-        value_lr: 0.01,   // Only value training
+        policy_lr: 0.0, // No policy training
+        value_lr: 0.01, // Only value training
         ..Default::default()
     };
 
@@ -64,7 +64,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Batch size: {}", batch_size);
     println!("   Value LR: 0.01");
     println!("   Policy: DISABLED (will stay uniform)");
-    println!("   Total batches per epoch: {}", examples.len() / batch_size);
+    println!(
+        "   Total batches per epoch: {}",
+        examples.len() / batch_size
+    );
 
     println!("\n🏋️ Starting value network training...\n");
 

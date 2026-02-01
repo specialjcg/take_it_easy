@@ -7,8 +7,8 @@
 //! Si ça marche → Problème = données self-play uniformes (circular learning)
 //! Si ça marche pas → Problème = architecture ou gradients
 
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use tch::{Device, Kind, Tensor};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let neural_config = NeuralConfig {
         input_dim: (9, 5, 5),
         nn_architecture: NNArchitecture::Cnn,
-        policy_lr: 0.1,  // 10x plus élevé!
+        policy_lr: 0.1, // 10x plus élevé!
         value_lr: 0.01,
         ..Default::default()
     };
@@ -59,10 +59,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let idx = row * 5 + col;
 
             // Set some channel values (simulate tiles)
-            state[idx] = ((i + j) % 10) as f32 / 10.0;  // value1
-            state[25 + idx] = ((i + j * 2) % 10) as f32 / 10.0;  // value2
-            state[2 * 25 + idx] = ((i + j * 3) % 10) as f32 / 10.0;  // value3
-            state[3 * 25 + idx] = 1.0;  // occupied
+            state[idx] = ((i + j) % 10) as f32 / 10.0; // value1
+            state[25 + idx] = ((i + j * 2) % 10) as f32 / 10.0; // value2
+            state[2 * 25 + idx] = ((i + j * 3) % 10) as f32 / 10.0; // value3
+            state[3 * 25 + idx] = 1.0; // occupied
         }
 
         states_vec.extend(state);
@@ -76,9 +76,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut policy_targets = Vec::new();
     for i in 0..batch_size {
         if i < 80 {
-            policy_targets.push(9i64);  // 80% center
+            policy_targets.push(9i64); // 80% center
         } else {
-            policy_targets.push(i % 19);  // 20% spread across others
+            policy_targets.push(i % 19); // 20% spread across others
         }
     }
     let policy_targets = Tensor::from_slice(&policy_targets).to_device(device);
@@ -108,9 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let policy = policy_pred.softmax(-1, Kind::Float);
 
     // Extract probabilities
-    let probs: Vec<f64> = (0..19)
-        .map(|i| policy.double_value(&[0, i]))
-        .collect();
+    let probs: Vec<f64> = (0..19).map(|i| policy.double_value(&[0, i])).collect();
 
     println!("Policy probabilities:");
     for (pos, prob) in probs.iter().enumerate() {
@@ -123,10 +121,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let center_prob = probs[9];
-    let avg_other = probs.iter().enumerate()
+    let avg_other = probs
+        .iter()
+        .enumerate()
         .filter(|(i, _)| *i != 9)
         .map(|(_, &p)| p)
-        .sum::<f64>() / 18.0;
+        .sum::<f64>()
+        / 18.0;
 
     println!("\n🎯 Results:");
     println!("   Center (pos 9): {:.4} (target: 0.80)", center_prob);
@@ -144,7 +145,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("   4. Ou abandonner approche réseau");
     } else {
         println!("\n❌ FAILURE: Policy network did NOT learn!");
-        println!("   Position centrale: {:.4} (pas assez élevée)", center_prob);
+        println!(
+            "   Position centrale: {:.4} (pas assez élevée)",
+            center_prob
+        );
         println!("   → PROBLÈME = Architecture ou optimizer");
         println!("\n🔍 Need to debug:");
         println!("   1. Check gradient flow");

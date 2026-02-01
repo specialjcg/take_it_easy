@@ -160,9 +160,9 @@ impl Default for MCTSHyperparameters {
             rollout_default: 7,
             rollout_weak: 9,
 
-            // Evaluation weights - CNN DISABLED for debugging
-            // Set weight_cnn=0 to isolate CNN impact
-            weight_cnn: 0.10,        // CNN DISABLED for testing
+            // Evaluation weights - Rollout-dominant (CNN has geometry issues)
+            // Q-net handles pruning, rollouts handle evaluation
+            weight_cnn: 0.10,        // CNN minimal (geometry issues)
             weight_rollout: 0.80,    // Rollout simulations (primary)
             weight_heuristic: 0.05,  // Domain heuristics
             weight_contextual: 0.05, // Contextual boost
@@ -291,7 +291,8 @@ impl MCTSHyperparameters {
         // - High entropy (uncertain GNN): weight_cnn = 0.25, weight_rollout = 0.65
         let min_cnn_weight = 0.25;
         let max_cnn_weight = 0.65;
-        let adaptive_cnn_weight = max_cnn_weight - normalized_entropy * (max_cnn_weight - min_cnn_weight);
+        let adaptive_cnn_weight =
+            max_cnn_weight - normalized_entropy * (max_cnn_weight - min_cnn_weight);
 
         // Keep other weights constant, adjust rollout to maintain sum = 1.0
         let other_weights = self.weight_heuristic + self.weight_contextual;
@@ -343,7 +344,11 @@ impl MCTSHyperparameters {
     /// - Entropy-based: Fine-grained confidence gating
     ///
     /// Returns (weight_cnn, weight_rollout) for the given turn and policy
-    pub fn get_hybrid_adaptive_weights(&self, current_turn: usize, policy_probs: &[f32]) -> (f64, f64) {
+    pub fn get_hybrid_adaptive_weights(
+        &self,
+        current_turn: usize,
+        policy_probs: &[f32],
+    ) -> (f64, f64) {
         // Start with turn-based weights
         let (base_w_cnn, _base_w_rollout) = self.get_turn_adaptive_weights(current_turn);
 

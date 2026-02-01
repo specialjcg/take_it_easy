@@ -1,0 +1,899 @@
+/* Take It Easy - Elm Frontend Styles */
+/* Design glassmorphism avec thème teal/cyan */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    color: #fff;
+}
+
+/* ============================================================================
+   GLASS CONTAINER
+   ============================================================================ */
+
+.glass-container {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+}
+
+/* ============================================================================
+   APP CONTAINER
+   ============================================================================ */
+
+.app-container {
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+/* ============================================================================
+   AUTH PAGE
+   ============================================================================ */
+
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.auth-container {
+    max-width: 400px;
+    width: 100%;
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.auth-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #4ecdc4 0%, #a8edea 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.auth-subtitle {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 1rem;
+}
+
+.auth-error {
+    background: rgba(255, 107, 107, 0.2);
+    border: 1px solid rgba(255, 107, 107, 0.4);
+    color: #ff6b6b;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-group label {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.form-group input {
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    font-size: 1rem;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #4ecdc4;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.form-group input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.form-group input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.auth-submit-button {
+    background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 10px;
+    padding: 0.875rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-top: 0.5rem;
+}
+
+.auth-submit-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(78, 205, 196, 0.4);
+}
+
+.auth-submit-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.auth-switch {
+    text-align: center;
+    margin-top: 1.5rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.auth-switch-button {
+    background: none;
+    border: none;
+    color: #4ecdc4;
+    cursor: pointer;
+    font-size: 1rem;
+    margin-left: 0.25rem;
+    text-decoration: underline;
+}
+
+.auth-switch-button:hover {
+    color: #a8edea;
+}
+
+.auth-skip {
+    text-align: center;
+    margin-top: 1rem;
+}
+
+.skip-button {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.7);
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.skip-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: #fff;
+}
+
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #1a1a2e;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   MODE SELECTION
+   ============================================================================ */
+
+.game-mode-selector {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.user-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+}
+
+.user-info, .guest-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.user-name {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.logout-button, .login-link {
+    background: transparent;
+    border: 1px solid rgba(78, 205, 196, 0.5);
+    color: #4ecdc4;
+    padding: 0.375rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.logout-button:hover, .login-link:hover {
+    background: rgba(78, 205, 196, 0.1);
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+
+.header h1 {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #4ecdc4 0%, #a8edea 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.header p {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 1.1rem;
+}
+
+.modes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.mode-card {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+}
+
+.mode-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(78, 205, 196, 0.4);
+    box-shadow: 0 12px 40px rgba(78, 205, 196, 0.15);
+}
+
+.mode-card.selected {
+    border-color: #4ecdc4;
+    box-shadow: 0 12px 40px rgba(78, 205, 196, 0.25);
+    background: rgba(78, 205, 196, 0.1);
+}
+
+.difficulty-badge {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.difficulty-easy {
+    background: rgba(74, 222, 128, 0.2);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.difficulty-normal {
+    background: rgba(78, 205, 196, 0.2);
+    color: #4ecdc4;
+    border: 1px solid rgba(78, 205, 196, 0.3);
+}
+
+.difficulty-hard {
+    background: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+    border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.mode-icon {
+    font-size: 2.5rem;
+    text-align: center;
+    margin-bottom: 0.75rem;
+}
+
+.mode-card h3 {
+    font-size: 1.25rem;
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.mode-description {
+    color: rgba(255, 255, 255, 0.7);
+    text-align: center;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.mode-details {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.5rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.simulations {
+    color: #4ecdc4;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.action-panel {
+    max-width: 500px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.selected-mode-info h3 {
+    font-size: 1.3rem;
+    margin-bottom: 0.5rem;
+}
+
+.selected-mode-info p {
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 0.5rem;
+}
+
+.tech-info {
+    color: #4ecdc4;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.start-button {
+    background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 12px;
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 20px rgba(78, 205, 196, 0.35);
+}
+
+.start-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(78, 205, 196, 0.5);
+}
+
+.start-icon {
+    margin-left: 0.5rem;
+    transition: transform 0.3s;
+}
+
+.start-button:hover .start-icon {
+    transform: translateX(4px);
+}
+
+/* ============================================================================
+   GAME VIEW
+   ============================================================================ */
+
+.game-container {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.header-section {
+    margin-bottom: 1.5rem;
+}
+
+.title-with-back {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.back-button {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.back-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.error-message {
+    background: rgba(255, 107, 107, 0.2);
+    border: 1px solid rgba(255, 107, 107, 0.4);
+    color: #ff6b6b;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.status-message {
+    background: rgba(78, 205, 196, 0.2);
+    border: 1px solid rgba(78, 205, 196, 0.4);
+    color: #4ecdc4;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+/* ============================================================================
+   CONNECTION INTERFACE
+   ============================================================================ */
+
+.connection-interface {
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.connection-interface h2 {
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.connection-buttons {
+    display: flex;
+    justify-content: center;
+    margin: 1.5rem 0;
+}
+
+.create-button, .join-button {
+    background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 10px;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.create-button:hover:not(:disabled), .join-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(78, 205, 196, 0.4);
+}
+
+.create-button:disabled, .join-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.join-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.join-section h3 {
+    text-align: center;
+    margin-bottom: 1rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* ============================================================================
+   GAME SESSION
+   ============================================================================ */
+
+.game-session {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.session-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.session-info h2 {
+    color: #4ecdc4;
+}
+
+.leave-button {
+    background: transparent;
+    border: 1px solid rgba(255, 107, 107, 0.5);
+    color: #ff6b6b;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.leave-button:hover {
+    background: rgba(255, 107, 107, 0.1);
+}
+
+.game-state {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.players-list ul {
+    list-style: none;
+}
+
+.player-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.player-item.self {
+    border-left: 3px solid #4ecdc4;
+}
+
+.player-item.ai {
+    border-left: 3px solid #a8edea;
+}
+
+.player-score {
+    color: #4ecdc4;
+    font-weight: 600;
+}
+
+.ready-badge {
+    color: #4ade80;
+    font-weight: bold;
+}
+
+/* ============================================================================
+   WAITING STATE
+   ============================================================================ */
+
+.waiting-state {
+    text-align: center;
+}
+
+.ready-button {
+    background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 10px;
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 1rem;
+    transition: all 0.2s;
+}
+
+.ready-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(74, 222, 128, 0.4);
+}
+
+/* ============================================================================
+   IN PROGRESS STATE
+   ============================================================================ */
+
+.in-progress-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.turn-info {
+    text-align: center;
+    padding: 0.75rem;
+    display: inline-block;
+    margin: 0 auto;
+}
+
+.turn-info h3 {
+    margin-bottom: 0.25rem;
+}
+
+.current-tile {
+    position: relative;
+    width: 150px;
+    height: 150px;
+    margin: 0 auto;
+    overflow: visible;
+}
+
+.tile-image {
+    position: absolute;
+    top: calc(50% + 5px);
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+}
+
+.tile-svg-container {
+    width: 120px;
+    height: 104px;
+    margin: 0 auto;
+}
+
+.tile-svg-container svg {
+    width: 100%;
+    height: 100%;
+}
+
+.start-turn-button {
+    background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 10px;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 1rem;
+}
+
+/* ============================================================================
+   HEX BOARD
+   ============================================================================ */
+
+.game-board {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.hex-board {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    margin: 1rem auto;
+}
+
+.hex-cell {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    transition: all 0.2s;
+    cursor: default;
+    overflow: visible;
+}
+
+.hex-cell.available {
+    cursor: pointer;
+}
+
+.hex-cell.available:hover {
+    transform: scale(1.05);
+    z-index: 10;
+}
+
+.hex-cell.filled {
+    background: transparent;
+}
+
+.hex-tile-svg {
+    width: 100%;
+    height: 100%;
+}
+
+.hex-tile-svg svg {
+    width: 100%;
+    height: 100%;
+}
+
+.hex-tile-image {
+    width: 600%;
+    height: 600%;
+    object-fit: contain;
+    z-index: 1;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.hex-index {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.75rem;
+    font-weight: 600;
+    z-index: 1;
+    position: relative;
+}
+
+/* ============================================================================
+   FINISHED STATE
+   ============================================================================ */
+
+.finished-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.finished-header {
+    text-align: center;
+    width: 100%;
+    max-width: 600px;
+}
+
+.finished-header h2 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #4ecdc4 0%, #a8edea 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.winner {
+    font-size: 1.3rem;
+    color: #4ecdc4;
+    margin: 0.5rem 0;
+}
+
+.finished-content {
+    display: flex;
+    gap: 2rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.final-scores {
+    min-width: 250px;
+    max-width: 300px;
+}
+
+.final-scores h3 {
+    text-align: center;
+    margin-bottom: 1rem;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.final-scores ul {
+    list-style: none;
+}
+
+.final-score-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.final-score-item:first-child {
+    background: rgba(78, 205, 196, 0.15);
+    border: 1px solid rgba(78, 205, 196, 0.3);
+}
+
+.final-score-item .rank {
+    color: rgba(255, 255, 255, 0.5);
+    margin-right: 0.5rem;
+    min-width: 24px;
+}
+
+.final-score-item .name {
+    flex: 1;
+}
+
+.final-score-item .score {
+    color: #4ecdc4;
+    font-weight: 600;
+}
+
+.finished-boards {
+    display: flex;
+    gap: 2rem;
+    justify-content: center;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.final-board {
+    width: 350px;
+}
+
+.final-board h3 {
+    text-align: center;
+    margin-bottom: 0.5rem;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.final-hex-board {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    margin: 0 auto;
+}
+
+.play-again-button {
+    background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 10px;
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 1rem;
+    transition: all 0.2s;
+}
+
+.play-again-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(78, 205, 196, 0.4);
+}
+
+/* ============================================================================
+   RESPONSIVE
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    .app-container {
+        padding: 1rem;
+    }
+
+    .header h1 {
+        font-size: 2rem;
+    }
+
+    .modes-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .session-info {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .hex-board {
+        transform: scale(0.8);
+        transform-origin: top center;
+    }
+}

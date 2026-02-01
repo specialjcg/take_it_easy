@@ -10,9 +10,9 @@
 
 use clap::Parser;
 use flexi_logger::Logger;
+use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use rand::prelude::IndexedRandom;
 use rand_distr::{Distribution, Gamma};
 use std::fs::File;
 use std::io::Write;
@@ -20,7 +20,9 @@ use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
-use take_it_easy::mcts::algorithm::{mcts_find_best_position_for_tile_pure, mcts_find_best_position_for_tile_uct};
+use take_it_easy::mcts::algorithm::{
+    mcts_find_best_position_for_tile_pure, mcts_find_best_position_for_tile_uct,
+};
 use take_it_easy::neural::manager::NNArchitecture;
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
 use take_it_easy::neural::{NeuralConfig, NeuralManager};
@@ -97,7 +99,7 @@ struct Args {
 
 struct TrainingExample {
     state: Tensor,
-    policy_target: Vec<f32>,  // FIXED: Use visit distribution instead of argmax
+    policy_target: Vec<f32>, // FIXED: Use visit distribution instead of argmax
     value_target: f32,
 }
 
@@ -120,7 +122,11 @@ fn save_training_data(
     };
     let prefixed_path = format!("{}{}", path, arch_suffix);
 
-    log::info!("💾 Saving {} training examples to {}...", data.len(), prefixed_path);
+    log::info!(
+        "💾 Saving {} training examples to {}...",
+        data.len(),
+        prefixed_path
+    );
 
     // Stack all state tensors into a single tensor [N, C, H, W]
     let states: Vec<Tensor> = data.iter().map(|ex| ex.state.shallow_clone()).collect();
@@ -162,10 +168,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("🚀 AlphaGo Zero Style Training");
     log::info!("   Iterations: {}", args.iterations);
-    log::info!("   Games/iter: {}, MCTS sims: {}", args.games_per_iter, args.mcts_simulations);
-    log::info!("   Epochs/iter: {}, LR: {}", args.epochs_per_iter, args.learning_rate);
+    log::info!(
+        "   Games/iter: {}, MCTS sims: {}",
+        args.games_per_iter,
+        args.mcts_simulations
+    );
+    log::info!(
+        "   Epochs/iter: {}, LR: {}",
+        args.epochs_per_iter,
+        args.learning_rate
+    );
     log::info!("   Benchmark games: {}", args.benchmark_games);
-    log::info!("   Convergence threshold: {:.2} pts", args.convergence_threshold);
+    log::info!(
+        "   Convergence threshold: {:.2} pts",
+        args.convergence_threshold
+    );
 
     // Parse architecture
     let nn_arch = match args.nn_architecture.to_uppercase().as_str() {
@@ -203,7 +220,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize training history file
     let mut history_file = File::create(&args.output)?;
-    writeln!(history_file, "iteration,policy_loss,value_loss,benchmark_score_mean,benchmark_score_std")?;
+    writeln!(
+        history_file,
+        "iteration,policy_loss,value_loss,benchmark_score_mean,benchmark_score_std"
+    )?;
 
     let mut previous_score = 0.0;
     let device = Device::Cpu;
@@ -217,7 +237,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Step 1: Self-play to generate training data
         let is_warmup = iteration < args.warmup_iterations;
         if is_warmup {
-            log::info!("\n🔥 Phase 1: WARMUP Self-play ({} games, pure MCTS)", args.games_per_iter);
+            log::info!(
+                "\n🔥 Phase 1: WARMUP Self-play ({} games, pure MCTS)",
+                args.games_per_iter
+            );
         } else {
             log::info!("\n🎮 Phase 1: Self-play ({} games)", args.games_per_iter);
         }
@@ -227,7 +250,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.mcts_simulations,
             args.seed + iteration as u64,
             args.use_q_value_targets,
-            is_warmup,  // Use pure MCTS during warmup
+            is_warmup, // Use pure MCTS during warmup
         )?;
 
         log::info!("   Generated {} training examples", training_data.len());
@@ -248,7 +271,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             device,
         )?;
 
-        log::info!("   Final losses: policy={:.4}, value={:.4}", avg_policy_loss, avg_value_loss);
+        log::info!(
+            "   Final losses: policy={:.4}, value={:.4}",
+            avg_policy_loss,
+            avg_value_loss
+        );
 
         // Step 3: Benchmark to measure progress
         log::info!("\n📈 Phase 3: Benchmark ({} games)", args.benchmark_games);
@@ -282,20 +309,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Only converge if improvement is VERY SMALL (not just less than threshold)
         // With high threshold, we want to continue training
-        if iteration > 0 && args.convergence_threshold < 100.0 && improvement.abs() < args.convergence_threshold {
-            log::info!("\n✅ CONVERGED: Improvement < {:.2} pts", args.convergence_threshold);
+        if iteration > 0
+            && args.convergence_threshold < 100.0
+            && improvement.abs() < args.convergence_threshold
+        {
+            log::info!(
+                "\n✅ CONVERGED: Improvement < {:.2} pts",
+                args.convergence_threshold
+            );
             log::info!("   Training complete at iteration {}", iteration + 1);
             break;
         } else if iteration > 0 {
-            log::info!("   Continuing training (threshold: {:.2} pts)", args.convergence_threshold);
+            log::info!(
+                "   Continuing training (threshold: {:.2} pts)",
+                args.convergence_threshold
+            );
         }
 
         previous_score = benchmark_mean;
 
         // Step 5: Save checkpoint
         log::info!("\n💾 Saving checkpoint...");
-        manager.save_models()
-            .expect("Failed to save model weights");
+        manager.save_models().expect("Failed to save model weights");
         log::info!("   ✅ Weights saved successfully");
     }
 
@@ -313,7 +348,7 @@ fn generate_self_play_games(
     mcts_sims: usize,
     seed: u64,
     use_q_value_targets: bool,
-    use_pure_mcts: bool,  // True = warmup mode (no network)
+    use_pure_mcts: bool, // True = warmup mode (no network)
 ) -> Result<Vec<TrainingExample>, Box<dyn std::error::Error>> {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut training_data = Vec::new();
@@ -340,13 +375,12 @@ fn generate_self_play_games(
             // leads to uniform MCTS priors, which generate uniform training data
             // Note: Mixing with epsilon=0.5 happens in MCTS function (src/mcts/algorithm.rs:1507)
             let legal_moves = get_legal_moves(&plateau);
-            let alpha = 0.15;    // Dirichlet concentration (LOWERED: lower = more peaked/varied distribution)
+            let alpha = 0.15; // Dirichlet concentration (LOWERED: lower = more peaked/varied distribution)
 
             // Generate Dirichlet noise for exploration
             // Dirichlet is sampled using Gamma distributions: X_i ~ Gamma(alpha, 1)
             // Then normalize: Y_i = X_i / sum(X_i)
-            let gamma = Gamma::new(alpha, 1.0)
-                .expect("Failed to create Gamma distribution");
+            let gamma = Gamma::new(alpha, 1.0).expect("Failed to create Gamma distribution");
             let mut noise: Vec<f64> = (0..legal_moves.len())
                 .map(|_| gamma.sample(&mut rng))
                 .collect();
@@ -360,19 +394,36 @@ fn generate_self_play_games(
             for (idx, &pos) in legal_moves.iter().enumerate() {
                 // AlphaGo Zero formula: P_noisy = (1-ε)*P_policy + ε*noise
                 // The actual mixing happens in MCTS with epsilon=0.5 (strengthened)
-                exploration_priors[pos] = noise[idx] as f32;  // Store noise for MCTS mixing
+                exploration_priors[pos] = noise[idx] as f32; // Store noise for MCTS mixing
             }
 
             // DEBUG: Log noise statistics for first game, first turn
             if game_idx == 0 && turn == 0 {
-                let noise_values: Vec<f64> = legal_moves.iter().map(|&pos| exploration_priors[pos] as f64).collect();
-                let max_noise = noise_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let noise_values: Vec<f64> = legal_moves
+                    .iter()
+                    .map(|&pos| exploration_priors[pos] as f64)
+                    .collect();
+                let max_noise = noise_values
+                    .iter()
+                    .cloned()
+                    .fold(f64::NEG_INFINITY, f64::max);
                 let min_noise = noise_values.iter().cloned().fold(f64::INFINITY, f64::min);
                 let avg_noise: f64 = noise_values.iter().sum::<f64>() / noise_values.len() as f64;
                 log::info!("🔍 DEBUG Dirichlet Noise (game 0, turn 0):");
                 log::info!("   Legal moves: {}", legal_moves.len());
-                log::info!("   Noise range: [{:.4}, {:.4}], avg: {:.4}", min_noise, max_noise, avg_noise);
-                log::info!("   Noise values: {:?}", noise_values.iter().map(|v| format!("{:.3}", v)).collect::<Vec<_>>());
+                log::info!(
+                    "   Noise range: [{:.4}, {:.4}], avg: {:.4}",
+                    min_noise,
+                    max_noise,
+                    avg_noise
+                );
+                log::info!(
+                    "   Noise values: {:?}",
+                    noise_values
+                        .iter()
+                        .map(|v| format!("{:.3}", v))
+                        .collect::<Vec<_>>()
+                );
             }
 
             // Choose MCTS strategy: Pure (warmup) or UCT (with network)
@@ -406,44 +457,50 @@ fn generate_self_play_games(
 
             // Record training example (use architecture-aware tensor conversion)
             // Both CNN and GNN use same encoding (includes tile), GNN reshapes in forward()
-            let state_tensor = convert_plateau_to_tensor(&plateau, &chosen_tile, &deck, turn, turns_per_game);
+            let state_tensor =
+                convert_plateau_to_tensor(&plateau, &chosen_tile, &deck, turn, turns_per_game);
 
             // ====================================================================
             // POLICY TARGET SELECTION - Q-values vs Visit Counts
             // ====================================================================
-            let policy_dist: Vec<f32> = if use_q_value_targets && mcts_result.q_value_distribution.is_some() {
-                // Use Q-value distribution (already has temperature=0.5 applied in create_q_value_policy_target)
-                // This trains policy on rollout QUALITY rather than visit frequency
-                mcts_result.q_value_distribution.as_ref().unwrap()
-                    .view([-1])
-                    .try_into()
-                    .expect("Failed to convert Q-value distribution to Vec<f32>")
-            } else {
-                // Fallback: Use visit counts with temperature sharpening
-                let mut policy_dist: Vec<f32> = mcts_result.policy_distribution
-                    .view([-1])
-                    .try_into()
-                    .expect("Failed to convert policy distribution to Vec<f32>");
+            let policy_dist: Vec<f32> =
+                if use_q_value_targets && mcts_result.q_value_distribution.is_some() {
+                    // Use Q-value distribution (already has temperature=0.5 applied in create_q_value_policy_target)
+                    // This trains policy on rollout QUALITY rather than visit frequency
+                    mcts_result
+                        .q_value_distribution
+                        .as_ref()
+                        .unwrap()
+                        .view([-1])
+                        .try_into()
+                        .expect("Failed to convert Q-value distribution to Vec<f32>")
+                } else {
+                    // Fallback: Use visit counts with temperature sharpening
+                    let mut policy_dist: Vec<f32> = mcts_result
+                        .policy_distribution
+                        .view([-1])
+                        .try_into()
+                        .expect("Failed to convert policy distribution to Vec<f32>");
 
-                // Temperature < 1.0 sharpens the distribution (emphasizes top moves)
-                let temperature = 0.5;
-                let inv_temp = 1.0 / temperature;
-                for p in &mut policy_dist {
-                    if *p > 0.0 {
-                        *p = p.powf(inv_temp);
-                    }
-                }
-
-                // Renormalize to ensure it's a valid probability distribution
-                let sum: f32 = policy_dist.iter().sum();
-                if sum > 0.0 {
+                    // Temperature < 1.0 sharpens the distribution (emphasizes top moves)
+                    let temperature = 0.5;
+                    let inv_temp = 1.0 / temperature;
                     for p in &mut policy_dist {
-                        *p /= sum;
+                        if *p > 0.0 {
+                            *p = p.powf(inv_temp);
+                        }
                     }
-                }
 
-                policy_dist
-            };
+                    // Renormalize to ensure it's a valid probability distribution
+                    let sum: f32 = policy_dist.iter().sum();
+                    if sum > 0.0 {
+                        for p in &mut policy_dist {
+                            *p /= sum;
+                        }
+                    }
+
+                    policy_dist
+                };
 
             // Store for later (we'll assign value after game ends)
             training_data.push((state_tensor, policy_dist, 0.0));
@@ -511,11 +568,12 @@ fn train_on_data(
             let states_batch = states_batch.to_device(device);
 
             // FIXED: Policy targets are now distributions, not indices
-            let policy_targets_flat: Vec<f32> = batch.iter()
+            let policy_targets_flat: Vec<f32> = batch
+                .iter()
                 .flat_map(|ex| ex.policy_target.iter().copied())
                 .collect();
             let policy_targets_batch = Tensor::from_slice(&policy_targets_flat)
-                .view([batch.len() as i64, 19])  // 19 positions
+                .view([batch.len() as i64, 19]) // 19 positions
                 .to_device(device);
 
             let value_targets: Vec<f32> = batch.iter().map(|ex| ex.value_target).collect();
@@ -530,18 +588,16 @@ fn train_on_data(
 
             // KL divergence: sum(target * (log(target) - log(pred)))
             // Simplified as cross-entropy when target is a distribution
-            let policy_loss = -(policy_targets_batch * policy_pred_probs).sum_dim_intlist(
-                [-1].as_slice(),
-                false,
-                tch::Kind::Float,
-            ).mean(tch::Kind::Float);
+            let policy_loss = -(policy_targets_batch * policy_pred_probs)
+                .sum_dim_intlist([-1].as_slice(), false, tch::Kind::Float)
+                .mean(tch::Kind::Float);
 
             let policy_opt = manager.policy_optimizer_mut();
             policy_opt.backward_step(&policy_loss);
 
             // Train value network (use detached input to avoid graph interference)
             let value_net = manager.value_net();
-            let states_for_value = states_batch.detach();  // Detach to avoid graph sharing
+            let states_for_value = states_batch.detach(); // Detach to avoid graph sharing
             let value_pred = value_net.forward(&states_for_value, true);
             let value_loss = value_pred.mse_loss(&value_targets_batch, tch::Reduction::Mean);
 

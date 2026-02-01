@@ -69,10 +69,10 @@ struct Args {
 
 #[derive(Debug, Clone)]
 struct TrainingExample {
-    plateau_state: Vec<i32>,  // 19 encoded tiles
-    tile: (i32, i32, i32),    // Current tile
-    position: usize,          // Target position (policy label)
-    final_score: i32,         // Final game score (value label)
+    plateau_state: Vec<i32>,    // 19 encoded tiles
+    tile: (i32, i32, i32),      // Current tile
+    position: usize,            // Target position (policy label)
+    final_score: i32,           // Final game score (value label)
     qvalues: Option<[f32; 19]>, // Q-values for each position (if qvalue_mode)
 }
 
@@ -96,7 +96,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         "CNN" => NNArchitecture::Cnn,
         "GNN" => NNArchitecture::Gnn,
         "CNN-ONEHOT" | "ONEHOT" => NNArchitecture::CnnOnehot,
-        _ => return Err(format!("Invalid architecture: {}. Valid: CNN, GNN, CNN-ONEHOT", args.nn_architecture).into()),
+        _ => {
+            return Err(format!(
+                "Invalid architecture: {}. Valid: CNN, GNN, CNN-ONEHOT",
+                args.nn_architecture
+            )
+            .into())
+        }
     };
 
     // Load training data from CSV
@@ -113,7 +119,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if args.augmentation {
         log::info!("🔄 Data augmentation: ON-THE-FLY (random transformation per batch)");
-        log::info!("   Effective dataset size: {}x (no materialization)", examples.len());
+        log::info!(
+            "   Effective dataset size: {}x (no materialization)",
+            examples.len()
+        );
     }
 
     log::info!("📊 Total training examples: {}", examples.len());
@@ -123,7 +132,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let avg_score = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
     let min_score = *scores.iter().min().unwrap();
     let max_score = *scores.iter().max().unwrap();
-    log::info!("📊 Score statistics: avg={:.1}, range=[{}, {}]", avg_score, min_score, max_score);
+    log::info!(
+        "📊 Score statistics: avg={:.1}, range=[{}, {}]",
+        avg_score,
+        min_score,
+        max_score
+    );
 
     // Shuffle and split data
     let mut rng = rand::rngs::StdRng::seed_from_u64(args.seed);
@@ -132,10 +146,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let split_idx = ((1.0 - args.validation_split) * shuffled.len() as f64) as usize;
     let (train_data, val_data) = shuffled.split_at(split_idx);
-    log::info!("Split: {} training, {} validation examples", train_data.len(), val_data.len());
+    log::info!(
+        "Split: {} training, {} validation examples",
+        train_data.len(),
+        val_data.len()
+    );
 
     // Initialize neural network
-    log::info!("\n🧠 Initializing {} neural network...", args.nn_architecture);
+    log::info!(
+        "\n🧠 Initializing {} neural network...",
+        args.nn_architecture
+    );
 
     // Get input channels based on architecture
     let input_dim = nn_arch.input_dim();
@@ -170,13 +191,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?;
 
         // Validation
-        let (val_policy_loss, val_value_loss) = validate_epoch(
-            val_data,
-            &manager,
-            args.batch_size,
-            device,
-            nn_arch,
-        )?;
+        let (val_policy_loss, val_value_loss) =
+            validate_epoch(val_data, &manager, args.batch_size, device, nn_arch)?;
 
         let total_val_loss = val_policy_loss + val_value_loss;
 
@@ -225,9 +241,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn load_csv_data(path: &str, qvalue_mode: bool) -> Result<Vec<TrainingExample>, Box<dyn Error>> {
     let file = File::open(path)?;
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        .from_reader(file);
+    let mut reader = ReaderBuilder::new().has_headers(true).from_reader(file);
 
     let mut examples = Vec::new();
 
@@ -294,28 +308,32 @@ fn train_epoch(
     for batch in examples.chunks(batch_size) {
         // Apply on-the-fly augmentation if enabled
         let augmented_batch: Vec<TrainingExample> = if augment_on_fly {
-            batch.iter().map(|example| {
-                let transform = AugmentTransform::random(&mut rng);
-                let (new_plateau, new_tile, new_position, score) = augment_example(
-                    &example.plateau_state,
-                    example.tile,
-                    example.position,
-                    example.final_score,
-                    transform,
-                );
-                TrainingExample {
-                    plateau_state: new_plateau,
-                    tile: new_tile,
-                    position: new_position,
-                    final_score: score,
-                    qvalues: None, // Q-values not preserved after augmentation
-                }
-            }).collect()
+            batch
+                .iter()
+                .map(|example| {
+                    let transform = AugmentTransform::random(&mut rng);
+                    let (new_plateau, new_tile, new_position, score) = augment_example(
+                        &example.plateau_state,
+                        example.tile,
+                        example.position,
+                        example.final_score,
+                        transform,
+                    );
+                    TrainingExample {
+                        plateau_state: new_plateau,
+                        tile: new_tile,
+                        position: new_position,
+                        final_score: score,
+                        qvalues: None, // Q-values not preserved after augmentation
+                    }
+                })
+                .collect()
         } else {
             batch.to_vec()
         };
 
-        let (state_tensors, policy_targets, value_targets) = prepare_batch_with_arch(&augmented_batch, device, arch)?;
+        let (state_tensors, policy_targets, value_targets) =
+            prepare_batch_with_arch(&augmented_batch, device, arch)?;
 
         // Train policy network
         let policy_net = manager.policy_net();
@@ -357,7 +375,8 @@ fn validate_epoch(
 
     tch::no_grad(|| {
         for batch in examples.chunks(batch_size) {
-            let (state_tensors, policy_targets, value_targets) = prepare_batch_with_arch(batch, device, arch)?;
+            let (state_tensors, policy_targets, value_targets) =
+                prepare_batch_with_arch(batch, device, arch)?;
 
             // Validate policy
             let policy_net = manager.policy_net();
@@ -504,15 +523,29 @@ fn prepare_batch_gnn(
 /// Maps hex position (0-18) to (row, col) in 5×5 grid
 const HEX_TO_GRID_MAP: [(usize, usize); 19] = [
     // Column 0 (positions 0-2): 3 tiles, rows 1-3
-    (1, 0), (2, 0), (3, 0),
+    (1, 0),
+    (2, 0),
+    (3, 0),
     // Column 1 (positions 3-6): 4 tiles, rows 1-4
-    (1, 1), (2, 1), (3, 1), (4, 1),
+    (1, 1),
+    (2, 1),
+    (3, 1),
+    (4, 1),
     // Column 2 (positions 7-11): 5 tiles, rows 0-4
-    (0, 2), (1, 2), (2, 2), (3, 2), (4, 2),
+    (0, 2),
+    (1, 2),
+    (2, 2),
+    (3, 2),
+    (4, 2),
     // Column 3 (positions 12-15): 4 tiles, rows 1-4
-    (1, 3), (2, 3), (3, 3), (4, 3),
+    (1, 3),
+    (2, 3),
+    (3, 3),
+    (4, 3),
     // Column 4 (positions 16-18): 3 tiles, rows 1-3
-    (1, 4), (2, 4), (3, 4),
+    (1, 4),
+    (2, 4),
+    (3, 4),
 ];
 
 /// Convert hex position to grid index
@@ -524,17 +557,17 @@ fn hex_to_grid_idx(hex_pos: usize) -> usize {
 
 /// Line definitions for explicit line features
 const LINE_DEFS: &[(&[usize], usize)] = &[
-    (&[0, 1, 2], 0),           // Dir1 lines (tile.0)
+    (&[0, 1, 2], 0), // Dir1 lines (tile.0)
     (&[3, 4, 5, 6], 0),
     (&[7, 8, 9, 10, 11], 0),
     (&[12, 13, 14, 15], 0),
     (&[16, 17, 18], 0),
-    (&[0, 3, 7], 1),           // Dir2 lines (tile.1)
+    (&[0, 3, 7], 1), // Dir2 lines (tile.1)
     (&[1, 4, 8, 12], 1),
     (&[2, 5, 9, 13, 16], 1),
     (&[6, 10, 14, 17], 1),
     (&[11, 15, 18], 1),
-    (&[7, 12, 16], 2),         // Dir3 lines (tile.2)
+    (&[7, 12, 16], 2), // Dir3 lines (tile.2)
     (&[3, 8, 13, 17], 2),
     (&[0, 4, 9, 14, 18], 2),
     (&[1, 5, 10, 15], 2),
@@ -593,7 +626,11 @@ fn encode_state(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
             let v3 = encoded % 10;
             let placed_tile = Tile(v1, v2, v3);
 
-            if let Some(idx) = remaining_deck.tiles().iter().position(|t| *t == placed_tile) {
+            if let Some(idx) = remaining_deck
+                .tiles()
+                .iter()
+                .position(|t| *t == placed_tile)
+            {
                 remaining_deck.tiles_mut().remove(idx);
             }
         }
@@ -601,14 +638,18 @@ fn encode_state(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
 
     // Remove current tile from deck
     let current_tile = Tile(tile.0, tile.1, tile.2);
-    if let Some(idx) = remaining_deck.tiles().iter().position(|t| *t == current_tile) {
+    if let Some(idx) = remaining_deck
+        .tiles()
+        .iter()
+        .position(|t| *t == current_tile)
+    {
         remaining_deck.tiles_mut().remove(idx);
     }
 
     // Compute bag value counts
-    let mut counts_dir1 = [0u32; 3];  // [1, 5, 9]
-    let mut counts_dir2 = [0u32; 3];  // [2, 6, 7]
-    let mut counts_dir3 = [0u32; 3];  // [3, 4, 8]
+    let mut counts_dir1 = [0u32; 3]; // [1, 5, 9]
+    let mut counts_dir2 = [0u32; 3]; // [2, 6, 7]
+    let mut counts_dir3 = [0u32; 3]; // [3, 4, 8]
 
     for tile_in_deck in remaining_deck.tiles() {
         // Count direction 1 values
@@ -677,9 +718,9 @@ fn encode_state(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
                 empty_count += 1;
             } else {
                 let v = match direction {
-                    0 => encoded / 100,           // Dir1: first digit
-                    1 => (encoded % 100) / 10,    // Dir2: second digit
-                    2 => encoded % 10,            // Dir3: third digit
+                    0 => encoded / 100,        // Dir1: first digit
+                    1 => (encoded % 100) / 10, // Dir2: second digit
+                    2 => encoded % 10,         // Dir3: third digit
                     _ => 0,
                 };
                 if v > 0 && (v as usize) < 10 {
@@ -700,23 +741,23 @@ fn encode_state(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
 
         // Compute line potential
         let potential = if filled_count == 0 {
-            0.5  // Empty line - neutral potential
+            0.5 // Empty line - neutral potential
         } else if dominant_count == filled_count as u32 {
             // All filled tiles have same value - line is alive
             let fill_ratio = filled_count as f32 / line_len as f32;
             let value_weight = dominant_value as f32 / 9.0;
             0.5 + 0.5 * fill_ratio * value_weight
         } else {
-            0.0  // Line is blocked (conflicting values)
+            0.0 // Line is blocked (conflicting values)
         };
 
         // Compute tile compatibility
         let compatibility = if filled_count == 0 {
-            0.5  // Empty line - neutral
+            0.5 // Empty line - neutral
         } else if tile_value == dominant_value {
-            1.0  // Tile matches line
+            1.0 // Tile matches line
         } else {
-            0.0  // Tile conflicts
+            0.0 // Tile conflicts
         };
 
         // Broadcast line features to all positions in that line
@@ -824,7 +865,11 @@ fn encode_state_onehot(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
             let v2 = (encoded % 100) / 10;
             let v3 = encoded % 10;
             let placed_tile = Tile(v1, v2, v3);
-            if let Some(idx) = remaining_deck.tiles().iter().position(|t| *t == placed_tile) {
+            if let Some(idx) = remaining_deck
+                .tiles()
+                .iter()
+                .position(|t| *t == placed_tile)
+            {
                 remaining_deck.tiles_mut().remove(idx);
             }
         }
@@ -832,7 +877,11 @@ fn encode_state_onehot(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
 
     // Remove current tile
     let current_tile = Tile(tile.0, tile.1, tile.2);
-    if let Some(idx) = remaining_deck.tiles().iter().position(|t| *t == current_tile) {
+    if let Some(idx) = remaining_deck
+        .tiles()
+        .iter()
+        .position(|t| *t == current_tile)
+    {
         remaining_deck.tiles_mut().remove(idx);
     }
 
@@ -842,9 +891,15 @@ fn encode_state_onehot(plateau: &[i32], tile: &(i32, i32, i32)) -> Vec<f32> {
     let mut counts_dir3 = [0u32; 3];
 
     for t in remaining_deck.tiles() {
-        if let Some(idx) = value_to_onehot_idx(t.0, &DIR1_VALUES) { counts_dir1[idx] += 1; }
-        if let Some(idx) = value_to_onehot_idx(t.1, &DIR2_VALUES) { counts_dir2[idx] += 1; }
-        if let Some(idx) = value_to_onehot_idx(t.2, &DIR3_VALUES) { counts_dir3[idx] += 1; }
+        if let Some(idx) = value_to_onehot_idx(t.0, &DIR1_VALUES) {
+            counts_dir1[idx] += 1;
+        }
+        if let Some(idx) = value_to_onehot_idx(t.1, &DIR2_VALUES) {
+            counts_dir2[idx] += 1;
+        }
+        if let Some(idx) = value_to_onehot_idx(t.2, &DIR3_VALUES) {
+            counts_dir3[idx] += 1;
+        }
     }
 
     // Broadcast bag counts (channels 20-28)
@@ -989,9 +1044,9 @@ fn compute_orientation_scores_from_encoded(plateau: &[i32]) -> [[f32; 19]; 3] {
             }
 
             let value = match orientation {
-                0 => encoded / 100,           // Direction 1
-                1 => (encoded % 100) / 10,    // Direction 2
-                2 => encoded % 10,            // Direction 3
+                0 => encoded / 100,        // Direction 1
+                1 => (encoded % 100) / 10, // Direction 2
+                2 => encoded % 10,         // Direction 3
                 _ => 0,
             };
 
@@ -1025,4 +1080,3 @@ fn compute_orientation_scores_from_encoded(plateau: &[i32]) -> [[f32; 19]; 3] {
 
     orientation_scores
 }
-

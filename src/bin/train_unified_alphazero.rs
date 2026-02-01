@@ -14,16 +14,15 @@ use std::io::{BufRead, BufReader};
 use tch::{nn, nn::OptimizerConfig, Device, Kind, Tensor};
 
 use take_it_easy::game::create_deck::create_deck;
+use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::game::tile::Tile;
-use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::mcts::algorithm::{
-    mcts_find_best_position_for_tile_with_nn,
-    mcts_find_best_position_for_tile_with_qnet,
+    mcts_find_best_position_for_tile_with_nn, mcts_find_best_position_for_tile_with_qnet,
 };
-use take_it_easy::neural::{NeuralConfig, NeuralManager, QNetManager};
 use take_it_easy::neural::tensor_conversion::convert_plateau_to_tensor;
+use take_it_easy::neural::{NeuralConfig, NeuralManager, QNetManager};
 use take_it_easy::scoring::scoring::result;
 
 #[derive(Parser, Debug)]
@@ -137,7 +136,10 @@ fn run_phase1_supervised(
     let mut all_samples: Vec<SupervisedSample> = Vec::new();
 
     for file in &data_files {
-        let path = format!("/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/{}", file);
+        let path = format!(
+            "/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/{}",
+            file
+        );
         if let Ok(samples) = load_supervised_csv(&path) {
             log::info!("  Loaded {} samples from {}", samples.len(), file);
             all_samples.extend(samples);
@@ -145,11 +147,15 @@ fn run_phase1_supervised(
     }
 
     // Filter to keep only high-score games (130+)
-    let high_quality: Vec<_> = all_samples.into_iter()
+    let high_quality: Vec<_> = all_samples
+        .into_iter()
         .filter(|s| s.final_score >= 130)
         .collect();
 
-    log::info!("Total high-quality samples: {} (score >= 130)", high_quality.len());
+    log::info!(
+        "Total high-quality samples: {} (score >= 130)",
+        high_quality.len()
+    );
 
     if high_quality.is_empty() {
         log::warn!("No training data found!");
@@ -157,12 +163,11 @@ fn run_phase1_supervised(
     }
 
     // Create optimizer for policy
-    let mut policy_opt = nn::Adam::default()
-        .build(neural_manager.policy_varstore_mut(), args.lr)?;
+    let mut policy_opt =
+        nn::Adam::default().build(neural_manager.policy_varstore_mut(), args.lr)?;
 
     // Create optimizer for value
-    let mut value_opt = nn::Adam::default()
-        .build(neural_manager.value_varstore_mut(), args.lr)?;
+    let mut value_opt = nn::Adam::default().build(neural_manager.value_varstore_mut(), args.lr)?;
 
     let mut rng = rand::rng();
 
@@ -208,7 +213,10 @@ fn run_phase1_supervised(
         if epoch % 5 == 0 || epoch == args.supervised_epochs - 1 {
             log::info!(
                 "Epoch {}/{}: policy_loss={:.4}, value_loss={:.4}",
-                epoch + 1, args.supervised_epochs, avg_policy, avg_value
+                epoch + 1,
+                args.supervised_epochs,
+                avg_policy,
+                avg_value
             );
         }
     }
@@ -238,7 +246,9 @@ fn run_phase2_qnet(_args: &Args) -> Result<(), Box<dyn Error>> {
         let qnet = QNetManager::new(qnet_path)?;
         let test_plateau = create_plateau_empty();
         let test_tile = Tile(5, 5, 5);
-        let top_pos = qnet.net().get_top_positions(&test_plateau.tiles, &test_tile, 6);
+        let top_pos = qnet
+            .net()
+            .get_top_positions(&test_plateau.tiles, &test_tile, 6);
         log::info!("Q-Net verification: top-6 positions = {:?}", top_pos);
     } else {
         log::warn!("Q-Net weights not found. Run: cargo run --release --bin train_qvalue_net");
@@ -257,13 +267,21 @@ fn run_phase3_selfplay(
     log::info!("  Iterations: {}", args.selfplay_iterations);
     log::info!("  Games/iter: {}", args.games_per_iter);
     log::info!("  MCTS sims: {}", args.mcts_sims);
-    log::info!("  Dirichlet: alpha={}, eps={}", args.dirichlet_alpha, args.dirichlet_epsilon);
+    log::info!(
+        "  Dirichlet: alpha={}, eps={}",
+        args.dirichlet_alpha,
+        args.dirichlet_epsilon
+    );
     log::info!("  Q-Net top-K: {}", args.top_k);
 
     let mut best_score = 0.0f64;
 
     for iteration in 0..args.selfplay_iterations {
-        log::info!("\n--- Iteration {}/{} ---", iteration + 1, args.selfplay_iterations);
+        log::info!(
+            "\n--- Iteration {}/{} ---",
+            iteration + 1,
+            args.selfplay_iterations
+        );
 
         // Generate self-play games with exploration
         let games = generate_selfplay_games_with_dirichlet(
@@ -277,9 +295,7 @@ fn run_phase3_selfplay(
         );
 
         // Collect training data
-        let training_data: Vec<_> = games.iter()
-            .flat_map(|g| g.moves.iter().cloned())
-            .collect();
+        let training_data: Vec<_> = games.iter().flat_map(|g| g.moves.iter().cloned()).collect();
 
         log::info!("  Generated {} training samples", training_data.len());
 
@@ -327,14 +343,19 @@ fn generate_selfplay_games_with_dirichlet(
     for game_idx in 0..num_games {
         let mut plateau = create_plateau_empty();
         let mut deck = create_deck();
-        let mut game_record = GameRecord { moves: Vec::new(), final_score: 0 };
+        let mut game_record = GameRecord {
+            moves: Vec::new(),
+            final_score: 0,
+        };
 
         // Draw 19 tiles for the game
         let mut tiles: Vec<Tile> = Vec::new();
         let mut tile_deck = create_deck();
         for _ in 0..19 {
             let available = get_available_tiles(&tile_deck);
-            if available.is_empty() { break; }
+            if available.is_empty() {
+                break;
+            }
             let tile = *available.choose(&mut rng).unwrap();
             tiles.push(tile);
             tile_deck = replace_tile_in_deck(&tile_deck, &tile);
@@ -376,7 +397,7 @@ fn generate_selfplay_games_with_dirichlet(
                         // Mix policy with noise
                         for (i, &pos) in legal_moves.iter().enumerate() {
                             policy[pos] = (1.0 - epsilon as f32) * policy[pos]
-                                        + epsilon as f32 * noise[i] as f32;
+                                + epsilon as f32 * noise[i] as f32;
                         }
 
                         // Renormalize
@@ -395,7 +416,8 @@ fn generate_selfplay_games_with_dirichlet(
 
             // Record move (store tensor data as Vec for Clone)
             let state_tensor = convert_plateau_to_tensor(&plateau, &tile, &deck, turn, 19);
-            let state_data: Vec<f32> = Vec::<f32>::try_from(state_tensor.flatten(0, -1)).unwrap_or_default();
+            let state_data: Vec<f32> =
+                Vec::<f32>::try_from(state_tensor.flatten(0, -1)).unwrap_or_default();
 
             game_record.moves.push(MoveRecord {
                 state_data,
@@ -441,7 +463,8 @@ fn sample_from_policy(policy: &[f32], rng: &mut impl Rng) -> usize {
         }
     }
     // Fallback: return highest probability position
-    policy.iter()
+    policy
+        .iter()
         .enumerate()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
         .map(|(i, _)| i)
@@ -457,11 +480,10 @@ fn train_on_selfplay_data(
         return Ok(());
     }
 
-    let mut policy_opt = nn::Adam::default()
-        .build(neural_manager.policy_varstore_mut(), args.lr)?;
+    let mut policy_opt =
+        nn::Adam::default().build(neural_manager.policy_varstore_mut(), args.lr)?;
 
-    let mut value_opt = nn::Adam::default()
-        .build(neural_manager.value_varstore_mut(), args.lr)?;
+    let mut value_opt = nn::Adam::default().build(neural_manager.value_varstore_mut(), args.lr)?;
 
     let epochs = 10;
     let mut rng = rand::rng();
@@ -472,7 +494,8 @@ fn train_on_selfplay_data(
 
         for batch in shuffled.chunks(args.batch_size) {
             // Stack inputs - recreate tensors from stored data
-            let inputs: Vec<Tensor> = batch.iter()
+            let inputs: Vec<Tensor> = batch
+                .iter()
                 .map(|m| Tensor::from_slice(&m.state_data).view([1, 47, 5, 5]))
                 .collect();
             let input_batch = Tensor::cat(&inputs, 0);
@@ -527,7 +550,9 @@ fn benchmark_current_model(
 
         for turn in 0..19 {
             let available = get_available_tiles(&deck);
-            if available.is_empty() { break; }
+            if available.is_empty() {
+                break;
+            }
             let tile = *available.choose(&mut rng).unwrap();
 
             let mcts_result = mcts_find_best_position_for_tile_with_nn(
@@ -568,7 +593,7 @@ struct GameRecord {
 
 #[derive(Clone)]
 struct MoveRecord {
-    state_data: Vec<f32>,  // Flattened tensor data (can be cloned)
+    state_data: Vec<f32>, // Flattened tensor data (can be cloned)
     policy: Vec<f32>,
     action: usize,
     value: f32,
@@ -580,18 +605,24 @@ fn load_supervised_csv(path: &str) -> Result<Vec<SupervisedSample>, Box<dyn Erro
     let mut samples = Vec::new();
 
     for (i, line) in reader.lines().enumerate() {
-        if i == 0 { continue; } // Skip header
+        if i == 0 {
+            continue;
+        } // Skip header
 
         let line = line?;
         let parts: Vec<&str> = line.split(',').collect();
 
-        if parts.len() < 25 { continue; }
+        if parts.len() < 25 {
+            continue;
+        }
 
         let plateau: Vec<i32> = (2..21)
             .filter_map(|i| parts.get(i).and_then(|s| s.parse().ok()))
             .collect();
 
-        if plateau.len() != 19 { continue; }
+        if plateau.len() != 19 {
+            continue;
+        }
 
         let tile = (
             parts.get(21).and_then(|s| s.parse().ok()).unwrap_or(0),

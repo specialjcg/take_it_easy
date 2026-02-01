@@ -13,9 +13,9 @@
 
 use clap::Parser;
 use flexi_logger::Logger;
+use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use rand::prelude::IndexedRandom;
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
@@ -58,8 +58,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     log::info!("🧪 Baseline CNN Benchmark (No MCTS Optimizations)");
-    log::info!("   Games: {}, Simulations: {}, Seed: {}, Turns: {}",
-        args.games, args.simulations, args.seed, args.turns);
+    log::info!(
+        "   Games: {}, Simulations: {}, Seed: {}, Turns: {}",
+        args.games,
+        args.simulations,
+        args.seed,
+        args.turns
+    );
 
     // Parse architecture
     let nn_arch = match args.nn_architecture.to_uppercase().as_str() {
@@ -143,7 +148,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             deck = replace_tile_in_deck(&deck, &chosen_tile);
 
             // Check plateau BEFORE MCTS
-            let filled_before = plateau.tiles.iter().filter(|&&t| t != take_it_easy::game::tile::Tile(0,0,0)).count();
+            let filled_before = plateau
+                .tiles
+                .iter()
+                .filter(|&&t| t != take_it_easy::game::tile::Tile(0, 0, 0))
+                .count();
 
             let mcts_result = mcts_find_best_position_for_tile_with_nn(
                 &mut plateau,
@@ -158,11 +167,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             // Check plateau AFTER MCTS
-            let filled_after = plateau.tiles.iter().filter(|&&t| t != take_it_easy::game::tile::Tile(0,0,0)).count();
+            let filled_after = plateau
+                .tiles
+                .iter()
+                .filter(|&&t| t != take_it_easy::game::tile::Tile(0, 0, 0))
+                .count();
 
             if game_idx == 0 && turn < 5 {
-                log::info!("Turn {}: tile={:?}, chose pos={}, filled before={}, after={}",
-                    turn+1, chosen_tile, mcts_result.best_position, filled_before, filled_after);
+                log::info!(
+                    "Turn {}: tile={:?}, chose pos={}, filled before={}, after={}",
+                    turn + 1,
+                    chosen_tile,
+                    mcts_result.best_position,
+                    filled_before,
+                    filled_after
+                );
             }
 
             plateau.tiles[mcts_result.best_position] = chosen_tile;
@@ -195,8 +214,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Simulations/move   : {}", args.simulations);
     println!("Turns per game     : {}", args.turns);
     println!();
-    println!("Score              : mean = {:.2}, std = {:.2}, min = {:4}, max = {:4}",
-        mean, std_dev, min, max);
+    println!(
+        "Score              : mean = {:.2}, std = {:.2}, min = {:4}, max = {:4}",
+        mean, std_dev, min, max
+    );
     println!();
     println!("Configuration      : CNN-only (no optimizations)");
     println!("Expected (if NN good): > 120 pts");

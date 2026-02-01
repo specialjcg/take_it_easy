@@ -3,8 +3,8 @@
 //! Trained to predict softmax distribution over positions for action pruning.
 //! Used in combination with CNN policy/value networks to improve MCTS.
 
-use tch::{nn, Device, Kind, Tensor};
 use crate::game::tile::Tile;
+use tch::{nn, Device, Kind, Tensor};
 
 /// Q-Value Network architecture (matches training)
 pub struct QValueNet {
@@ -23,20 +23,57 @@ impl QValueNet {
     pub fn new(vs: &nn::VarStore) -> Self {
         let p = vs.root();
 
-        let conv1 = nn::conv2d(&p / "conv1", 47, 64, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv1 = nn::conv2d(
+            &p / "conv1",
+            47,
+            64,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let bn1 = nn::batch_norm2d(&p / "bn1", 64, Default::default());
 
-        let conv2 = nn::conv2d(&p / "conv2", 64, 128, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv2 = nn::conv2d(
+            &p / "conv2",
+            64,
+            128,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let bn2 = nn::batch_norm2d(&p / "bn2", 128, Default::default());
 
-        let conv3 = nn::conv2d(&p / "conv3", 128, 128, 3, nn::ConvConfig { padding: 1, ..Default::default() });
+        let conv3 = nn::conv2d(
+            &p / "conv3",
+            128,
+            128,
+            3,
+            nn::ConvConfig {
+                padding: 1,
+                ..Default::default()
+            },
+        );
         let bn3 = nn::batch_norm2d(&p / "bn3", 128, Default::default());
 
         let fc1 = nn::linear(&p / "fc1", 128 * 5 * 5, 512, Default::default());
         let fc2 = nn::linear(&p / "fc2", 512, 256, Default::default());
         let qvalue_head = nn::linear(&p / "qvalue_head", 256, 19, Default::default());
 
-        Self { conv1, bn1, conv2, bn2, conv3, bn3, fc1, fc2, qvalue_head }
+        Self {
+            conv1,
+            bn1,
+            conv2,
+            bn2,
+            conv3,
+            bn3,
+            fc1,
+            fc2,
+            qvalue_head,
+        }
     }
 
     pub fn forward(&self, x: &Tensor) -> Tensor {
@@ -72,7 +109,8 @@ impl QValueNet {
         let probs = self.predict_ranking(plateau, tile);
 
         // Filter to empty positions only
-        let mut scored: Vec<(usize, f64)> = plateau.iter()
+        let mut scored: Vec<(usize, f64)> = plateau
+            .iter()
             .enumerate()
             .filter(|(_, t)| **t == Tile(0, 0, 0))
             .map(|(pos, _)| (pos, probs[pos]))
@@ -82,7 +120,8 @@ impl QValueNet {
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Return top-K positions
-        scored.iter()
+        scored
+            .iter()
             .take(top_k.min(scored.len()))
             .map(|(pos, _)| *pos)
             .collect()
@@ -91,11 +130,25 @@ impl QValueNet {
 
 /// Hexagonal position to grid index mapping
 const HEX_TO_GRID: [(usize, usize); 19] = [
-    (1, 0), (2, 0), (3, 0),
-    (0, 1), (1, 1), (2, 1), (3, 1),
-    (0, 2), (1, 2), (2, 2), (3, 2), (4, 2),
-    (0, 3), (1, 3), (2, 3), (3, 3),
-    (1, 4), (2, 4), (3, 4),
+    (1, 0),
+    (2, 0),
+    (3, 0),
+    (0, 1),
+    (1, 1),
+    (2, 1),
+    (3, 1),
+    (0, 2),
+    (1, 2),
+    (2, 2),
+    (3, 2),
+    (4, 2),
+    (0, 3),
+    (1, 3),
+    (2, 3),
+    (3, 3),
+    (1, 4),
+    (2, 4),
+    (3, 4),
 ];
 
 fn hex_to_grid_idx(hex_pos: usize) -> usize {

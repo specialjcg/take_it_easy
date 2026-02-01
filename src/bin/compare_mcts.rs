@@ -34,7 +34,9 @@ impl From<NnArchitectureCli> for take_it_easy::neural::manager::NNArchitecture {
         match cli {
             NnArchitectureCli::Cnn => take_it_easy::neural::manager::NNArchitecture::Cnn,
             NnArchitectureCli::Gnn => take_it_easy::neural::manager::NNArchitecture::Gnn,
-            NnArchitectureCli::CnnOnehot => take_it_easy::neural::manager::NNArchitecture::CnnOnehot,
+            NnArchitectureCli::CnnOnehot => {
+                take_it_easy::neural::manager::NNArchitecture::CnnOnehot
+            }
         }
     }
 }
@@ -107,7 +109,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err(format!("Turns must be between 1 and 27 (received {}).", args.turns).into());
     }
 
-    let nn_arch: take_it_easy::neural::manager::NNArchitecture = args.nn_architecture.clone().into();
+    let nn_arch: take_it_easy::neural::manager::NNArchitecture =
+        args.nn_architecture.clone().into();
     let policy_arch = args.policy_architecture.clone().map(|a| a.into());
     let value_arch = args.value_architecture.clone().map(|a| a.into());
 
@@ -121,7 +124,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let neural_config = NeuralConfig {
-        input_dim: nn_arch.input_dim(),  // Base input dimensions
+        input_dim: nn_arch.input_dim(), // Base input dimensions
         nn_architecture: nn_arch,
         policy_architecture: policy_arch,
         value_architecture: value_arch,

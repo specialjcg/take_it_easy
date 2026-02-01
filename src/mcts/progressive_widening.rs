@@ -1,4 +1,3 @@
-
 /// Progressive Widening configuration
 #[derive(Debug, Clone)]
 pub struct ProgressiveWideningConfig {
@@ -104,9 +103,7 @@ pub fn max_actions_to_explore(
     let k_rounded = k.ceil() as usize;
 
     // Ensure we respect bounds: [min_actions, total_actions]
-    k_rounded
-        .max(config.min_actions)
-        .min(total_actions)
+    k_rounded.max(config.min_actions).min(total_actions)
 }
 
 /// Select top-k actions based on policy scores or value estimates

@@ -56,23 +56,32 @@ pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MC
             } else {
                 tensor
             }
-        },
+        }
         Err(e) => {
-            eprintln!("⚠️  Error loading states from '{}': {}. Returning empty dataset.", states_path, e);
+            eprintln!(
+                "⚠️  Error loading states from '{}': {}. Returning empty dataset.",
+                states_path, e
+            );
             return Vec::new();
         }
     };
     let position_tensor = match Tensor::load(&positions_path) {
         Ok(tensor) => tensor,
         Err(e) => {
-            eprintln!("⚠️  Error loading positions from '{}': {}. Returning empty dataset.", positions_path, e);
+            eprintln!(
+                "⚠️  Error loading positions from '{}': {}. Returning empty dataset.",
+                positions_path, e
+            );
             return Vec::new();
         }
     };
     let subscore_tensor = match Tensor::load(&subscores_path) {
         Ok(tensor) => tensor,
         Err(e) => {
-            eprintln!("⚠️  Error loading subscores from '{}': {}. Returning empty dataset.", subscores_path, e);
+            eprintln!(
+                "⚠️  Error loading subscores from '{}': {}. Returning empty dataset.",
+                subscores_path, e
+            );
             return Vec::new();
         }
     };
@@ -84,7 +93,10 @@ pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MC
         match Tensor::load(&policy_raw_path) {
             Ok(tensor) => Some(tensor),
             Err(e) => {
-                eprintln!("⚠️  Warning: Failed to load policy_raw from '{}': {}. Skipping.", policy_raw_path, e);
+                eprintln!(
+                    "⚠️  Warning: Failed to load policy_raw from '{}': {}. Skipping.",
+                    policy_raw_path, e
+                );
                 None
             }
         }
@@ -96,7 +108,10 @@ pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MC
         match Tensor::load(&policy_boosted_path) {
             Ok(tensor) => Some(tensor),
             Err(e) => {
-                eprintln!("⚠️  Warning: Failed to load policy_boosted from '{}': {}. Skipping.", policy_boosted_path, e);
+                eprintln!(
+                    "⚠️  Warning: Failed to load policy_boosted from '{}': {}. Skipping.",
+                    policy_boosted_path, e
+                );
                 None
             }
         }
@@ -108,7 +123,10 @@ pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MC
         match Tensor::load(&boosts_path) {
             Ok(tensor) => Some(tensor),
             Err(e) => {
-                eprintln!("⚠️  Warning: Failed to load boost tensor from '{}': {}. Skipping.", boosts_path, e);
+                eprintln!(
+                    "⚠️  Warning: Failed to load boost tensor from '{}': {}. Skipping.",
+                    boosts_path, e
+                );
                 None
             }
         }

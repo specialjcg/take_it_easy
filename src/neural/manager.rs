@@ -24,7 +24,10 @@ impl std::str::FromStr for NNArchitecture {
             "cnn" => Ok(NNArchitecture::Cnn),
             "gnn" => Ok(NNArchitecture::Gnn),
             "cnn-onehot" | "cnn_onehot" | "onehot" => Ok(NNArchitecture::CnnOnehot),
-            _ => Err(format!("Unknown architecture: {}. Valid: cnn, gnn, cnn-onehot", s)),
+            _ => Err(format!(
+                "Unknown architecture: {}. Valid: cnn, gnn, cnn-onehot",
+                s
+            )),
         }
     }
 }
@@ -43,8 +46,8 @@ impl NNArchitecture {
     /// Get the input dimensions for this architecture
     pub fn input_dim(&self) -> (i64, i64, i64) {
         match self {
-            NNArchitecture::Cnn => (47, 5, 5),      // 17 base + 30 line features
-            NNArchitecture::Gnn => (8, 19, 1),      // 19 nodes × 8 features (graph format)
+            NNArchitecture::Cnn => (47, 5, 5), // 17 base + 30 line features
+            NNArchitecture::Gnn => (8, 19, 1), // 19 nodes × 8 features (graph format)
             NNArchitecture::CnnOnehot => (37, 5, 5), // One-hot oriented encoding
         }
     }
@@ -86,8 +89,8 @@ impl Default for NeuralConfig {
             value_lr: 2e-4,
             value_wd: 1e-6,
             nn_architecture: NNArchitecture::Cnn,
-            policy_architecture: None,  // Uses nn_architecture by default
-            value_architecture: None,   // Uses nn_architecture by default
+            policy_architecture: None, // Uses nn_architecture by default
+            value_architecture: None,  // Uses nn_architecture by default
         }
     }
 }
@@ -120,7 +123,11 @@ impl NeuralManager {
 
         log::info!("🧠 Initializing neural network manager...");
         if is_hybrid {
-            log::info!("🔀 HYBRID MODE: Policy={}, Value={}", policy_arch, value_arch);
+            log::info!(
+                "🔀 HYBRID MODE: Policy={}, Value={}",
+                policy_arch,
+                value_arch
+            );
         }
         log::debug!(
             "Neural config: input_dim={:?}, device={:?}, policy_arch={:?}, value_arch={:?}",
@@ -155,7 +162,10 @@ impl NeuralManager {
                 NNArchitecture::CnnOnehot => "cnn-onehot",
             };
 
-            let policy_path = format!("{}/{}/policy/policy.params", config.model_path, policy_arch_dir);
+            let policy_path = format!(
+                "{}/{}/policy/policy.params",
+                config.model_path, policy_arch_dir
+            );
             if let Err(e) = policy_net.load_model(&mut vs_policy, &policy_path) {
                 log::warn!("⚠️ Failed to load PolicyNet from {}: {:?}", policy_path, e);
             } else {
@@ -169,7 +179,10 @@ impl NeuralManager {
                 NNArchitecture::CnnOnehot => "cnn-onehot",
             };
 
-            let value_path = format!("{}/{}/value/value.params", config.model_path, value_arch_dir);
+            let value_path = format!(
+                "{}/{}/value/value.params",
+                config.model_path, value_arch_dir
+            );
             if let Err(e) = value_net.load_model(&mut vs_value, &value_path) {
                 log::warn!("⚠️ Failed to load ValueNet from {}: {:?}", value_path, e);
             } else {

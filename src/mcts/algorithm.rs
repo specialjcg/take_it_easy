@@ -15,11 +15,12 @@ use crate::game::tile::Tile;
 use crate::mcts::hyperparameters::MCTSHyperparameters;
 use crate::mcts::mcts_result::MCTSResult;
 use crate::mcts::progressive_widening::{max_actions_to_explore, ProgressiveWideningConfig};
-use crate::neural::gnn::convert_plateau_for_gnn;
 use crate::neural::manager::NNArchitecture;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
-use crate::neural::tensor_conversion::convert_plateau_to_tensor;
+use crate::neural::tensor_conversion::{
+    convert_plateau_to_graph_features, convert_plateau_to_tensor,
+};
 use crate::scoring::scoring::result;
 use crate::strategy::contextual_boost::calculate_contextual_boost_entropy;
 use crate::strategy::position_evaluation::enhanced_position_evaluation;
@@ -37,15 +38,27 @@ fn convert_plateau_by_arch(
     total_turns: usize,
 ) -> Tensor {
     match arch {
-        NNArchitecture::Cnn => convert_plateau_to_tensor(plateau, chosen_tile, deck, current_turn, total_turns),
-        NNArchitecture::Gnn => {
-            // GNN uses same encoding as CNN (includes tile), then reshaped to [batch, 19, 8]
+        NNArchitecture::Cnn => {
             convert_plateau_to_tensor(plateau, chosen_tile, deck, current_turn, total_turns)
-        },
+        }
+        NNArchitecture::Gnn => {
+            // GNN uses graph format [1, 19, 8] - batch of 1, 19 nodes, 8 features
+            // Encoding (supervised_trainer_csv.rs format):
+            // Features 0-2: tile values / 10.0
+            // Feature 3: occupied mask (1 if filled)
+            // Features 4-6: orientation scores per direction
+            // Feature 7: turn progress
+            convert_plateau_to_graph_features(plateau, current_turn, total_turns)
+        }
         NNArchitecture::CnnOnehot => {
             // Use one-hot oriented encoding (37 channels)
-            crate::neural::tensor_onehot::convert_plateau_onehot(plateau, chosen_tile, deck, current_turn)
-        },
+            crate::neural::tensor_onehot::convert_plateau_onehot(
+                plateau,
+                chosen_tile,
+                deck,
+                current_turn,
+            )
+        }
     }
 }
 
@@ -122,7 +135,11 @@ pub fn mcts_find_best_position_for_tile_with_qnet(
     let hyperparams = hyperparams.unwrap_or(&default_hyperparams);
 
     // Count empty positions
-    let empty_count = plateau.tiles.iter().filter(|t| **t == Tile(0, 0, 0)).count();
+    let empty_count = plateau
+        .tiles
+        .iter()
+        .filter(|t| **t == Tile(0, 0, 0))
+        .count();
 
     // Adaptive pruning: only prune if enough positions and early game
     // Fine-tuned: turn_threshold=10 is optimal (prune turns 0-9 only)
@@ -309,7 +326,8 @@ fn mcts_core(
     }
 
     let (input_tensor, graph_features) = match &evaluator {
-        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
+        MctsEvaluator::Neural { policy_net, .. }
+        | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let PolicyNet { arch, .. } = policy_net;
             match arch {
                 NNArchitecture::Cnn => (
@@ -332,7 +350,7 @@ fn mcts_core(
                     None,
                 ),
                 NNArchitecture::Gnn => {
-                    let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
+                    let gnn_feat = convert_plateau_to_graph_features(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
             }
@@ -377,7 +395,8 @@ fn mcts_core(
 
     // ADAPTIVE ENTROPY WEIGHTING: Calculate policy entropy for dynamic weight adjustment
     let adaptive_weights = match &evaluator {
-        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
+        MctsEvaluator::Neural { policy_net, .. }
+        | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let policy_logits = policy_net.forward(&input_tensor, false);
             let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
 
@@ -386,7 +405,8 @@ fn mcts_core(
 
             if !policy_probs.is_empty() {
                 // HYBRID STRATEGY: Turn-adaptive + Entropy-based
-                let (w_cnn, w_rollout) = hyperparams.get_hybrid_adaptive_weights(current_turn, &policy_probs);
+                let (w_cnn, w_rollout) =
+                    hyperparams.get_hybrid_adaptive_weights(current_turn, &policy_probs);
 
                 // Log adaptive weights at key turns (0, 5, 10, 15) to track strategy
                 let debug_turns = [0, 5, 10, 15];
@@ -402,14 +422,32 @@ fn mcts_core(
                     let normalized_entropy = (entropy / max_entropy).clamp(0.0, 1.0);
 
                     // Compare strategies
-                    let (turn_w_cnn, turn_w_rollout) = hyperparams.get_turn_adaptive_weights(current_turn);
-                    let (entropy_w_cnn, entropy_w_rollout) = hyperparams.get_adaptive_cnn_weight(&policy_probs);
+                    let (turn_w_cnn, turn_w_rollout) =
+                        hyperparams.get_turn_adaptive_weights(current_turn);
+                    let (entropy_w_cnn, entropy_w_rollout) =
+                        hyperparams.get_adaptive_cnn_weight(&policy_probs);
 
                     log::info!("🎯 ADAPTIVE STRATEGY COMPARISON (turn {}):", current_turn);
-                    log::info!("   Entropy: {:.3} (normalized: {:.3})", entropy, normalized_entropy);
-                    log::info!("   Turn-only:    w_cnn={:.3}, w_rollout={:.3}", turn_w_cnn, turn_w_rollout);
-                    log::info!("   Entropy-only: w_cnn={:.3}, w_rollout={:.3}", entropy_w_cnn, entropy_w_rollout);
-                    log::info!("   HYBRID:       w_cnn={:.3}, w_rollout={:.3} ← ACTIVE", w_cnn, w_rollout);
+                    log::info!(
+                        "   Entropy: {:.3} (normalized: {:.3})",
+                        entropy,
+                        normalized_entropy
+                    );
+                    log::info!(
+                        "   Turn-only:    w_cnn={:.3}, w_rollout={:.3}",
+                        turn_w_cnn,
+                        turn_w_rollout
+                    );
+                    log::info!(
+                        "   Entropy-only: w_cnn={:.3}, w_rollout={:.3}",
+                        entropy_w_cnn,
+                        entropy_w_rollout
+                    );
+                    log::info!(
+                        "   HYBRID:       w_cnn={:.3}, w_rollout={:.3} ← ACTIVE",
+                        w_cnn,
+                        w_rollout
+                    );
                 }
 
                 Some((w_cnn, w_rollout))
@@ -424,7 +462,8 @@ fn mcts_core(
         MctsEvaluator::Neural {
             policy_net,
             value_net,
-        } | MctsEvaluator::NeuralWithQNet {
+        }
+        | MctsEvaluator::NeuralWithQNet {
             policy_net,
             value_net,
             ..
@@ -448,14 +487,16 @@ fn mcts_core(
                         current_turn,
                         total_turns,
                     ),
-                    NNArchitecture::CnnOnehot => crate::neural::tensor_onehot::convert_plateau_onehot(
-                        &temp_plateau,
-                        &chosen_tile,
-                        &temp_deck,
-                        current_turn,
-                    ),
+                    NNArchitecture::CnnOnehot => {
+                        crate::neural::tensor_onehot::convert_plateau_onehot(
+                            &temp_plateau,
+                            &chosen_tile,
+                            &temp_deck,
+                            current_turn,
+                        )
+                    }
                     NNArchitecture::Gnn => {
-                        convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
+                        convert_plateau_to_graph_features(&temp_plateau, current_turn, total_turns)
                     }
                 };
 
@@ -512,7 +553,7 @@ fn mcts_core(
                     // Note: clone needed here as temp_plateau/temp_deck used multiple times in loop
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
-                let normalized_value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+                let normalized_value = ((avg_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
 
                 min_value = min_value.min(normalized_value);
                 max_value = max_value.max(normalized_value);
@@ -608,11 +649,7 @@ fn mcts_core(
     // Formula: k(n) = C × n^α where n = total_visits
     // Adapts exploration breadth to confidence level (more visits = wider exploration)
     let pw_config = ProgressiveWideningConfig::adaptive(current_turn, total_turns);
-    let _max_actions = max_actions_to_explore(
-        total_visits as usize,
-        legal_moves.len(),
-        &pw_config,
-    );
+    let _max_actions = max_actions_to_explore(total_visits as usize, legal_moves.len(), &pw_config);
 
     for _ in 0..adaptive_simulations {
         // FIXED: Don't filter/sort by CNN when it's undertrained
@@ -679,7 +716,7 @@ fn mcts_core(
             let enhanced_eval =
                 enhanced_position_evaluation(&temp_plateau, position, &chosen_tile, current_turn);
 
-            let normalized_rollout = ((average_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+            let normalized_rollout = ((average_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
             let normalized_value = value_estimate.clamp(-1.0, 1.0);
             let normalized_heuristic = (enhanced_eval / 30.0).clamp(-1.0, 1.0);
             let contextual = calculate_contextual_boost_entropy(
@@ -693,7 +730,8 @@ fn mcts_core(
 
             // Pattern Rollouts V2: Weighted combination of evaluators
             // Use adaptive weights if available (entropy-based), otherwise use fixed hyperparams
-            let (w_cnn, w_rollout) = adaptive_weights.unwrap_or((hyperparams.weight_cnn, hyperparams.weight_rollout));
+            let (w_cnn, w_rollout) =
+                adaptive_weights.unwrap_or((hyperparams.weight_cnn, hyperparams.weight_rollout));
             let combined_eval = w_cnn * normalized_value
                 + w_rollout * normalized_rollout
                 + hyperparams.weight_heuristic * normalized_heuristic
@@ -864,7 +902,8 @@ fn mcts_core_cow(
     }
 
     let (input_tensor, graph_features) = match &evaluator {
-        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
+        MctsEvaluator::Neural { policy_net, .. }
+        | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let PolicyNet { arch, .. } = policy_net;
             match arch {
                 NNArchitecture::Cnn => (
@@ -887,19 +926,13 @@ fn mcts_core_cow(
                     None,
                 ),
                 NNArchitecture::Gnn => {
-                    let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
+                    let gnn_feat = convert_plateau_to_graph_features(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
             }
         }
         MctsEvaluator::Pure => (
-            convert_plateau_to_tensor(
-                plateau,
-                &chosen_tile,
-                deck,
-                current_turn,
-                total_turns,
-            ),
+            convert_plateau_to_tensor(plateau, &chosen_tile, deck, current_turn, total_turns),
             None,
         ),
     };
@@ -911,7 +944,8 @@ fn mcts_core_cow(
 
     // ADAPTIVE ENTROPY WEIGHTING: Calculate policy entropy for dynamic weight adjustment
     let adaptive_weights = match &evaluator {
-        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
+        MctsEvaluator::Neural { policy_net, .. }
+        | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let policy_logits = policy_net.forward(&input_tensor, false);
             let policy = policy_logits.log_softmax(-1, tch::Kind::Float).exp();
 
@@ -920,7 +954,8 @@ fn mcts_core_cow(
 
             if !policy_probs.is_empty() {
                 // HYBRID STRATEGY: Turn-adaptive + Entropy-based
-                let (w_cnn, w_rollout) = hyperparams.get_hybrid_adaptive_weights(current_turn, &policy_probs);
+                let (w_cnn, w_rollout) =
+                    hyperparams.get_hybrid_adaptive_weights(current_turn, &policy_probs);
 
                 // Log adaptive weights at key turns (0, 5, 10, 15) to track strategy
                 let debug_turns = [0, 5, 10, 15];
@@ -936,14 +971,32 @@ fn mcts_core_cow(
                     let normalized_entropy = (entropy / max_entropy).clamp(0.0, 1.0);
 
                     // Compare strategies
-                    let (turn_w_cnn, turn_w_rollout) = hyperparams.get_turn_adaptive_weights(current_turn);
-                    let (entropy_w_cnn, entropy_w_rollout) = hyperparams.get_adaptive_cnn_weight(&policy_probs);
+                    let (turn_w_cnn, turn_w_rollout) =
+                        hyperparams.get_turn_adaptive_weights(current_turn);
+                    let (entropy_w_cnn, entropy_w_rollout) =
+                        hyperparams.get_adaptive_cnn_weight(&policy_probs);
 
                     log::info!("🎯 ADAPTIVE STRATEGY COMPARISON (turn {}):", current_turn);
-                    log::info!("   Entropy: {:.3} (normalized: {:.3})", entropy, normalized_entropy);
-                    log::info!("   Turn-only:    w_cnn={:.3}, w_rollout={:.3}", turn_w_cnn, turn_w_rollout);
-                    log::info!("   Entropy-only: w_cnn={:.3}, w_rollout={:.3}", entropy_w_cnn, entropy_w_rollout);
-                    log::info!("   HYBRID:       w_cnn={:.3}, w_rollout={:.3} ← ACTIVE", w_cnn, w_rollout);
+                    log::info!(
+                        "   Entropy: {:.3} (normalized: {:.3})",
+                        entropy,
+                        normalized_entropy
+                    );
+                    log::info!(
+                        "   Turn-only:    w_cnn={:.3}, w_rollout={:.3}",
+                        turn_w_cnn,
+                        turn_w_rollout
+                    );
+                    log::info!(
+                        "   Entropy-only: w_cnn={:.3}, w_rollout={:.3}",
+                        entropy_w_cnn,
+                        entropy_w_rollout
+                    );
+                    log::info!(
+                        "   HYBRID:       w_cnn={:.3}, w_rollout={:.3} ← ACTIVE",
+                        w_cnn,
+                        w_rollout
+                    );
                 }
 
                 Some((w_cnn, w_rollout))
@@ -958,7 +1011,8 @@ fn mcts_core_cow(
         MctsEvaluator::Neural {
             policy_net,
             value_net: _,
-        } | MctsEvaluator::NeuralWithQNet {
+        }
+        | MctsEvaluator::NeuralWithQNet {
             policy_net,
             value_net: _,
             ..
@@ -984,7 +1038,7 @@ fn mcts_core_cow(
                     ) as f64;
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
-                let value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+                let value = ((avg_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
 
                 min_value = min_value.min(value);
                 max_value = max_value.max(value);
@@ -1034,7 +1088,7 @@ fn mcts_core_cow(
                     ) as f64;
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
-                let normalized_value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+                let normalized_value = ((avg_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
 
                 min_value = min_value.min(normalized_value);
                 max_value = max_value.max(normalized_value);
@@ -1117,20 +1171,25 @@ fn mcts_core_cow(
     let temperature = hyperparams.get_temperature(current_turn);
 
     let pw_config = ProgressiveWideningConfig::adaptive(current_turn, total_turns);
-    let _max_actions = max_actions_to_explore(
-        total_visits as usize,
-        legal_moves.len(),
-        &pw_config,
-    );
+    let _max_actions = max_actions_to_explore(total_visits as usize, legal_moves.len(), &pw_config);
 
     // DEBUG: Log MCTS configuration on first simulation of first turn
     let debug_first_turn = false; // Disabled for dataset generation performance
     if debug_first_turn {
         log::info!("🔍 DEBUG MCTS turn 0:");
-        log::info!("   legal_moves.len()={}, max_actions={}, adaptive_simulations={}",
-            legal_moves.len(), _max_actions, adaptive_simulations);
-        log::info!("   pruning_ratio={:.3}, value_threshold={:.3}, min_value={:.3}, max_value={:.3}",
-            pruning_ratio, value_threshold, min_value, max_value);
+        log::info!(
+            "   legal_moves.len()={}, max_actions={}, adaptive_simulations={}",
+            legal_moves.len(),
+            _max_actions,
+            adaptive_simulations
+        );
+        log::info!(
+            "   pruning_ratio={:.3}, value_threshold={:.3}, min_value={:.3}, max_value={:.3}",
+            pruning_ratio,
+            value_threshold,
+            min_value,
+            max_value
+        );
     }
 
     for sim_idx in 0..adaptive_simulations {
@@ -1164,54 +1223,54 @@ fn mcts_core_cow(
             // Otherwise simulated_score = 0/0 = NaN, which propagates through combined_eval
             // even when weight_rollout = 0.0 (because 0.0 * NaN = NaN in IEEE 754)
             let simulated_score = if rollout_count == 0 {
-                0.0  // No rollouts = assume average value
+                0.0 // No rollouts = assume average value
             } else {
                 for _ in 0..rollout_count {
-                // ✅ Cheap clone (Rc increment, was expensive Vec clone before)
-                let lookahead_plateau_cow = temp_plateau_cow.clone();
-                let lookahead_deck_cow = temp_deck_cow.clone();
+                    // ✅ Cheap clone (Rc increment, was expensive Vec clone before)
+                    let lookahead_plateau_cow = temp_plateau_cow.clone();
+                    let lookahead_deck_cow = temp_deck_cow.clone();
 
-                // Read-only access
-                let deck_tiles_len = lookahead_deck_cow.read(|d| d.tiles.len());
-                if deck_tiles_len == 0 {
-                    continue;
-                }
+                    // Read-only access
+                    let deck_tiles_len = lookahead_deck_cow.read(|d| d.tiles.len());
+                    if deck_tiles_len == 0 {
+                        continue;
+                    }
 
-                let tile2_index = random_index(deck_tiles_len);
-                let tile2 = lookahead_deck_cow.read(|d| d.tiles[tile2_index]);
+                    let tile2_index = random_index(deck_tiles_len);
+                    let tile2 = lookahead_deck_cow.read(|d| d.tiles[tile2_index]);
 
-                let second_moves = lookahead_plateau_cow.read(get_legal_moves);
+                    let second_moves = lookahead_plateau_cow.read(get_legal_moves);
 
-                let mut best_score_for_tile2: f64 = 0.0;
+                    let mut best_score_for_tile2: f64 = 0.0;
 
-                for &pos2 in &second_moves {
-                    // ✅ Cheap clone (was expensive Vec clone before)
-                    let plateau2_cow = lookahead_plateau_cow.clone_for_modification();
-                    let deck2_cow = lookahead_deck_cow.clone_for_modification();
+                    for &pos2 in &second_moves {
+                        // ✅ Cheap clone (was expensive Vec clone before)
+                        let plateau2_cow = lookahead_plateau_cow.clone_for_modification();
+                        let deck2_cow = lookahead_deck_cow.clone_for_modification();
 
-                    plateau2_cow.set_tile(pos2, tile2);
-                    let deck2_cow = replace_tile_in_deck_cow(&deck2_cow, &tile2);
+                        plateau2_cow.set_tile(pos2, tile2);
+                        let deck2_cow = replace_tile_in_deck_cow(&deck2_cow, &tile2);
 
-                    // RAVE: Use with_trace to get positions played during rollout
-                    let (score, positions_played) = simulate_games_smart_with_trace(
-                        plateau2_cow.into_inner(),  // ✅ Consumes CoW wrapper
-                        deck2_cow.into_inner(),      // ✅ Consumes CoW wrapper
-                        None,
-                    );
-                    let score = score as f64;
-                    best_score_for_tile2 = best_score_for_tile2.max(score);
+                        // RAVE: Use with_trace to get positions played during rollout
+                        let (score, positions_played) = simulate_games_smart_with_trace(
+                            plateau2_cow.into_inner(), // ✅ Consumes CoW wrapper
+                            deck2_cow.into_inner(),    // ✅ Consumes CoW wrapper
+                            None,
+                        );
+                        let score = score as f64;
+                        best_score_for_tile2 = best_score_for_tile2.max(score);
 
-                    // RAVE: Update statistics for all positions in rollout (All-Moves-As-First heuristic)
-                    for &played_pos in &positions_played {
-                        if legal_moves.contains(&played_pos) {
-                            *rave_visits.entry(played_pos).or_insert(0) += 1;
-                            *rave_scores.entry(played_pos).or_insert(0.0) += score;
+                        // RAVE: Update statistics for all positions in rollout (All-Moves-As-First heuristic)
+                        for &played_pos in &positions_played {
+                            if legal_moves.contains(&played_pos) {
+                                *rave_visits.entry(played_pos).or_insert(0) += 1;
+                                *rave_scores.entry(played_pos).or_insert(0.0) += score;
+                            }
                         }
                     }
-                }
 
-                total_simulated_score += best_score_for_tile2;
-            }
+                    total_simulated_score += best_score_for_tile2;
+                }
 
                 total_simulated_score / rollout_count as f64
             };
@@ -1232,7 +1291,7 @@ fn mcts_core_cow(
             let enhanced_eval =
                 enhanced_position_evaluation(&temp_plateau, position, &chosen_tile, current_turn);
 
-            let normalized_rollout = ((average_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+            let normalized_rollout = ((average_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
             let normalized_value = value_estimates[&position];
             let normalized_heuristic = (enhanced_eval / 30.0).clamp(-1.0, 1.0);
 
@@ -1248,7 +1307,8 @@ fn mcts_core_cow(
             // Early game (0-5):   20% GNN,  70% rollout (GNN weak, trust rollouts)
             // Mid game (6-11):    45% GNN,  45% rollout (balanced)
             // Late game (12+):    75% GNN,  15% rollout (GNN strong, trust policy)
-            let (w_cnn, w_rollout) = adaptive_weights.unwrap_or((hyperparams.weight_cnn, hyperparams.weight_rollout));
+            let (w_cnn, w_rollout) =
+                adaptive_weights.unwrap_or((hyperparams.weight_cnn, hyperparams.weight_rollout));
             let combined_eval = w_cnn * normalized_value
                 + w_rollout * normalized_rollout
                 + hyperparams.weight_heuristic * normalized_heuristic
@@ -1268,14 +1328,32 @@ fn mcts_core_cow(
 
     // DEBUG: Log UCB scores before selection
     if debug_first_turn {
-        let mut ucb_vec: Vec<(usize, f64)> = ucb_scores.iter().map(|(&pos, &score)| (pos, score)).collect();
+        let mut ucb_vec: Vec<(usize, f64)> = ucb_scores
+            .iter()
+            .map(|(&pos, &score)| (pos, score))
+            .collect();
         ucb_vec.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        log::info!("   UCB scores (top 5): {:?}",
-            ucb_vec.iter().take(5).map(|(pos, score)| format!("pos{}:{:.4}", pos, score)).collect::<Vec<_>>());
+        log::info!(
+            "   UCB scores (top 5): {:?}",
+            ucb_vec
+                .iter()
+                .take(5)
+                .map(|(pos, score)| format!("pos{}:{:.4}", pos, score))
+                .collect::<Vec<_>>()
+        );
         log::info!("   Total visits: {}", total_visits);
-        let visits_vec: Vec<(usize, usize)> = visit_counts.iter().map(|(&pos, &count)| (pos, count)).collect();
-        log::info!("   Visit counts (first 5): {:?}",
-            visits_vec.iter().take(5).map(|(pos, count)| format!("pos{}:{}", pos, count)).collect::<Vec<_>>());
+        let visits_vec: Vec<(usize, usize)> = visit_counts
+            .iter()
+            .map(|(&pos, &count)| (pos, count))
+            .collect();
+        log::info!(
+            "   Visit counts (first 5): {:?}",
+            visits_vec
+                .iter()
+                .take(5)
+                .map(|(pos, count)| format!("pos{}:{}", pos, count))
+                .collect::<Vec<_>>()
+        );
     }
 
     // For supervised learning: use value_estimates (initial rollouts Q-values) for exploitation
@@ -1293,8 +1371,11 @@ fn mcts_core_cow(
 
     // DEBUG: Log selected position
     if debug_first_turn {
-        log::info!("   Selected best_position: {} with UCB score: {:.4}",
-            best_position, ucb_scores.get(&best_position).unwrap_or(&f64::NEG_INFINITY));
+        log::info!(
+            "   Selected best_position: {} with UCB score: {:.4}",
+            best_position,
+            ucb_scores.get(&best_position).unwrap_or(&f64::NEG_INFINITY)
+        );
     }
 
     // Final simulation using owned values (acceptable, happens once per move)
@@ -1410,7 +1491,10 @@ fn create_q_value_policy_target(
 
     // Extract Q-values for all positions
     let positions: Vec<usize> = q_values.keys().copied().collect();
-    let q_vec: Vec<f64> = positions.iter().map(|&pos| *q_values.get(&pos).unwrap_or(&0.0)).collect();
+    let q_vec: Vec<f64> = positions
+        .iter()
+        .map(|&pos| *q_values.get(&pos).unwrap_or(&0.0))
+        .collect();
 
     if q_vec.is_empty() {
         return Tensor::from_slice(&policy);
@@ -1493,7 +1577,8 @@ fn mcts_core_gumbel(
     }
 
     let (input_tensor, graph_features) = match &evaluator {
-        MctsEvaluator::Neural { policy_net, .. } | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
+        MctsEvaluator::Neural { policy_net, .. }
+        | MctsEvaluator::NeuralWithQNet { policy_net, .. } => {
             let PolicyNet { arch, .. } = policy_net;
             match arch {
                 NNArchitecture::Cnn => (
@@ -1516,7 +1601,7 @@ fn mcts_core_gumbel(
                     None,
                 ),
                 NNArchitecture::Gnn => {
-                    let gnn_feat = convert_plateau_for_gnn(plateau, current_turn, total_turns);
+                    let gnn_feat = convert_plateau_to_graph_features(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
             }
@@ -1535,7 +1620,8 @@ fn mcts_core_gumbel(
         MctsEvaluator::Neural {
             policy_net,
             value_net,
-        } | MctsEvaluator::NeuralWithQNet {
+        }
+        | MctsEvaluator::NeuralWithQNet {
             policy_net,
             value_net,
             ..
@@ -1558,14 +1644,16 @@ fn mcts_core_gumbel(
                         current_turn,
                         total_turns,
                     ),
-                    NNArchitecture::CnnOnehot => crate::neural::tensor_onehot::convert_plateau_onehot(
-                        &temp_plateau,
-                        &chosen_tile,
-                        &temp_deck,
-                        current_turn,
-                    ),
+                    NNArchitecture::CnnOnehot => {
+                        crate::neural::tensor_onehot::convert_plateau_onehot(
+                            &temp_plateau,
+                            &chosen_tile,
+                            &temp_deck,
+                            current_turn,
+                        )
+                    }
                     NNArchitecture::Gnn => {
-                        convert_plateau_for_gnn(&temp_plateau, current_turn, total_turns)
+                        convert_plateau_to_graph_features(&temp_plateau, current_turn, total_turns)
                     }
                 };
 
@@ -1622,7 +1710,7 @@ fn mcts_core_gumbel(
                     // Note: clone needed here as temp_plateau/temp_deck used multiple times in loop
                 }
                 let avg_score = total_simulated_score / rollout_count as f64;
-                let normalized_value = ((avg_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+                let normalized_value = ((avg_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
 
                 min_value = min_value.min(normalized_value);
                 max_value = max_value.max(normalized_value);
@@ -1720,7 +1808,7 @@ fn mcts_core_gumbel(
         *visits += 1;
 
         let q_value = q_values.entry(selected_position).or_insert(0.0);
-        let normalized_score = ((simulated_score / 200.0).clamp(0.0, 1.0) * 2.0) - 1.0;
+        let normalized_score = ((simulated_score / 350.0).clamp(0.0, 1.0) * 2.0) - 1.0;
         *q_value += (normalized_score - *q_value) / (*visits as f64);
     }
 
@@ -1854,18 +1942,14 @@ pub fn mcts_find_best_position_for_tile_uct(
     }
 
     // Get policy and value priors from neural networks
-    let input_tensor = convert_plateau_by_arch(
-        arch,
-        plateau,
-        &chosen_tile,
-        deck,
-        current_turn,
-        total_turns,
-    );
+    let input_tensor =
+        convert_plateau_by_arch(arch, plateau, &chosen_tile, deck, current_turn, total_turns);
 
     let policy_logits = policy_net.forward(&input_tensor, false);
     let policy_probs = policy_logits.softmax(1, Kind::Float);
-    let value_prior = value_net.forward(&input_tensor, false).double_value(&[0, 0]);
+    let value_prior = value_net
+        .forward(&input_tensor, false)
+        .double_value(&[0, 0]);
 
     // Extract policy probabilities for legal moves
     let mut policy_vec: Vec<f64> = Vec::new();
@@ -1899,7 +1983,14 @@ pub fn mcts_find_best_position_for_tile_uct(
         let should_log = debug_turns.contains(&current_turn) && num_simulations == 150;
         if should_log {
             log::info!("🔍 DEBUG MCTS Mixing (turn {}):", current_turn);
-            log::info!("   Policy BEFORE mix: {:?}", policy_vec.iter().take(5).map(|v| format!("{:.3}", v)).collect::<Vec<_>>());
+            log::info!(
+                "   Policy BEFORE mix: {:?}",
+                policy_vec
+                    .iter()
+                    .take(5)
+                    .map(|v| format!("{:.3}", v))
+                    .collect::<Vec<_>>()
+            );
         }
 
         for (idx, &pos) in legal_moves.iter().enumerate() {
@@ -1916,7 +2007,14 @@ pub fn mcts_find_best_position_for_tile_uct(
 
         // DEBUG: Log after mixing
         if should_log {
-            log::info!("   Policy AFTER mix: {:?}", policy_vec.iter().take(5).map(|v| format!("{:.3}", v)).collect::<Vec<_>>());
+            log::info!(
+                "   Policy AFTER mix: {:?}",
+                policy_vec
+                    .iter()
+                    .take(5)
+                    .map(|v| format!("{:.3}", v))
+                    .collect::<Vec<_>>()
+            );
         }
     }
 
@@ -1960,7 +2058,7 @@ pub fn mcts_find_best_position_for_tile_uct(
             let mean_value = if visits > 0 {
                 total_values[&pos] / visits as f64
             } else {
-                value_prior  // Use value network as prior
+                value_prior // Use value network as prior
             };
 
             // UCT formula: Q(s,a) + c * P(s,a) * sqrt(N) / (1 + n(a))
@@ -1991,14 +2089,15 @@ pub fn mcts_find_best_position_for_tile_uct(
         let score_gain = (immediate_score - base_score) as f64;
 
         // 2. Completion potential: count lines that are 2/3+ filled with same value
-        let completion_potential = calculate_line_completion_potential(&temp_plateau, current_turn, total_turns);
+        let completion_potential =
+            calculate_line_completion_potential(&temp_plateau, current_turn, total_turns);
 
         // 3. Hex degree bonus: center positions touch more lines (weight: 1-6)
-        let hex_degree = get_hex_degree(best_position) as f64 / 6.0;  // Normalize to [0,1]
+        let hex_degree = get_hex_degree(best_position) as f64 / 6.0; // Normalize to [0,1]
 
         // Combined Q-value (normalized to [-1, 1] range)
         let q_value = (score_gain * 0.5) + (completion_potential * 0.3) + (hex_degree * 0.2);
-        let normalized_value = (q_value / 100.0).clamp(-1.0, 1.0);
+        let normalized_value = (q_value / 50.0).clamp(-1.0, 1.0);
 
         // Update statistics
         *visit_counts.get_mut(&best_position).unwrap() += 1;
@@ -2021,14 +2120,36 @@ pub fn mcts_find_best_position_for_tile_uct(
     let debug_turns = [0, 5, 10, 15];
     let should_log_visits = debug_turns.contains(&current_turn) && num_simulations == 150;
     if should_log_visits {
-        let mut sorted_visits: Vec<(usize, usize)> = visit_counts.iter().map(|(&pos, &visits)| (pos, visits)).collect();
+        let mut sorted_visits: Vec<(usize, usize)> = visit_counts
+            .iter()
+            .map(|(&pos, &visits)| (pos, visits))
+            .collect();
         sorted_visits.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by visits descending
-        log::info!("🔍 DEBUG Visit Counts after {} simulations:", num_simulations);
-        log::info!("   Best position: {} with {} visits", best_position, max_visits);
-        log::info!("   Top 5 positions: {:?}", sorted_visits.iter().take(5).map(|(pos, v)| format!("pos{}:{}", pos, v)).collect::<Vec<_>>());
+        log::info!(
+            "🔍 DEBUG Visit Counts after {} simulations:",
+            num_simulations
+        );
+        log::info!(
+            "   Best position: {} with {} visits",
+            best_position,
+            max_visits
+        );
+        log::info!(
+            "   Top 5 positions: {:?}",
+            sorted_visits
+                .iter()
+                .take(5)
+                .map(|(pos, v)| format!("pos{}:{}", pos, v))
+                .collect::<Vec<_>>()
+        );
         let visit_values: Vec<usize> = sorted_visits.iter().map(|(_, v)| *v).collect();
         let avg_visits = visit_values.iter().sum::<usize>() as f64 / visit_values.len() as f64;
-        log::info!("   Visit avg: {:.1}, max: {}, min: {}", avg_visits, visit_values[0], visit_values[visit_values.len()-1]);
+        log::info!(
+            "   Visit avg: {:.1}, max: {}, min: {}",
+            avg_visits,
+            visit_values[0],
+            visit_values[visit_values.len() - 1]
+        );
     }
 
     // Create distribution based on visit counts
@@ -2071,7 +2192,11 @@ fn calculate_score_for_plateau(plateau: &Plateau) -> i32 {
 
 /// Calculate line completion potential: how close are we to completing valuable lines?
 /// Returns a score [0-100] based on lines that are 2/3+ filled with same value
-fn calculate_line_completion_potential(plateau: &Plateau, _current_turn: usize, _total_turns: usize) -> f64 {
+fn calculate_line_completion_potential(
+    plateau: &Plateau,
+    _current_turn: usize,
+    _total_turns: usize,
+) -> f64 {
     use crate::neural::tensor_conversion::LINE_DEFS;
 
     let mut potential = 0.0;
@@ -2109,10 +2234,10 @@ fn calculate_line_completion_potential(plateau: &Plateau, _current_turn: usize, 
             if max_count >= 2 {
                 // Line has potential! Weight by fill ratio and max count
                 let value_score = match max_count {
-                    2 => 5.0,   // Potential for small line
-                    3 => 15.0,  // Potential for medium line
-                    4 => 30.0,  // Potential for large line
-                    _ => 50.0,  // Potential for full line
+                    2 => 5.0,  // Potential for small line
+                    3 => 15.0, // Potential for medium line
+                    4 => 30.0, // Potential for large line
+                    _ => 50.0, // Potential for full line
                 };
                 potential += value_score * fill_ratio;
             }

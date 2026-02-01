@@ -4,7 +4,6 @@
 /// Uses identical tile sequences for fair comparison.
 ///
 /// Expected improvement: +15-25% score with -40% redundant simulations
-
 use chrono::Utc;
 use clap::Parser;
 use flexi_logger::Logger;
@@ -21,8 +20,8 @@ use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::game::tile::Tile;
 use take_it_easy::mcts::algorithm::mcts_find_best_position_for_tile_with_nn;
-use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::neural::manager::NNArchitecture;
+use take_it_easy::neural::{NeuralConfig, NeuralManager};
 use take_it_easy::scoring::scoring::result;
 
 #[derive(Parser, Debug)]
@@ -59,9 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .format(flexi_logger::colored_default_format)
         .start()?;
 
-    log::info!(
-        "🎮 Sprint 1 Benchmark: Progressive Widening vs Baseline"
-    );
+    log::info!("🎮 Sprint 1 Benchmark: Progressive Widening vs Baseline");
     log::info!(
         "   Games: {}, Simulations: {}, Seed: {}, Turns: {}",
         args.games,
@@ -99,12 +96,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let policy_net = manager.policy_net();
         let value_net = manager.value_net();
 
-        let score = play_game(
-            &tile_order,
-            args.simulations,
-            policy_net,
-            value_net,
-        );
+        let score = play_game(&tile_order, args.simulations, policy_net, value_net);
 
         scores.push(score);
 
@@ -126,7 +118,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     println!();
     println!("Baseline reference : 159.95 pts (from hyperparameters.rs)");
-    println!("Improvement        : {:+.2} pts ({:+.1}%)",
+    println!(
+        "Improvement        : {:+.2} pts ({:+.1}%)",
         stats.mean - 159.95,
         ((stats.mean - 159.95) / 159.95) * 100.0
     );
@@ -134,12 +127,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("===================================================\n");
 
     if !args.log_path.trim().is_empty() {
-        if let Err(e) = append_log(
-            &args.log_path,
-            &args,
-            &stats,
-        ) {
-            eprintln!("[benchmark_progressive_widening] failed to append log: {}", e);
+        if let Err(e) = append_log(&args.log_path, &args, &stats) {
+            eprintln!(
+                "[benchmark_progressive_widening] failed to append log: {}",
+                e
+            );
         }
     }
 
@@ -232,11 +224,7 @@ fn compute_stats(scores: &[i32]) -> Stats {
     }
 }
 
-fn append_log(
-    path: &str,
-    args: &Args,
-    stats: &Stats,
-) -> Result<(), String> {
+fn append_log(path: &str, args: &Args, stats: &Stats) -> Result<(), String> {
     let path = Path::new(path);
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
