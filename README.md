@@ -7,6 +7,56 @@ A comprehensive **Take It Easy** board game implementation featuring:
 - User authentication (email/password + OAuth)
 - Multiplayer support
 
+![Game Screenshot](docs/images/game_finished.png)
+
+---
+
+## Game Rules
+
+**Take It Easy** is a strategic tile-placement game for 1-4 players designed by Peter Burley.
+
+### Objective
+
+Score the most points by creating complete lines of matching numbers across your hexagonal board.
+
+### Components
+
+- **Board**: A hexagonal grid with 19 spaces arranged in a honeycomb pattern
+- **Tiles**: 27 unique hexagonal tiles, each displaying 3 colored bands with numbers:
+  - **Vertical band** (top to bottom): 1, 5, or 9
+  - **Diagonal left band**: 2, 6, or 7
+  - **Diagonal right band**: 3, 4, or 8
+
+### Gameplay
+
+1. **Tile Draw**: Each turn, a tile is randomly drawn and announced to all players
+2. **Placement**: Every player simultaneously places the same tile on any empty space of their own board
+3. **No Rotation**: Tiles cannot be rotated - they must be placed with their orientation preserved
+4. **19 Turns**: The game ends after all 19 spaces are filled
+
+### Scoring
+
+Points are calculated for each complete line across the board:
+
+| Direction | Number of lines |
+|-----------|-----------------|
+| Vertical (top-bottom) | 5 lines (3-4-5-4-3 spaces) |
+| Diagonal left | 5 lines |
+| Diagonal right | 5 lines |
+
+**Scoring a line:**
+- If ALL tiles in a line share the **same number** for that direction: `number × tiles in line`
+- If numbers differ: **0 points**
+
+**Example**: A vertical line of 4 tiles all showing "9" scores `9 × 4 = 36 points`
+
+### Strategy Tips
+
+- Plan ahead for longer lines (5 tiles = maximum multiplier)
+- The center positions are most valuable (intersect all 3 directions)
+- Balance between completing safe short lines vs. risky long lines
+- Watch which tiles have been played to estimate remaining probabilities
+
 ---
 
 ## 1. Prerequisites

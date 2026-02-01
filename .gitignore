@@ -44,11 +44,12 @@ local_target/
 .local_target/
 logs_archive*/
 
-# Images & Media
-*.png
-*.jpg
-*.jpeg
-*.gif
+# Images & Media (except docs/images)
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+!docs/images/
 
 # macOS
 .DS_Store
