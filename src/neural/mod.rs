@@ -1,3 +1,4 @@
+pub mod gat;
 pub mod gnn;
 pub mod manager;
 pub mod policy_value_net;
@@ -8,5 +9,6 @@ pub mod tensor_onehot;
 pub mod training;
 
 // Re-export key components for convenience
+pub use gat::{GATPolicyNet, GATValueNet, GraphAttentionNetwork};
 pub use manager::{NeuralConfig, NeuralManager};
 pub use qvalue_net::QNetManager;
