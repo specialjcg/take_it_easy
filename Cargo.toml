@@ -49,7 +49,7 @@ tonic-prost-build = "0.14"
 [dev-dependencies]
 tokio-test = "0.4"
 assert_matches = "1.5"
-tempfile = "3.10"
+tempfile = "3.24"
 
 # Profils optimisés
 [profile.release]
