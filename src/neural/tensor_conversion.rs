@@ -504,3 +504,82 @@ pub fn compute_orientation_scores(plateau: &Plateau) -> [[f32; GRAPH_NODE_COUNT]
 
     orientation_scores
 }
+
+/// Convert plateau to GAT-compatible format with 47 features per node
+/// Output shape: [19, 47] - one row per hex position, 47 features each
+///
+/// Features per node (47 total):
+/// - Ch 0-2: Plateau tile values at this position (v1, v2, v3) / 9
+/// - Ch 3: Empty cell mask (1.0 if empty)
+/// - Ch 4-6: Current tile to place (v1, v2, v3) / 9 (broadcast)
+/// - Ch 7: Turn progress
+/// - Ch 8-16: Bag value counts (9 features, broadcast)
+/// - Ch 17-46: Line features (30 features - 2 per line)
+pub fn convert_plateau_for_gat_47ch(
+    plateau: &Plateau,
+    tile: &Tile,
+    deck: &Deck,
+    _current_turn: usize,
+    _total_turns: usize,
+) -> Tensor {
+    let mut features = vec![0.0f32; GRAPH_NODE_COUNT * CHANNELS];
+
+    let num_placed = plateau
+        .tiles
+        .iter()
+        .filter(|&&t| t != Tile(0, 0, 0))
+        .count();
+    let turn_progress = num_placed as f32 / 19.0;
+
+    // Compute bag counts
+    let bag_counts = compute_bag_value_counts(deck, tile);
+
+    // Compute line features
+    let line_features = compute_line_features(plateau, tile);
+
+    // Fill features for each hex position
+    for hex_pos in 0..GRAPH_NODE_COUNT {
+        let base = hex_pos * CHANNELS;
+        let plateau_tile = &plateau.tiles[hex_pos];
+
+        // Ch 0-3: Tile values and empty mask
+        if *plateau_tile == Tile(0, 0, 0) {
+            features[base + 3] = 1.0; // Empty
+        } else {
+            features[base] = plateau_tile.0 as f32 / 9.0;
+            features[base + 1] = plateau_tile.1 as f32 / 9.0;
+            features[base + 2] = plateau_tile.2 as f32 / 9.0;
+        }
+
+        // Ch 4-6: Current tile to place (broadcast)
+        features[base + 4] = tile.0 as f32 / 9.0;
+        features[base + 5] = tile.1 as f32 / 9.0;
+        features[base + 6] = tile.2 as f32 / 9.0;
+
+        // Ch 7: Turn progress (broadcast)
+        features[base + 7] = turn_progress;
+
+        // Ch 8-16: Bag counts (broadcast)
+        features[base + 8] = bag_counts.dir1[0];
+        features[base + 9] = bag_counts.dir1[1];
+        features[base + 10] = bag_counts.dir1[2];
+        features[base + 11] = bag_counts.dir2[0];
+        features[base + 12] = bag_counts.dir2[1];
+        features[base + 13] = bag_counts.dir2[2];
+        features[base + 14] = bag_counts.dir3[0];
+        features[base + 15] = bag_counts.dir3[1];
+        features[base + 16] = bag_counts.dir3[2];
+
+        // Ch 17-46: Line features
+        // For each line, check if this position is part of it
+        for (line_idx, (potential, compatibility)) in line_features.iter().enumerate() {
+            let positions = LINE_DEFS[line_idx].0;
+            if positions.contains(&hex_pos) {
+                features[base + 17 + line_idx * 2] = *potential;
+                features[base + 18 + line_idx * 2] = *compatibility;
+            }
+        }
+    }
+
+    Tensor::from_slice(&features).view([GRAPH_NODE_COUNT as i64, CHANNELS as i64])
+}
