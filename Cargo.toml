@@ -7,7 +7,7 @@ description = "A comprehensive Take It Easy board game implementation with AI ca
 [dependencies]
 rand = "0.10.0-rc.5"
 rand_distr = "0.6.0-rc.0"  # For Dirichlet noise in AlphaGo Zero self-play (compatible with rand 0.10.0-rc.5)
-tokio = { version = "1.48.0", features = ["rt", "rt-multi-thread", "macros", "time", "fs"] }
+tokio = { version = "1.49.0", features = ["rt", "rt-multi-thread", "macros", "time", "fs"] }
 serde_json = "1.0.148"
 serde = { version = "1.0.188", features = ["derive"] }
 tokio-tungstenite = "0.28.0"
