@@ -13,6 +13,7 @@ use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_deck};
 use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::gat::GATPolicyNet;
+use take_it_easy::neural::model_io::load_varstore;
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
 
@@ -20,8 +21,8 @@ use take_it_easy::scoring::scoring::result;
 #[command(name = "eval_ensemble")]
 #[command(about = "Evaluate GAT ensemble from multiple trained models")]
 struct Args {
-    /// Model paths (comma-separated)
-    #[arg(long, default_value = "model_weights/gat_seed42_policy.pt,model_weights/gat_seed123_policy.pt,model_weights/gat_seed456_policy.pt,model_weights/gat_seed789_policy.pt,model_weights/gat_seed2024_policy.pt")]
+    /// Model paths (comma-separated, .safetensors format)
+    #[arg(long, default_value = "model_weights/gat_seed42_policy.safetensors,model_weights/gat_seed123_policy.safetensors,model_weights/gat_seed456_policy.safetensors,model_weights/gat_seed789_policy.safetensors,model_weights/gat_seed2024_policy.safetensors")]
     models: String,
 
     /// Hidden layer sizes
@@ -60,13 +61,13 @@ fn main() {
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
 
-    // Load all models
-    println!("Loading {} models...", model_paths.len());
+    // Load all models using safetensors format
+    println!("Loading {} models (safetensors format)...", model_paths.len());
     let mut models = Vec::new();
     for (i, path) in model_paths.iter().enumerate() {
         let mut vs = nn::VarStore::new(device);
         let net = GATPolicyNet::new(&vs, 47, &hidden_sizes, args.heads, 0.0);
-        match vs.load(path) {
+        match load_varstore(&mut vs, path) {
             Ok(_) => {
                 println!("  [{}] {} ✓", i + 1, path);
                 models.push((vs, net));

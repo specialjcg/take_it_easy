@@ -19,6 +19,7 @@ use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::plateau::Plateau;
 use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::gat::GATPolicyNet;
+use take_it_easy::neural::model_io::save_varstore;
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 
 #[derive(Parser, Debug)]
@@ -383,6 +384,11 @@ fn main() {
 
         if val_acc > best_val_acc {
             best_val_acc = val_acc;
+            // Save in safetensors format (portable) and legacy .pt format
+            let safetensors_path = format!("{}_policy.safetensors", args.save_path);
+            if let Err(e) = save_varstore(&vs, &safetensors_path) {
+                eprintln!("Warning: failed to save safetensors: {}", e);
+            }
             let _ = vs.save(format!("{}_policy.pt", args.save_path));
         }
     }
@@ -391,7 +397,7 @@ fn main() {
     println!("║                     TRAINING COMPLETE                        ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!("\n  Best validation accuracy: {:.2}%", best_val_acc * 100.0);
-    println!("  Model saved to: {}_policy.pt", args.save_path);
+    println!("  Model saved to: {}_policy.safetensors", args.save_path);
 
     // Evaluate
     println!("\n🎮 Evaluating by playing 200 games...\n");
