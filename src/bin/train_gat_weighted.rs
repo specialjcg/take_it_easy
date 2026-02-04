@@ -52,6 +52,14 @@ struct Args {
     #[arg(long, default_value_t = 4)]
     heads: usize,
 
+    /// Dropout rate
+    #[arg(long, default_value_t = 0.1)]
+    dropout: f64,
+
+    /// Weight decay (L2 regularization)
+    #[arg(long, default_value_t = 0.0)]
+    weight_decay: f64,
+
     /// Validation split
     #[arg(long, default_value_t = 0.1)]
     val_split: f64,
@@ -98,6 +106,8 @@ fn main() {
     println!("  LR:           {}", args.lr);
     println!("  Hidden:       {:?}", hidden);
     println!("  Heads:        {}", args.heads);
+    println!("  Dropout:      {}", args.dropout);
+    println!("  Weight decay: {}", args.weight_decay);
 
     // Load data with weights
     println!("\n📂 Loading data from {}...", args.data_dir);
@@ -141,8 +151,11 @@ fn main() {
     // Initialize network
     let device = Device::Cpu;
     let vs = nn::VarStore::new(device);
-    let policy_net = GATPolicyNet::new(&vs, 47, &hidden, args.heads, 0.1);
-    let mut opt = nn::Adam::default().build(&vs, args.lr).unwrap();
+    let policy_net = GATPolicyNet::new(&vs, 47, &hidden, args.heads, args.dropout);
+    let mut opt = nn::Adam {
+        wd: args.weight_decay,
+        ..Default::default()
+    }.build(&vs, args.lr).unwrap();
 
     let mut best_val_acc = 0.0f64;
 
