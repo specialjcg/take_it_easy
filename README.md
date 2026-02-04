@@ -7,7 +7,7 @@ A comprehensive **Take It Easy** board game implementation featuring:
 - User authentication (email/password + OAuth)
 - Multiplayer support
 
-> 🏆 **New**: The GAT model trained on elite games achieves **137.75 pts** average, surpassing the CNN+MCTS hybrid (127.30 pts)!
+> 🏆 **Record**: The GAT model with weighted loss achieves **144.03 pts** average, surpassing the CNN+MCTS hybrid (127.30 pts) by **+13.1%**!
 
 ![Game Screenshot](docs/images/game_finished.png)
 
@@ -171,6 +171,7 @@ take_it_easy/
 ├── frontend/               # SolidJS frontend (alternative)
 ├── model_weights/          # Neural network weights
 │   ├── cnn/                # CNN policy & value networks
+│   ├── gat_weighted_best_policy.pt  # Best GAT (144 pts) ⭐
 │   ├── gat_elite150/       # GAT trained on elite games (≥150 pts)
 │   └── qvalue_net.params   # Q-Value network (MCTS pruning)
 ├── protos/                 # gRPC protocol definitions
@@ -199,24 +200,44 @@ Graph-based approach respecting the hexagonal topology:
 
 ### Benchmark Results
 
-| Method | Avg Score | ≥100 pts | ≥150 pts |
-|--------|-----------|----------|----------|
-| **GAT Policy (elite)** | **137.75** | 92% | 30% |
-| CNN + Q-net + MCTS | 127.30 | 82% | 27% |
-| GAT + MCTS | 120.89 | 82% | 12% |
-| Pure MCTS (200 sim) | 99.48 | 52% | 5% |
-| Greedy | 21.81 | 0% | 0% |
+| Method | Avg Score | ≥100 pts | ≥140 pts | ≥150 pts |
+|--------|-----------|----------|----------|----------|
+| **GAT Weighted (best)** | **144.03** | 97.0% | 55.5% | **43.0%** |
+| GAT + Augmentation (6x) | 139.26 | 93.5% | 52.0% | 34.5% |
+| GAT Policy (elite 150) | 137.75 | 92% | - | 30% |
+| CNN + Q-net + MCTS | 127.30 | 82% | 27% | - |
+| GAT + MCTS | 120.89 | 82% | - | 12% |
+| Pure MCTS (200 sim) | 99.48 | 52% | - | 5% |
+| Greedy | 21.81 | 0% | 0% | 0% |
 
-> **Key finding**: The GAT Policy trained on elite games (score ≥150) outperforms the CNN+MCTS hybrid by **+10.45 points** on average, with faster inference (no MCTS simulations needed).
+> **Key finding**: The GAT with weighted loss training (dropout=0.2, weight_decay=1e-4) outperforms the CNN+MCTS hybrid by **+16.73 points** (+13.1%), with faster inference (no MCTS simulations needed).
+
+#### Training Insights
+
+| Technique | Effect |
+|-----------|--------|
+| **Weighted Loss** (power=3.0) | Higher scores contribute more to learning |
+| **Dropout** (0.2) | +3 pts improvement, reduces overfitting |
+| **Weight Decay** (1e-4) | Helps generalization to game play |
+| **Data Augmentation** (6x rotations) | Did NOT help - board edges have asymmetric value |
 
 ### Training the GAT
 
 ```bash
-# Train GAT on elite games (score ≥ 150)
+# Best configuration: weighted loss with regularization
+cargo run --release --bin train_gat_weighted -- \
+  --min-score 100 \
+  --weight-power 3.0 \
+  --epochs 80 \
+  --dropout 0.2 \
+  --weight-decay 0.0001 \
+  --save-path model_weights/gat_weighted_best
+
+# Alternative: train on elite games only (score ≥ 150)
 cargo run --release --bin train_gat_supervised -- --min-score 150 --epochs 50
 
-# Benchmark GAT vs CNN
-cargo run --release --bin benchmark_gat_vs_cnn_prod -- --games 100 --simulations 200
+# Evaluate GAT policy
+cargo run --release --bin eval_gat_supervised -- --games 200 --model model_weights/gat_weighted_best_policy.pt
 ```
 
 ---
