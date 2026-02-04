@@ -64,6 +64,18 @@ struct Args {
     #[arg(long, default_value_t = false)]
     augment: bool,
 
+    /// LR scheduler: none, cosine, warmup_cosine
+    #[arg(long, default_value = "none")]
+    lr_scheduler: String,
+
+    /// Warmup epochs (for warmup_cosine)
+    #[arg(long, default_value_t = 5)]
+    warmup_epochs: usize,
+
+    /// Minimum LR ratio (for cosine: min_lr = lr * min_lr_ratio)
+    #[arg(long, default_value_t = 0.01)]
+    min_lr_ratio: f64,
+
     /// Validation split
     #[arg(long, default_value_t = 0.1)]
     val_split: f64,
@@ -169,6 +181,38 @@ fn rotate_sample(sample: &Sample, rotation: usize) -> Sample {
     }
 }
 
+/// Compute learning rate with scheduling
+fn compute_lr(
+    base_lr: f64,
+    epoch: usize,
+    total_epochs: usize,
+    scheduler: &str,
+    warmup_epochs: usize,
+    min_lr_ratio: f64,
+) -> f64 {
+    let min_lr = base_lr * min_lr_ratio;
+
+    match scheduler {
+        "cosine" => {
+            // Cosine annealing: lr decreases from base_lr to min_lr following cosine curve
+            let progress = epoch as f64 / total_epochs as f64;
+            min_lr + 0.5 * (base_lr - min_lr) * (1.0 + (std::f64::consts::PI * progress).cos())
+        }
+        "warmup_cosine" => {
+            if epoch < warmup_epochs {
+                // Linear warmup
+                base_lr * (epoch + 1) as f64 / warmup_epochs as f64
+            } else {
+                // Cosine annealing after warmup
+                let remaining_epochs = total_epochs - warmup_epochs;
+                let progress = (epoch - warmup_epochs) as f64 / remaining_epochs as f64;
+                min_lr + 0.5 * (base_lr - min_lr) * (1.0 + (std::f64::consts::PI * progress).cos())
+            }
+        }
+        _ => base_lr, // "none" or unknown
+    }
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -190,6 +234,13 @@ fn main() {
     println!("  Heads:        {}", args.heads);
     println!("  Dropout:      {}", args.dropout);
     println!("  Weight decay: {}", args.weight_decay);
+    println!("  LR scheduler: {}", args.lr_scheduler);
+    if args.lr_scheduler == "warmup_cosine" {
+        println!("  Warmup epochs:{}", args.warmup_epochs);
+    }
+    if args.lr_scheduler != "none" {
+        println!("  Min LR ratio: {}", args.min_lr_ratio);
+    }
     println!("  Augment:      {} (6x rotations)", args.augment);
 
     // Load data with weights
@@ -261,6 +312,17 @@ fn main() {
     for epoch in 0..args.epochs {
         let epoch_start = Instant::now();
 
+        // Update learning rate based on scheduler
+        let current_lr = compute_lr(
+            args.lr,
+            epoch,
+            args.epochs,
+            &args.lr_scheduler,
+            args.warmup_epochs,
+            args.min_lr_ratio,
+        );
+        opt.set_lr(current_lr);
+
         let mut train_idx = train_indices.clone();
         train_idx.shuffle(&mut rng);
 
@@ -305,11 +367,17 @@ fn main() {
         let elapsed = epoch_start.elapsed().as_secs_f32();
 
         if epoch % 5 == 0 || epoch == args.epochs - 1 || val_acc > best_val_acc {
-            println!("Epoch {:3}/{:3} | Train Loss: {:.4}, Acc: {:.2}% | Val Loss: {:.4}, Acc: {:.2}% | {:.1}s{}",
+            let lr_info = if args.lr_scheduler != "none" {
+                format!(" | LR: {:.6}", current_lr)
+            } else {
+                String::new()
+            };
+            println!("Epoch {:3}/{:3} | Train Loss: {:.4}, Acc: {:.2}% | Val Loss: {:.4}, Acc: {:.2}% | {:.1}s{}{}",
                      epoch + 1, args.epochs,
                      train_loss, train_acc * 100.0,
                      val_loss, val_acc * 100.0,
                      elapsed,
+                     lr_info,
                      if val_acc > best_val_acc { " 💾" } else { "" });
         }
 
