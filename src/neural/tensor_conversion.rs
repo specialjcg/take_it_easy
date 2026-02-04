@@ -667,7 +667,7 @@ pub fn convert_plateau_for_gat_extended(
 
     // Precompute line status for each line
     let mut line_status: Vec<(usize, usize, bool, i32)> = Vec::with_capacity(15); // (filled, empty, blocked, dominant_value)
-    for (line_idx, (positions, direction)) in LINE_DEFS.iter().enumerate() {
+    for (_line_idx, (positions, direction)) in LINE_DEFS.iter().enumerate() {
         let mut filled = 0;
         let mut empty = 0;
         let mut value_counts = [0u32; 10];

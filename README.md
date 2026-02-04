@@ -223,6 +223,21 @@ Graph-based approach respecting the hexagonal topology:
 | **Weight Decay** (1e-4) | Helps generalization to game play |
 | **Data Augmentation** (6x rotations) | Did NOT help - board edges have asymmetric value |
 
+#### Multi-Seed Training Results
+
+Training with different random seeds shows seed sensitivity:
+
+| Seed | Val Acc | Game Score | Games ≥140 |
+|------|---------|------------|------------|
+| 42   | 61.85%  | **144.72** | 57.5% |
+| 123  | 62.11%  | 143.41 | 60.5% |
+| 456  | 61.47%  | 137.65 | 46.0% |
+| 789  | 61.88%  | 141.41 | 56.0% |
+| 2024 | 61.49%  | 141.50 | 53.0% |
+
+**Summary**: Average 141.74 pts, range 137.65-144.72 pts (~7 pts variance due to initialization).
+Note: Validation accuracy does not correlate with game performance.
+
 ### Training the GAT
 
 ```bash

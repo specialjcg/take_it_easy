@@ -328,7 +328,7 @@ fn main() {
 
         let mut train_loss = 0.0;
         let mut train_correct = 0usize;
-        let mut train_weight_sum = 0.0;
+        let mut _train_weight_sum = 0.0;
         let n_batches = train_idx.len() / args.batch_size;
 
         for batch_i in 0..n_batches {
@@ -350,7 +350,7 @@ fn main() {
 
             opt.backward_step(&weighted_loss);
             train_loss += f64::try_from(&weighted_loss).unwrap();
-            train_weight_sum += f64::try_from(&weights.sum(Kind::Float)).unwrap();
+            _train_weight_sum += f64::try_from(&weights.sum(Kind::Float)).unwrap();
 
             // Accuracy (unweighted for comparison)
             let preds = masked_logits.argmax(-1, false);
