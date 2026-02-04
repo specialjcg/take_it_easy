@@ -60,6 +60,10 @@ struct Args {
     #[arg(long, default_value_t = 0.0)]
     weight_decay: f64,
 
+    /// Enable hexagonal rotation augmentation (6x data)
+    #[arg(long, default_value_t = false)]
+    augment: bool,
+
     /// Validation split
     #[arg(long, default_value_t = 0.1)]
     val_split: f64,
@@ -87,6 +91,84 @@ struct Sample {
     weight: f64,
 }
 
+/// 60° clockwise rotation mapping for the 19 hex positions
+/// The board layout:
+///       0   1   2
+///     3   4   5   6
+///   7   8   9  10  11
+///    12  13  14  15
+///      16  17  18
+const ROTATE_60_CW: [usize; 19] = [
+    2,   // 0 -> 2
+    6,   // 1 -> 6
+    11,  // 2 -> 11
+    1,   // 3 -> 1
+    5,   // 4 -> 5
+    10,  // 5 -> 10
+    15,  // 6 -> 15
+    0,   // 7 -> 0
+    4,   // 8 -> 4
+    9,   // 9 -> 9 (center stays)
+    14,  // 10 -> 14
+    18,  // 11 -> 18
+    3,   // 12 -> 3
+    8,   // 13 -> 8
+    13,  // 14 -> 13
+    17,  // 15 -> 17
+    7,   // 16 -> 7
+    12,  // 17 -> 12
+    16,  // 18 -> 16
+];
+
+/// Apply n times 60° rotation to a position
+fn rotate_position(pos: usize, n: usize) -> usize {
+    let mut p = pos;
+    for _ in 0..(n % 6) {
+        p = ROTATE_60_CW[p];
+    }
+    p
+}
+
+/// Rotate tile values: when board rotates 60° CW, line directions shift
+/// Vertical(0) -> DiagRight(2), DiagLeft(1) -> Vertical(0), DiagRight(2) -> DiagLeft(1)
+fn rotate_tile_values(tile: (i32, i32, i32), n: usize) -> (i32, i32, i32) {
+    let mut t = tile;
+    for _ in 0..(n % 6) {
+        t = (t.1, t.2, t.0); // (v, dl, dr) -> (dl, dr, v)
+    }
+    t
+}
+
+/// Rotate encoded tile (v*100 + dl*10 + dr)
+fn rotate_encoded_tile(encoded: i32, n: usize) -> i32 {
+    if encoded == 0 { return 0; }
+    let v = encoded / 100;
+    let dl = (encoded / 10) % 10;
+    let dr = encoded % 10;
+    let (nv, ndl, ndr) = rotate_tile_values((v, dl, dr), n);
+    nv * 100 + ndl * 10 + ndr
+}
+
+/// Apply rotation to a complete sample
+fn rotate_sample(sample: &Sample, rotation: usize) -> Sample {
+    if rotation == 0 { return sample.clone(); }
+
+    let mut new_plateau = [0i32; 19];
+    for i in 0..19 {
+        let new_pos = rotate_position(i, rotation);
+        new_plateau[new_pos] = rotate_encoded_tile(sample.plateau[i], rotation);
+    }
+
+    Sample {
+        plateau: new_plateau,
+        tile: rotate_tile_values(sample.tile, rotation),
+        position: rotate_position(sample.position, rotation),
+        turn: sample.turn,
+        final_score: sample.final_score,
+        weight: sample.weight,
+    }
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -108,11 +190,26 @@ fn main() {
     println!("  Heads:        {}", args.heads);
     println!("  Dropout:      {}", args.dropout);
     println!("  Weight decay: {}", args.weight_decay);
+    println!("  Augment:      {} (6x rotations)", args.augment);
 
     // Load data with weights
     println!("\n📂 Loading data from {}...", args.data_dir);
-    let samples = load_all_csv_weighted(&args.data_dir, args.min_score, args.weight_power);
-    println!("   Loaded {} samples (score >= {})", samples.len(), args.min_score);
+    let mut samples = load_all_csv_weighted(&args.data_dir, args.min_score, args.weight_power);
+    let original_count = samples.len();
+    println!("   Loaded {} samples (score >= {})", original_count, args.min_score);
+
+    // Apply rotation augmentation if enabled
+    if args.augment {
+        println!("   Applying 6x rotation augmentation...");
+        let mut augmented = Vec::with_capacity(samples.len() * 6);
+        for sample in &samples {
+            for rotation in 0..6 {
+                augmented.push(rotate_sample(sample, rotation));
+            }
+        }
+        samples = augmented;
+        println!("   Augmented to {} samples (6x)", samples.len());
+    }
 
     if samples.is_empty() {
         println!("❌ No samples found!");
