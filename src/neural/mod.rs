@@ -2,6 +2,7 @@ pub mod gat;
 pub mod gat_jk;
 pub mod gat_qnet;
 pub mod gnn;
+pub mod graph_transformer;
 pub mod manager;
 pub mod model_io;
 pub mod policy_value_net;
@@ -14,6 +15,7 @@ pub mod training;
 // Re-export key components for convenience
 pub use gat::{GATPolicyNet, GATValueNet, GraphAttentionNetwork};
 pub use gat_jk::{GATJKNetwork, GATJKPolicyNet, JKMode};
+pub use graph_transformer::{GraphTransformer, GraphTransformerPolicyNet};
 pub use gat_qnet::{GATQNetManager, GATQValueNet};
 pub use manager::{NeuralConfig, NeuralManager};
 pub use qvalue_net::QNetManager;
