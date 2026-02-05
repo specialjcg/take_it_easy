@@ -7,7 +7,7 @@ A comprehensive **Take It Easy** board game implementation featuring:
 - User authentication (email/password + OAuth)
 - Multiplayer support
 
-> 🏆 **Record**: The GAT model with cosine LR scheduling achieves **147.13 pts** average, surpassing the CNN+MCTS hybrid (127.30 pts) by **+15.6%**!
+> 🏆 **Record**: The GAT-JK (Jumping Knowledge + MaxPool) achieves **147.16 pts** average, surpassing the CNN+MCTS hybrid (127.30 pts) by **+15.6%**!
 
 ![Game Screenshot](docs/images/game_finished.png)
 
@@ -171,7 +171,8 @@ take_it_easy/
 ├── frontend/               # SolidJS frontend (alternative)
 ├── model_weights/          # Neural network weights
 │   ├── cnn/                # CNN policy & value networks
-│   ├── gat_weighted_cosine_policy.pt  # Best GAT (147 pts) ⭐
+│   ├── gat_jk_max_max_policy.safetensors  # Best GAT-JK (147.16 pts) ⭐
+│   ├── gat_weighted_cosine_policy.pt  # Best GAT (147.13 pts)
 │   ├── gat_elite150/       # GAT trained on elite games (≥150 pts)
 │   └── qvalue_net.params   # Q-Value network (MCTS pruning)
 ├── protos/                 # gRPC protocol definitions
@@ -191,19 +192,35 @@ Traditional approach treating the hexagonal board as a 5×5 grid with 47 feature
 - **Architecture**: 3 convolutional layers + fully connected heads
 - **Usage**: Combined with MCTS and Q-Net for position pruning
 
-### GAT (Graph Attention Network) ⭐ *New*
+### GAT (Graph Attention Network)
 
 Graph-based approach respecting the hexagonal topology:
 - **Input**: 19 nodes (hex positions) with 47 features each
 - **Architecture**: Multi-head attention layers learning neighbor relationships
 - **Advantage**: Naturally models hexagonal adjacency without grid distortion
 
+### GAT-JK (GAT + Jumping Knowledge) ⭐ *New*
+
+Enhanced GAT with Jumping Knowledge Networks that combine representations from ALL layers:
+- **Architecture**: 2-layer GAT with layer aggregation via MaxPool, Attention, or Concat
+- **Key insight**: MaxPool aggregation (element-wise max across layers) works best
+- **Benefit**: Captures both local (early layers) and global (later layers) patterns
+
+| JK Mode | Best Score | Description |
+|---------|------------|-------------|
+| **MaxPool** | **147.16 pts** 🏆 | Element-wise maximum across layer outputs |
+| Attention | 145.65 pts | Learned attention weights per layer |
+| Concat | 143.63 pts | Concatenate all layer outputs |
+
 ### Benchmark Results
 
 | Method | Avg Score | ≥100 pts | ≥140 pts | ≥150 pts |
 |--------|-----------|----------|----------|----------|
-| **GAT + Cosine LR (best)** | **147.13** | 95.0% | **63.0%** | **47.0%** |
+| **GAT-JK MaxPool (best)** | **147.16** | 95.5% | 53.5% | 36.5% |
+| GAT + Cosine LR | 147.13 | 95.0% | **63.0%** | **47.0%** |
+| GAT-JK Attention | 145.65 | 94.5% | 54.5% | 38.0% |
 | GAT Weighted (fixed LR) | 144.03 | 97.0% | 55.5% | 43.0% |
+| GAT-JK Concat | 143.63 | 96.0% | 52.0% | 39.5% |
 | GAT + Augmentation (6x) | 139.26 | 93.5% | 52.0% | 34.5% |
 | GAT Policy (elite 150) | 137.75 | 92% | - | 30% |
 | CNN + Q-net + MCTS | 127.30 | 82% | 27% | - |
@@ -241,7 +258,17 @@ Note: Validation accuracy does not correlate with game performance.
 ### Training the GAT
 
 ```bash
-# Best configuration: cosine LR + regularization (147.13 pts)
+# Best configuration: GAT-JK with MaxPool aggregation (147.16 pts)
+cargo run --release --bin train_gat_jk -- \
+  --jk-mode max \
+  --epochs 80 \
+  --save-path model_weights/gat_jk_max
+
+# Alternative JK modes: concat, attention
+cargo run --release --bin train_gat_jk -- --jk-mode concat --epochs 80
+cargo run --release --bin train_gat_jk -- --jk-mode attention --epochs 80
+
+# Standard GAT with cosine LR (147.13 pts)
 cargo run --release --bin train_gat_weighted -- \
   --min-score 100 \
   --weight-power 3.0 \
