@@ -7,7 +7,7 @@ A comprehensive **Take It Easy** board game implementation featuring:
 - User authentication (email/password + OAuth)
 - Multiplayer support
 
-> 🏆 **Record**: The GAT-JK (Jumping Knowledge + MaxPool) achieves **147.16 pts** average, surpassing the CNN+MCTS hybrid (127.30 pts) by **+15.6%**!
+> 🏆 **Record**: The **Graph Transformer** achieves **154.26 pts** average, surpassing the CNN+MCTS hybrid (127.30 pts) by **+21.2%**!
 
 ![Game Screenshot](docs/images/game_finished.png)
 
@@ -171,8 +171,9 @@ take_it_easy/
 ├── frontend/               # SolidJS frontend (alternative)
 ├── model_weights/          # Neural network weights
 │   ├── cnn/                # CNN policy & value networks
-│   ├── gat_jk_max_max_policy.safetensors  # Best GAT-JK (147.16 pts) ⭐
-│   ├── gat_weighted_cosine_policy.pt  # Best GAT (147.13 pts)
+│   ├── graph_transformer_policy.safetensors  # Best model (154.26 pts) ⭐
+│   ├── gat_jk_max_max_policy.safetensors  # GAT-JK MaxPool (147.16 pts)
+│   ├── gat_weighted_cosine_policy.pt  # GAT (147.13 pts)
 │   ├── gat_elite150/       # GAT trained on elite games (≥150 pts)
 │   └── qvalue_net.params   # Q-Value network (MCTS pruning)
 ├── protos/                 # gRPC protocol definitions
@@ -199,7 +200,18 @@ Graph-based approach respecting the hexagonal topology:
 - **Architecture**: Multi-head attention layers learning neighbor relationships
 - **Advantage**: Naturally models hexagonal adjacency without grid distortion
 
-### GAT-JK (GAT + Jumping Knowledge) ⭐ *New*
+### Graph Transformer ⭐ *New - Best Performance*
+
+Full self-attention between ALL 19 nodes (not just neighbors):
+- **Architecture**: Standard Transformer encoder with learnable positional encoding
+- **Key insight**: Full attention captures long-range dependencies (e.g., diagonal lines spanning opposite corners)
+- **Benefit**: No adjacency constraints - learns which positions are strategically related
+
+| Config | Best Score | Description |
+|--------|------------|-------------|
+| **2 layers, 4 heads** | **154.26 pts** 🏆 | Embed=128, FF=512, dropout=0.1 |
+
+### GAT-JK (GAT + Jumping Knowledge)
 
 Enhanced GAT with Jumping Knowledge Networks that combine representations from ALL layers:
 - **Architecture**: 2-layer GAT with layer aggregation via MaxPool, Attention, or Concat
@@ -208,7 +220,7 @@ Enhanced GAT with Jumping Knowledge Networks that combine representations from A
 
 | JK Mode | Best Score | Description |
 |---------|------------|-------------|
-| **MaxPool** | **147.16 pts** 🏆 | Element-wise maximum across layer outputs |
+| **MaxPool** | 147.16 pts | Element-wise maximum across layer outputs |
 | Attention | 145.65 pts | Learned attention weights per layer |
 | Concat | 143.63 pts | Concatenate all layer outputs |
 
@@ -216,8 +228,9 @@ Enhanced GAT with Jumping Knowledge Networks that combine representations from A
 
 | Method | Avg Score | ≥100 pts | ≥140 pts | ≥150 pts |
 |--------|-----------|----------|----------|----------|
-| **GAT-JK MaxPool (best)** | **147.16** | 95.5% | 53.5% | 36.5% |
-| GAT + Cosine LR | 147.13 | 95.0% | **63.0%** | **47.0%** |
+| **Graph Transformer (best)** | **154.26** | 94.0% | 55.5% | **40.0%** |
+| GAT-JK MaxPool | 147.16 | 95.5% | 53.5% | 36.5% |
+| GAT + Cosine LR | 147.13 | 95.0% | **63.0%** | 47.0% |
 | GAT-JK Attention | 145.65 | 94.5% | 54.5% | 38.0% |
 | GAT Weighted (fixed LR) | 144.03 | 97.0% | 55.5% | 43.0% |
 | GAT-JK Concat | 143.63 | 96.0% | 52.0% | 39.5% |
@@ -228,7 +241,7 @@ Enhanced GAT with Jumping Knowledge Networks that combine representations from A
 | Pure MCTS (200 sim) | 99.48 | 52% | - | 5% |
 | Greedy | 21.81 | 0% | 0% | 0% |
 
-> **Key finding**: The GAT with cosine LR scheduling outperforms the CNN+MCTS hybrid by **+19.83 points** (+15.6%), with faster inference (no MCTS simulations needed).
+> **Key finding**: The Graph Transformer outperforms the CNN+MCTS hybrid by **+26.96 points** (+21.2%), with faster inference (no MCTS simulations needed).
 
 #### Training Insights
 
@@ -255,10 +268,19 @@ Training with different random seeds shows seed sensitivity:
 **Summary**: Average 141.74 pts, range 137.65-144.72 pts (~7 pts variance due to initialization).
 Note: Validation accuracy does not correlate with game performance.
 
-### Training the GAT
+### Training Neural Networks
 
 ```bash
-# Best configuration: GAT-JK with MaxPool aggregation (147.16 pts)
+# Best configuration: Graph Transformer (154.26 pts) ⭐
+cargo run --release --bin train_graph_transformer -- \
+  --epochs 80 \
+  --embed-dim 128 \
+  --num-layers 2 \
+  --heads 4 \
+  --lr 0.0005 \
+  --save-path model_weights/graph_transformer
+
+# GAT-JK with MaxPool aggregation (147.16 pts)
 cargo run --release --bin train_gat_jk -- \
   --jk-mode max \
   --epochs 80 \
