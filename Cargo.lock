@@ -2271,6 +2271,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "safetensors"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44560c11236a6130a46ce36c836a62936dc81ebf8c36a37947423571be0e55b6"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "schannel"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2602,6 +2612,7 @@ dependencies = [
  "rayon",
  "reqwest 0.12.28",
  "rusqlite",
+ "safetensors 0.4.5",
  "serde",
  "serde_json",
  "tch",
@@ -2631,7 +2642,7 @@ dependencies = [
  "libc",
  "ndarray",
  "rand 0.8.5",
- "safetensors",
+ "safetensors 0.3.3",
  "thiserror 1.0.69",
  "torch-sys",
  "zip",

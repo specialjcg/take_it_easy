@@ -504,3 +504,338 @@ pub fn compute_orientation_scores(plateau: &Plateau) -> [[f32; GRAPH_NODE_COUNT]
 
     orientation_scores
 }
+
+/// Convert plateau to GAT-compatible format with 47 features per node
+/// Output shape: [19, 47] - one row per hex position, 47 features each
+///
+/// Features per node (47 total):
+/// - Ch 0-2: Plateau tile values at this position (v1, v2, v3) / 9
+/// - Ch 3: Empty cell mask (1.0 if empty)
+/// - Ch 4-6: Current tile to place (v1, v2, v3) / 9 (broadcast)
+/// - Ch 7: Turn progress
+/// - Ch 8-16: Bag value counts (9 features, broadcast)
+/// - Ch 17-46: Line features (30 features - 2 per line)
+pub fn convert_plateau_for_gat_47ch(
+    plateau: &Plateau,
+    tile: &Tile,
+    deck: &Deck,
+    _current_turn: usize,
+    _total_turns: usize,
+) -> Tensor {
+    let mut features = vec![0.0f32; GRAPH_NODE_COUNT * CHANNELS];
+
+    let num_placed = plateau
+        .tiles
+        .iter()
+        .filter(|&&t| t != Tile(0, 0, 0))
+        .count();
+    let turn_progress = num_placed as f32 / 19.0;
+
+    // Compute bag counts
+    let bag_counts = compute_bag_value_counts(deck, tile);
+
+    // Compute line features
+    let line_features = compute_line_features(plateau, tile);
+
+    // Fill features for each hex position
+    for hex_pos in 0..GRAPH_NODE_COUNT {
+        let base = hex_pos * CHANNELS;
+        let plateau_tile = &plateau.tiles[hex_pos];
+
+        // Ch 0-3: Tile values and empty mask
+        if *plateau_tile == Tile(0, 0, 0) {
+            features[base + 3] = 1.0; // Empty
+        } else {
+            features[base] = plateau_tile.0 as f32 / 9.0;
+            features[base + 1] = plateau_tile.1 as f32 / 9.0;
+            features[base + 2] = plateau_tile.2 as f32 / 9.0;
+        }
+
+        // Ch 4-6: Current tile to place (broadcast)
+        features[base + 4] = tile.0 as f32 / 9.0;
+        features[base + 5] = tile.1 as f32 / 9.0;
+        features[base + 6] = tile.2 as f32 / 9.0;
+
+        // Ch 7: Turn progress (broadcast)
+        features[base + 7] = turn_progress;
+
+        // Ch 8-16: Bag counts (broadcast)
+        features[base + 8] = bag_counts.dir1[0];
+        features[base + 9] = bag_counts.dir1[1];
+        features[base + 10] = bag_counts.dir1[2];
+        features[base + 11] = bag_counts.dir2[0];
+        features[base + 12] = bag_counts.dir2[1];
+        features[base + 13] = bag_counts.dir2[2];
+        features[base + 14] = bag_counts.dir3[0];
+        features[base + 15] = bag_counts.dir3[1];
+        features[base + 16] = bag_counts.dir3[2];
+
+        // Ch 17-46: Line features
+        // For each line, check if this position is part of it
+        for (line_idx, (potential, compatibility)) in line_features.iter().enumerate() {
+            let positions = LINE_DEFS[line_idx].0;
+            if positions.contains(&hex_pos) {
+                features[base + 17 + line_idx * 2] = *potential;
+                features[base + 18 + line_idx * 2] = *compatibility;
+            }
+        }
+    }
+
+    Tensor::from_slice(&features).view([GRAPH_NODE_COUNT as i64, CHANNELS as i64])
+}
+
+// Extended channel count for GAT with extra features
+const EXTENDED_CHANNELS: usize = 95; // 47 base + 48 extra
+
+/// Strategic value for each position (center = high, edge = low)
+const POSITION_VALUES: [f32; 19] = [
+    0.4, 0.5, 0.4,           // Col 0: edges
+    0.5, 0.7, 0.7, 0.5,      // Col 1
+    0.6, 0.8, 1.0, 0.8, 0.6, // Col 2: center column (pos 9 = center)
+    0.5, 0.7, 0.7, 0.5,      // Col 3
+    0.4, 0.5, 0.4,           // Col 4: edges
+];
+
+/// Is position on the edge of the board?
+const IS_EDGE: [bool; 19] = [
+    true, false, true,        // Col 0
+    true, false, false, true, // Col 1
+    true, false, false, false, true, // Col 2
+    true, false, false, true, // Col 3
+    true, false, true,        // Col 4
+];
+
+/// Neighbor positions for each hex position
+const NEIGHBORS: [&[usize]; 19] = [
+    &[1, 3, 4],           // 0
+    &[0, 2, 4, 5],        // 1
+    &[1, 5, 6],           // 2
+    &[0, 4, 7, 8],        // 3
+    &[0, 1, 3, 5, 8, 9],  // 4
+    &[1, 2, 4, 6, 9, 10], // 5
+    &[2, 5, 10, 11],      // 6
+    &[3, 8, 12],          // 7
+    &[3, 4, 7, 9, 12, 13],// 8
+    &[4, 5, 8, 10, 13, 14],// 9 (center)
+    &[5, 6, 9, 11, 14, 15],// 10
+    &[6, 10, 15],         // 11
+    &[7, 8, 13, 16],      // 12
+    &[8, 9, 12, 14, 16, 17],// 13
+    &[9, 10, 13, 15, 17, 18],// 14
+    &[10, 11, 14, 18],    // 15
+    &[12, 13, 17],        // 16
+    &[13, 14, 16, 18],    // 17
+    &[14, 15, 17],        // 18
+];
+
+/// Convert plateau to GAT format with extended 95 features per node
+///
+/// Features (95 total):
+/// - Ch 0-46: Same as 47-channel version (base features)
+/// - Ch 47-65: Position one-hot encoding (19)
+/// - Ch 66: Strategic position value (center=1.0, edge=0.4)
+/// - Ch 67: Number of filled neighbors / 6
+/// - Ch 68: Is edge position (0 or 1)
+/// - Ch 69-74: Per-direction features (2 per direction × 3 directions)
+///   - Best line score potential for this direction
+///   - Number of compatible tiles remaining in bag for this direction
+/// - Ch 75-89: Line membership (15 lines - which lines pass through this position)
+/// - Ch 90-94: Additional strategic features
+///   - Total lines through this position / 6
+///   - Average line length through this position / 5
+///   - Number of blocked lines through this position / 6
+///   - Number of alive lines through this position / 6
+///   - Immediate score gain if placed here / 45
+pub fn convert_plateau_for_gat_extended(
+    plateau: &Plateau,
+    tile: &Tile,
+    deck: &Deck,
+    _current_turn: usize,
+    _total_turns: usize,
+) -> Tensor {
+    let mut features = vec![0.0f32; GRAPH_NODE_COUNT * EXTENDED_CHANNELS];
+
+    let num_placed = plateau
+        .tiles
+        .iter()
+        .filter(|&&t| t != Tile(0, 0, 0))
+        .count();
+    let turn_progress = num_placed as f32 / 19.0;
+
+    let bag_counts = compute_bag_value_counts(deck, tile);
+    let line_features = compute_line_features(plateau, tile);
+
+    // Precompute line status for each line
+    let mut line_status: Vec<(usize, usize, bool, i32)> = Vec::with_capacity(15); // (filled, empty, blocked, dominant_value)
+    for (_line_idx, (positions, direction)) in LINE_DEFS.iter().enumerate() {
+        let mut filled = 0;
+        let mut empty = 0;
+        let mut value_counts = [0u32; 10];
+
+        for &pos in *positions {
+            let t = &plateau.tiles[pos];
+            if *t == Tile(0, 0, 0) {
+                empty += 1;
+            } else {
+                filled += 1;
+                let v = match direction {
+                    0 => t.0,
+                    1 => t.1,
+                    2 => t.2,
+                    _ => 0,
+                };
+                if v > 0 && (v as usize) < 10 {
+                    value_counts[v as usize] += 1;
+                }
+            }
+        }
+
+        let (dominant_val, dominant_count) = value_counts
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, &c)| c)
+            .map(|(v, &c)| (v as i32, c))
+            .unwrap_or((0, 0));
+
+        let blocked = filled > 0 && dominant_count < filled as u32;
+        line_status.push((filled, empty, blocked, dominant_val));
+    }
+
+    for hex_pos in 0..GRAPH_NODE_COUNT {
+        let base = hex_pos * EXTENDED_CHANNELS;
+        let plateau_tile = &plateau.tiles[hex_pos];
+
+        // ========== Ch 0-46: Base features (same as 47ch) ==========
+        if *plateau_tile == Tile(0, 0, 0) {
+            features[base + 3] = 1.0;
+        } else {
+            features[base] = plateau_tile.0 as f32 / 9.0;
+            features[base + 1] = plateau_tile.1 as f32 / 9.0;
+            features[base + 2] = plateau_tile.2 as f32 / 9.0;
+        }
+
+        features[base + 4] = tile.0 as f32 / 9.0;
+        features[base + 5] = tile.1 as f32 / 9.0;
+        features[base + 6] = tile.2 as f32 / 9.0;
+        features[base + 7] = turn_progress;
+
+        features[base + 8] = bag_counts.dir1[0];
+        features[base + 9] = bag_counts.dir1[1];
+        features[base + 10] = bag_counts.dir1[2];
+        features[base + 11] = bag_counts.dir2[0];
+        features[base + 12] = bag_counts.dir2[1];
+        features[base + 13] = bag_counts.dir2[2];
+        features[base + 14] = bag_counts.dir3[0];
+        features[base + 15] = bag_counts.dir3[1];
+        features[base + 16] = bag_counts.dir3[2];
+
+        for (line_idx, (potential, compatibility)) in line_features.iter().enumerate() {
+            let positions = LINE_DEFS[line_idx].0;
+            if positions.contains(&hex_pos) {
+                features[base + 17 + line_idx * 2] = *potential;
+                features[base + 18 + line_idx * 2] = *compatibility;
+            }
+        }
+
+        // ========== Ch 47-65: Position one-hot (19 features) ==========
+        features[base + 47 + hex_pos] = 1.0;
+
+        // ========== Ch 66: Strategic position value ==========
+        features[base + 66] = POSITION_VALUES[hex_pos];
+
+        // ========== Ch 67: Filled neighbors count / 6 ==========
+        let filled_neighbors = NEIGHBORS[hex_pos]
+            .iter()
+            .filter(|&&n| plateau.tiles[n] != Tile(0, 0, 0))
+            .count();
+        features[base + 67] = filled_neighbors as f32 / 6.0;
+
+        // ========== Ch 68: Is edge position ==========
+        features[base + 68] = if IS_EDGE[hex_pos] { 1.0 } else { 0.0 };
+
+        // ========== Ch 69-74: Per-direction features ==========
+        // For each direction, find the best line potential and bag compatibility
+        for dir in 0..3 {
+            let tile_value = match dir {
+                0 => tile.0,
+                1 => tile.1,
+                _ => tile.2,
+            };
+
+            // Find best line in this direction through this position
+            let mut best_potential = 0.0f32;
+            for (line_idx, (positions, line_dir)) in LINE_DEFS.iter().enumerate() {
+                if *line_dir == dir && positions.contains(&hex_pos) {
+                    let (potential, _) = line_features[line_idx];
+                    best_potential = best_potential.max(potential);
+                }
+            }
+            features[base + 69 + dir * 2] = best_potential;
+
+            // Bag compatibility for this direction
+            let bag_compat = match dir {
+                0 => match tile_value { 1 => bag_counts.dir1[0], 5 => bag_counts.dir1[1], 9 => bag_counts.dir1[2], _ => 0.0 },
+                1 => match tile_value { 2 => bag_counts.dir2[0], 6 => bag_counts.dir2[1], 7 => bag_counts.dir2[2], _ => 0.0 },
+                _ => match tile_value { 3 => bag_counts.dir3[0], 4 => bag_counts.dir3[1], 8 => bag_counts.dir3[2], _ => 0.0 },
+            };
+            features[base + 70 + dir * 2] = bag_compat;
+        }
+
+        // ========== Ch 75-89: Line membership (15 lines) ==========
+        for (line_idx, (positions, _)) in LINE_DEFS.iter().enumerate() {
+            if positions.contains(&hex_pos) {
+                features[base + 75 + line_idx] = 1.0;
+            }
+        }
+
+        // ========== Ch 90-94: Additional strategic features ==========
+        let mut total_lines = 0;
+        let mut total_length = 0;
+        let mut blocked_lines = 0;
+        let mut alive_lines = 0;
+
+        for (line_idx, (positions, _)) in LINE_DEFS.iter().enumerate() {
+            if positions.contains(&hex_pos) {
+                total_lines += 1;
+                total_length += positions.len();
+                let (_, _, blocked, _) = line_status[line_idx];
+                if blocked {
+                    blocked_lines += 1;
+                } else {
+                    alive_lines += 1;
+                }
+            }
+        }
+
+        features[base + 90] = total_lines as f32 / 6.0;
+        features[base + 91] = if total_lines > 0 { (total_length as f32 / total_lines as f32) / 5.0 } else { 0.0 };
+        features[base + 92] = blocked_lines as f32 / 6.0;
+        features[base + 93] = alive_lines as f32 / 6.0;
+
+        // Immediate score gain if placed here (simplified)
+        if *plateau_tile == Tile(0, 0, 0) {
+            let mut immediate_score = 0;
+            for (line_idx, (positions, direction)) in LINE_DEFS.iter().enumerate() {
+                if positions.contains(&hex_pos) {
+                    let (filled, empty, blocked, dominant_val) = line_status[line_idx];
+                    if !blocked {
+                        let tile_val = match direction {
+                            0 => tile.0,
+                            1 => tile.1,
+                            2 => tile.2,
+                            _ => 0,
+                        } as i32;
+
+                        // If line would complete and match
+                        if empty == 1 && (filled == 0 || tile_val == dominant_val) {
+                            immediate_score += tile_val * positions.len() as i32;
+                        }
+                    }
+                }
+            }
+            features[base + 94] = immediate_score as f32 / 45.0; // Max ~45 for 9*5 line
+        }
+    }
+
+    Tensor::from_slice(&features).view([GRAPH_NODE_COUNT as i64, EXTENDED_CHANNELS as i64])
+}
