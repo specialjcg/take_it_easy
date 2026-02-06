@@ -7,7 +7,7 @@ A comprehensive **Take It Easy** board game implementation featuring:
 - User authentication (email/password + OAuth)
 - Multiplayer support
 
-> 🏆 **Record**: The **Graph Transformer** achieves **154.26 pts** average, surpassing the CNN+MCTS hybrid (127.30 pts) by **+21.2%**!
+> 🏆 **Record**: The **Graph Transformer** achieves **149.38 pts** in evaluation (200 games), surpassing the CNN+MCTS hybrid (127.30 pts) by **+17.4%**!
 
 ![Game Screenshot](docs/images/game_finished.png)
 
@@ -207,9 +207,11 @@ Full self-attention between ALL 19 nodes (not just neighbors):
 - **Key insight**: Full attention captures long-range dependencies (e.g., diagonal lines spanning opposite corners)
 - **Benefit**: No adjacency constraints - learns which positions are strategically related
 
-| Config | Best Score | Description |
-|--------|------------|-------------|
-| **2 layers, 4 heads** | **154.26 pts** 🏆 | Embed=128, FF=512, dropout=0.1 |
+| Config | Peak Score | Eval Score | Description |
+|--------|------------|------------|-------------|
+| **2 layers, dropout=0.2** | 151.30 pts | **149.38 pts** 🏆 | Best generalization, 98.5% ≥100 |
+| 2 layers, dropout=0.1 | **154.26 pts** | 142.58 pts | Highest peak during training |
+| 3 layers, dropout=0.1 | 150.87 pts | 145.04 pts | More layers, similar performance |
 
 ### GAT-JK (GAT + Jumping Knowledge)
 
@@ -228,9 +230,11 @@ Enhanced GAT with Jumping Knowledge Networks that combine representations from A
 
 | Method | Avg Score | ≥100 pts | ≥140 pts | ≥150 pts |
 |--------|-----------|----------|----------|----------|
-| **Graph Transformer (best)** | **154.26** | 94.0% | 55.5% | **40.0%** |
+| **Graph Transformer (dropout=0.2)** | **149.38** | **98.5%** | **63.5%** | **48.5%** |
+| Graph Transformer (3 layers) | 145.04 | 95.5% | 60.0% | 40.5% |
+| Graph Transformer (dropout=0.1) | 142.58 | 94.0% | 55.5% | 40.0% |
 | GAT-JK MaxPool | 147.16 | 95.5% | 53.5% | 36.5% |
-| GAT + Cosine LR | 147.13 | 95.0% | **63.0%** | 47.0% |
+| GAT + Cosine LR | 147.13 | 95.0% | 63.0% | 47.0% |
 | GAT-JK Attention | 145.65 | 94.5% | 54.5% | 38.0% |
 | GAT Weighted (fixed LR) | 144.03 | 97.0% | 55.5% | 43.0% |
 | GAT-JK Concat | 143.63 | 96.0% | 52.0% | 39.5% |
@@ -241,7 +245,7 @@ Enhanced GAT with Jumping Knowledge Networks that combine representations from A
 | Pure MCTS (200 sim) | 99.48 | 52% | - | 5% |
 | Greedy | 21.81 | 0% | 0% | 0% |
 
-> **Key finding**: The Graph Transformer outperforms the CNN+MCTS hybrid by **+26.96 points** (+21.2%), with faster inference (no MCTS simulations needed).
+> **Key finding**: The Graph Transformer with dropout=0.2 outperforms the CNN+MCTS hybrid by **+22.08 points** (+17.4%), with faster inference (no MCTS simulations needed).
 
 #### Training Insights
 
@@ -249,9 +253,11 @@ Enhanced GAT with Jumping Knowledge Networks that combine representations from A
 |-----------|--------|
 | **Cosine LR Scheduler** | +3.1 pts - better convergence in late training |
 | **Weighted Loss** (power=3.0) | Higher scores contribute more to learning |
-| **Dropout** (0.2) | +3 pts improvement, reduces overfitting |
+| **Dropout** (0.2 for GT, 0.1 for GAT) | +6.8 pts eval improvement for Graph Transformer |
 | **Weight Decay** (1e-4) | Helps generalization to game play |
 | **Data Augmentation** (6x rotations) | Did NOT help - board edges have asymmetric value |
+
+> **Note**: For Graph Transformer, dropout=0.2 gives better evaluation scores (149.38 pts) than dropout=0.1 (142.58 pts), despite lower peak during training.
 
 #### Multi-Seed Training Results
 
@@ -271,13 +277,14 @@ Note: Validation accuracy does not correlate with game performance.
 ### Training Neural Networks
 
 ```bash
-# Best configuration: Graph Transformer (154.26 pts) ⭐
+# Best configuration: Graph Transformer (149.38 pts eval) ⭐
 cargo run --release --bin train_graph_transformer -- \
   --epochs 80 \
   --embed-dim 128 \
   --num-layers 2 \
   --heads 4 \
   --lr 0.0005 \
+  --dropout 0.2 \
   --save-path model_weights/graph_transformer
 
 # GAT-JK with MaxPool aggregation (147.16 pts)
