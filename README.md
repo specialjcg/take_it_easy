@@ -259,6 +259,23 @@ Enhanced GAT with Jumping Knowledge Networks that combine representations from A
 
 > **Note**: For Graph Transformer, dropout=0.2 gives better evaluation scores (149.38 pts) than dropout=0.1 (142.58 pts), despite lower peak during training.
 
+#### Graph Transformer Optimization Experiments
+
+Extensive experiments were conducted to improve the Graph Transformer beyond dropout=0.2:
+
+| Experiment | Eval Score | ≥150 pts | Result |
+|------------|------------|----------|--------|
+| **Dropout 0.2 (baseline)** | **149.38** | **48.5%** | ✅ **Best** |
+| 3 layers | 145.04 | 40.5% | ❌ More layers didn't help |
+| Label smoothing 0.1 | 147.29 | 46.5% | ❌ Too much regularization |
+| Embed 256, heads 8 | 141.74 | 38.5% | ❌ Larger model overfit |
+| Warmup 5 epochs | 145.02 | 42.5% | ❌ No improvement |
+| Batch size 32 | 143.35 | 38.5% | ❌ Smaller batches hurt |
+| Self-play training | 134.46 | 29.5% | ❌ Lost generalization |
+| Curriculum learning | 142.87 | 41.5% | ❌ No benefit |
+
+**Conclusion**: The base configuration (embed=128, heads=4, 2 layers, dropout=0.2) is optimal. The model has reached its performance ceiling with current architecture and data.
+
 #### Multi-Seed Training Results
 
 Training with different random seeds shows seed sensitivity:
