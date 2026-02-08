@@ -5215,9 +5215,9 @@ var $author$project$Main$Login = 0;
 var $author$project$Main$LoginView = 0;
 var $author$project$Main$defaultGameModes = _List_fromArray(
 	[
-		{ae: 'Affrontez l\'IA Graph Transformer (149 pts)', am: $elm$core$Maybe$Nothing, W: '🤖', c: 'single-player', n: 'Solo', aw: $elm$core$Maybe$Nothing},
-		{ae: 'Jouez avec le vrai jeu - sélectionnez les tuiles tirées', am: $elm$core$Maybe$Nothing, W: '🎲', c: 'real-game', n: 'Jeu Réel', aw: $elm$core$Maybe$Nothing},
-		{ae: 'Jouez contre d\'autres joueurs en ligne', am: $elm$core$Maybe$Nothing, W: '👥', c: 'multiplayer', n: 'Multijoueur', aw: $elm$core$Maybe$Nothing}
+		{ac: 'Affrontez l\'IA Graph Transformer (149 pts)', am: $elm$core$Maybe$Nothing, W: '🤖', c: 'single-player', n: 'Solo', aw: $elm$core$Maybe$Nothing},
+		{ac: 'Jouez avec le vrai jeu - sélectionnez les tuiles tirées', am: $elm$core$Maybe$Nothing, W: '🎲', c: 'real-game', n: 'Jeu Réel', aw: $elm$core$Maybe$Nothing},
+		{ac: 'Jouez contre d\'autres joueurs en ligne', am: $elm$core$Maybe$Nothing, W: '👥', c: 'multiplayer', n: 'Multijoueur', aw: $elm$core$Maybe$Nothing}
 	]);
 var $elm$core$List$repeatHelp = F3(
 	function (result, n, value) {
@@ -5244,7 +5244,7 @@ var $author$project$Main$initialModel = F2(
 	function (key, url) {
 		return {
 			h: A2($elm$core$List$repeat, 19, ''),
-			ad: 0,
+			ak: 0,
 			d: '',
 			a: false,
 			i: 0,
@@ -5260,28 +5260,28 @@ var $author$project$Main$initialModel = F2(
 			m: $elm$core$Maybe$Nothing,
 			J: false,
 			an: false,
-			X: false,
+			ae: false,
 			aD: key,
 			b: false,
-			ag: false,
+			af: false,
 			y: '',
 			P: $elm$core$Maybe$Nothing,
 			q: A2($elm$core$List$repeat, 19, ''),
 			r: '',
 			av: 0,
-			_: '',
+			Z: '',
 			ap: '',
 			A: $elm$core$Maybe$Nothing,
 			k: $elm$core$Maybe$Nothing,
 			B: '',
-			aa: false,
+			_: false,
 			C: false,
 			l: '',
-			ab: $elm$core$Maybe$Nothing,
+			aa: $elm$core$Maybe$Nothing,
 			aK: url,
 			G: _List_Nil,
 			U: $elm$core$Maybe$Nothing,
-			aj: ''
+			ai: ''
 		};
 	});
 var $elm$json$Json$Encode$object = function (pairs) {
@@ -5524,7 +5524,7 @@ var $elm$json$Json$Decode$maybe = function (decoder) {
 };
 var $author$project$Main$Player = F5(
 	function (id, name, score, isReady, isConnected) {
-		return {c: id, bl: isConnected, aC: isReady, n: name, ah: score};
+		return {c: id, bl: isConnected, aC: isReady, n: name, ag: score};
 	});
 var $elm$json$Json$Decode$int = _Json_decodeInt;
 var $elm$json$Json$Decode$map5 = _Json_map5;
@@ -6064,7 +6064,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{aj: username}),
+						{ai: username}),
 					$elm$core$Platform$Cmd$none);
 			case 4:
 				var password = msg.a;
@@ -6085,7 +6085,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{d: '', i: newAuthView, H: '', I: '', y: '', aj: ''}),
+						{d: '', i: newAuthView, H: '', I: '', y: '', ai: ''}),
 					$elm$core$Platform$Cmd$none);
 			case 7:
 				return _Utils_Tuple2(
@@ -6133,7 +6133,7 @@ var $author$project$Main$update = F2(
 									$elm$json$Json$Encode$string(model.I)),
 									_Utils_Tuple2(
 									'username',
-									$elm$json$Json$Encode$string(model.aj)),
+									$elm$json$Json$Encode$string(model.ai)),
 									_Utils_Tuple2(
 									'password',
 									$elm$json$Json$Encode$string(model.y))
@@ -6142,7 +6142,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{d: '', a: true, _: ''}),
+						{d: '', a: true, Z: ''}),
 					$author$project$Main$sendToJs(
 						$elm$json$Json$Encode$object(
 							_List_fromArray(
@@ -6181,7 +6181,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{v: 0, J: false, ab: $elm$core$Maybe$Nothing, U: $elm$core$Maybe$Nothing}),
+						{v: 0, J: false, aa: $elm$core$Maybe$Nothing, U: $elm$core$Maybe$Nothing}),
 					$author$project$Main$sendToJs(
 						$elm$json$Json$Encode$object(
 							_List_fromArray(
@@ -6213,7 +6213,7 @@ var $author$project$Main$update = F2(
 							v: 1,
 							J: true,
 							r: user.au,
-							ab: $elm$core$Maybe$Just(token),
+							aa: $elm$core$Maybe$Just(token),
 							U: $elm$core$Maybe$Just(user)
 						}),
 					$elm$core$Platform$Cmd$none);
@@ -6236,7 +6236,7 @@ var $author$project$Main$update = F2(
 							v: 1,
 							J: true,
 							r: user.au,
-							ab: $elm$core$Maybe$Just(token),
+							aa: $elm$core$Maybe$Just(token),
 							U: $elm$core$Maybe$Just(user)
 						}),
 					$elm$core$Platform$Cmd$none);
@@ -6252,7 +6252,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{d: '', a: false, _: message}),
+						{d: '', a: false, Z: message}),
 					$elm$core$Platform$Cmd$none);
 			case 19:
 				var error = msg.a;
@@ -6266,7 +6266,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{d: '', a: false, i: 0, H: '', y: '', _: message, ap: ''}),
+						{d: '', a: false, i: 0, H: '', y: '', Z: message, ap: ''}),
 					$elm$core$Platform$Cmd$none);
 			case 21:
 				var error = msg.a;
@@ -6285,7 +6285,7 @@ var $author$project$Main$update = F2(
 							v: 1,
 							J: true,
 							r: user.au,
-							ab: $elm$core$Maybe$Just(token),
+							aa: $elm$core$Maybe$Just(token),
 							U: $elm$core$Maybe$Just(user)
 						}),
 					$elm$core$Platform$Cmd$none);
@@ -6293,7 +6293,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{J: false, ab: $elm$core$Maybe$Nothing, U: $elm$core$Maybe$Nothing}),
+						{J: false, aa: $elm$core$Maybe$Nothing, U: $elm$core$Maybe$Nothing}),
 					$elm$core$Platform$Cmd$none);
 			case 24:
 				var mode = msg.a;
@@ -6318,7 +6318,7 @@ var $author$project$Main$update = F2(
 								u: 0,
 								v: 2,
 								an: true,
-								ag: true,
+								af: true,
 								q: A2($elm$core$List$repeat, 19, ''),
 								av: 0,
 								C: true,
@@ -6342,7 +6342,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{aa: !model.aa}),
+						{_: !model._}),
 					$elm$core$Platform$Cmd$none);
 			case 28:
 				var gameMode = A2(
@@ -6359,7 +6359,7 @@ var $author$project$Main$update = F2(
 						model,
 						{
 							h: A2($elm$core$List$repeat, 19, ''),
-							ad: 0,
+							ak: 0,
 							s: A2($elm$core$List$range, 0, 18),
 							t: $elm$core$Maybe$Nothing,
 							o: $elm$core$Maybe$Nothing,
@@ -6369,7 +6369,7 @@ var $author$project$Main$update = F2(
 							b: true,
 							q: A2($elm$core$List$repeat, 19, ''),
 							k: $elm$core$Maybe$Nothing,
-							aa: false,
+							_: false,
 							l: ''
 						}),
 					$author$project$Main$sendToJs(
@@ -6528,7 +6528,7 @@ var $author$project$Main$update = F2(
 						model,
 						{
 							m: $elm$core$Maybe$Just(gameState),
-							X: isSoloMode,
+							ae: isSoloMode,
 							b: isSoloMode,
 							k: $elm$core$Maybe$Just(session),
 							l: 'Session créée: ' + session.B
@@ -6812,7 +6812,7 @@ var $author$project$Main$update = F2(
 							u: turnNumber,
 							m: updatedGameState,
 							b: false,
-							ag: true
+							af: true
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 48:
@@ -6845,12 +6845,12 @@ var $author$project$Main$update = F2(
 						model,
 						{
 							h: newAiPlateauTiles,
-							ad: aiScore,
+							ak: aiScore,
 							s: newAvailablePositions,
 							t: $elm$core$Maybe$Nothing,
 							o: $elm$core$Maybe$Nothing,
 							b: false,
-							ag: false,
+							af: false,
 							q: newPlateauTiles,
 							l: '+' + ($elm$core$String$fromInt(points) + ' points')
 						}),
@@ -7338,7 +7338,7 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 							[
 								$elm$html$Html$Attributes$type_('text'),
 								$elm$html$Html$Attributes$id('username'),
-								$elm$html$Html$Attributes$value(model.aj),
+								$elm$html$Html$Attributes$value(model.ai),
 								$elm$html$Html$Events$onInput($author$project$Main$SetUsernameInput),
 								$elm$html$Html$Attributes$placeholder(''),
 								$elm$html$Html$Attributes$required(true),
@@ -7615,7 +7615,7 @@ var $author$project$Main$viewAuth = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(model.d)
-							])) : ((model._ !== '') ? A2(
+							])) : ((model.Z !== '') ? A2(
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
@@ -7623,7 +7623,7 @@ var $author$project$Main$viewAuth = function (model) {
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text(model._)
+								$elm$html$Html$text(model.Z)
 							])) : $elm$html$Html$text('')),
 						function () {
 						var _v0 = model.i;
@@ -8278,7 +8278,7 @@ var $author$project$Main$viewFinishedState = F2(
 		var sortedPlayers = A2(
 			$elm$core$List$sortBy,
 			function (p) {
-				return -p.ah;
+				return -p.ag;
 			},
 			gameState.L);
 		var winner = $elm$core$List$head(sortedPlayers);
@@ -8317,7 +8317,7 @@ var $author$project$Main$viewFinishedState = F2(
 									_List_fromArray(
 										[
 											$elm$html$Html$text(
-											'🏆 Gagnant: ' + (w.n + (' avec ' + ($elm$core$String$fromInt(w.ah) + ' points!'))))
+											'🏆 Gagnant: ' + (w.n + (' avec ' + ($elm$core$String$fromInt(w.ag) + ' points!'))))
 										]));
 							} else {
 								return $elm$html$Html$text('');
@@ -8393,7 +8393,7 @@ var $author$project$Main$viewFinishedState = F2(
 															_List_fromArray(
 																[
 																	$elm$html$Html$text(
-																	$elm$core$String$fromInt(p.ah) + ' pts')
+																	$elm$core$String$fromInt(p.ag) + ' pts')
 																]))
 														]));
 											}),
@@ -8443,7 +8443,7 @@ var $author$project$Main$viewFinishedState = F2(
 									$author$project$Main$viewFinalHexBoard(model.h)
 								]))
 						])),
-					model.X ? A2(
+					model.ae ? A2(
 					$elm$html$Html$button,
 					_List_fromArray(
 						[
@@ -8468,35 +8468,6 @@ var $author$project$Main$viewFinishedState = F2(
 	});
 var $author$project$Main$StartTurn = {$: 40};
 var $author$project$Main$ToggleAiBoard = {$: 27};
-var $author$project$Main$getPlayerScore = function (model) {
-	var _v0 = model.m;
-	if (!_v0.$) {
-		var gs = _v0.a;
-		var _v1 = model.k;
-		if (!_v1.$) {
-			var session = _v1.a;
-			return A2(
-				$elm$core$Maybe$withDefault,
-				0,
-				A2(
-					$elm$core$Maybe$map,
-					function ($) {
-						return $.ah;
-					},
-					$elm$core$List$head(
-						A2(
-							$elm$core$List$filter,
-							function (p) {
-								return _Utils_eq(p.c, session.Q);
-							},
-							gs.L))));
-		} else {
-			return 0;
-		}
-	} else {
-		return 0;
-	}
-};
 var $author$project$Main$viewAiHexBoard = function (tiles) {
 	var hexRadius = 40;
 	var hexWidth = 2 * hexRadius;
@@ -8694,7 +8665,7 @@ var $author$project$Main$viewHexBoard = function (model) {
 						'',
 						$elm$core$List$head(
 							A2($elm$core$List$drop, index, model.q)));
-					var isAvailable = A2($elm$core$List$member, index, model.s) && model.ag;
+					var isAvailable = A2($elm$core$List$member, index, model.s) && model.af;
 					var canClick = isAvailable && (!_Utils_eq(model.t, $elm$core$Maybe$Nothing));
 					return A2(
 						$elm$html$Html$div,
@@ -8782,48 +8753,9 @@ var $author$project$Main$viewInProgressState = F2(
 									$elm$html$Html$text(
 									'Tour ' + ($elm$core$String$fromInt(model.u) + '/19'))
 								])),
-							model.X ? A2(
-							$elm$html$Html$div,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('solo-scores'),
-									A2($elm$html$Html$Attributes$style, 'display', 'flex'),
-									A2($elm$html$Html$Attributes$style, 'gap', '30px'),
-									A2($elm$html$Html$Attributes$style, 'justify-content', 'center'),
-									A2($elm$html$Html$Attributes$style, 'margin-bottom', '15px')
-								]),
-							_List_fromArray(
-								[
-									A2(
-									$elm$html$Html$span,
-									_List_fromArray(
-										[
-											A2($elm$html$Html$Attributes$style, 'font-size', '1.2em'),
-											A2($elm$html$Html$Attributes$style, 'font-weight', 'bold')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text(
-											'👤 Vous: ' + ($elm$core$String$fromInt(
-												$author$project$Main$getPlayerScore(model)) + ' pts'))
-										])),
-									A2(
-									$elm$html$Html$span,
-									_List_fromArray(
-										[
-											A2($elm$html$Html$Attributes$style, 'font-size', '1.2em'),
-											A2($elm$html$Html$Attributes$style, 'font-weight', 'bold')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text(
-											'🤖 IA: ' + ($elm$core$String$fromInt(model.ad) + ' pts'))
-										]))
-								])) : $elm$html$Html$text(''),
 							function () {
 							var _v0 = model.t;
 							if (!_v0.$) {
-								var tile = _v0.a;
 								return A2(
 									$elm$html$Html$div,
 									_List_fromArray(
@@ -8832,13 +8764,6 @@ var $author$project$Main$viewInProgressState = F2(
 										]),
 									_List_fromArray(
 										[
-											A2(
-											$elm$html$Html$p,
-											_List_Nil,
-											_List_fromArray(
-												[
-													$elm$html$Html$text('Tuile: ' + tile)
-												])),
 											function () {
 											var _v1 = model.o;
 											if (!_v1.$) {
@@ -8903,7 +8828,7 @@ var $author$project$Main$viewInProgressState = F2(
 									$elm$html$Html$text('Plateau de jeu')
 								])),
 							$author$project$Main$viewHexBoard(model),
-							model.X ? A2(
+							model.ae ? A2(
 							$elm$html$Html$div,
 							_List_fromArray(
 								[
@@ -8927,11 +8852,11 @@ var $author$project$Main$viewInProgressState = F2(
 									_List_fromArray(
 										[
 											$elm$html$Html$text(
-											model.aa ? '🤖 Masquer plateau IA' : '🤖 Voir plateau IA')
+											model._ ? '🤖 Masquer plateau IA' : '🤖 Voir plateau IA')
 										]))
 								])) : $elm$html$Html$text('')
 						])),
-					(model.X && model.aa) ? A2(
+					(model.ae && model._) ? A2(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
@@ -8946,7 +8871,7 @@ var $author$project$Main$viewInProgressState = F2(
 							_List_fromArray(
 								[
 									$elm$html$Html$text(
-									'🤖 Plateau IA - ' + ($elm$core$String$fromInt(model.ad) + ' pts'))
+									'🤖 Plateau IA - ' + ($elm$core$String$fromInt(model.ak) + ' pts'))
 								])),
 							$author$project$Main$viewAiHexBoard(model.h)
 						])) : $elm$html$Html$text('')
@@ -8983,7 +8908,7 @@ var $author$project$Main$viewPlayer = F2(
 					_List_fromArray(
 						[
 							$elm$html$Html$text(
-							$elm$core$String$fromInt(player.ah) + ' pts')
+							$elm$core$String$fromInt(player.ag) + ' pts')
 						])),
 					player.aC ? A2(
 					$elm$html$Html$span,
@@ -9904,7 +9829,7 @@ var $author$project$Main$viewModeCard = F2(
 						]),
 					_List_fromArray(
 						[
-							$elm$html$Html$text(mode.ae)
+							$elm$html$Html$text(mode.ac)
 						]))
 				]));
 	});
@@ -10072,7 +9997,7 @@ var $author$project$Main$viewModeSelection = function (model) {
 										_List_Nil,
 										_List_fromArray(
 											[
-												$elm$html$Html$text(mode.ae)
+												$elm$html$Html$text(mode.ac)
 											]))
 									])),
 								A2(

@@ -1897,22 +1897,10 @@ viewInProgressState model session =
     div [ class "in-progress-state" ]
         [ div [ class "turn-info glass-container" ]
             [ h3 [] [ text ("Tour " ++ String.fromInt model.currentTurnNumber ++ "/19") ]
-            , -- Solo mode: Show both scores
-              if model.isSoloMode then
-                div [ class "solo-scores", style "display" "flex", style "gap" "30px", style "justify-content" "center", style "margin-bottom" "15px" ]
-                    [ span [ style "font-size" "1.2em", style "font-weight" "bold" ]
-                        [ text ("👤 Vous: " ++ String.fromInt (getPlayerScore model) ++ " pts") ]
-                    , span [ style "font-size" "1.2em", style "font-weight" "bold" ]
-                        [ text ("🤖 IA: " ++ String.fromInt model.aiScore ++ " pts") ]
-                    ]
-
-              else
-                text ""
             , case model.currentTile of
-                Just tile ->
+                Just _ ->
                     div [ class "current-tile" ]
-                        [ p [] [ text ("Tuile: " ++ tile) ]
-                        , case model.currentTileImage of
+                        [ case model.currentTileImage of
                             Just img ->
                                 case parseTileFromPath img of
                                     Just tileData ->
