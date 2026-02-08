@@ -397,6 +397,175 @@ cd frontend-elm && ./build.sh
 
 ---
 
+## 10. Production Deployment
+
+### Live Demo
+
+🎮 **Play now**: https://takeitasy.mooo.com
+
+### Overview
+
+The game can be deployed on a minimal VPS (1GB RAM, €1/month) using Docker cross-compilation for glibc compatibility.
+
+```
+┌─────────────────┐     HTTPS      ┌─────────────────┐
+│   Browser       │◄──────────────►│   nginx         │
+│   (Elm SPA)     │                │   (reverse      │
+└─────────────────┘                │    proxy)       │
+                                   └────────┬────────┘
+                                            │
+                    ┌───────────────────────┼───────────────────────┐
+                    │                       │                       │
+                    ▼                       ▼                       ▼
+            ┌───────────────┐      ┌───────────────┐      ┌───────────────┐
+            │ Static Files  │      │ Auth API      │      │ gRPC-Web      │
+            │ /             │      │ /auth/*       │      │ /takeiteasygame.*
+            │ port 80/443   │      │ port 51051    │      │ port 50052    │
+            └───────────────┘      └───────────────┘      └───────────────┘
+                                            │
+                                            ▼
+                                   ┌───────────────┐
+                                   │ Rust Backend  │
+                                   │ + Graph       │
+                                   │   Transformer │
+                                   │ + libtorch    │
+                                   └───────────────┘
+```
+
+### Prerequisites
+
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| Docker | 20+ | Cross-compilation for glibc 2.35 |
+| VPS | Ubuntu 22.04 | Production server |
+| Domain | Any | FreeDNS offers free subdomains |
+
+### Step 1: Build with Docker
+
+Docker ensures the binary is compatible with Ubuntu 22.04 (glibc 2.35):
+
+```bash
+# Copy template and configure
+cp build-docker.sh.example build-docker.sh
+cp deploy.sh.example deploy.sh
+
+# Edit deploy.sh with your VPS details:
+# VPS_USER="root"
+# VPS_HOST="your-vps.example.com"
+# VPS_PORT="22"
+
+# Build (first run takes ~10 min, subsequent builds ~2 min)
+./build-docker.sh
+```
+
+This creates:
+- `target/release/take_it_easy` - Binary (15 MB)
+- `docker-libs/` - libtorch libraries (420 MB)
+
+### Step 2: Deploy to VPS
+
+```bash
+# Create deployment package
+./deploy.sh package
+
+# Deploy (uploads ~450 MB)
+./deploy.sh deploy
+```
+
+The deploy script:
+1. Uploads binary, libs, frontend, model weights
+2. Creates `takeitasy` system user
+3. Installs systemd service
+4. Configures nginx reverse proxy
+
+### Step 3: Configure HTTPS (Let's Encrypt)
+
+```bash
+# SSH to your VPS
+ssh user@your-vps.example.com
+
+# Install certbot
+apt install certbot python3-certbot-nginx
+
+# Get certificate (auto-configures nginx)
+certbot --nginx -d yourdomain.example.com
+```
+
+### Step 4: Set JWT Secret (Security)
+
+```bash
+# On VPS, edit the service file
+sudo systemctl edit takeitasy
+
+# Add secure JWT secret:
+[Service]
+Environment=JWT_SECRET=your-random-32-char-secret
+Environment=RUST_ENV=production
+
+# Restart
+sudo systemctl restart takeitasy
+```
+
+> ⚠️ **Security**: In production (`RUST_ENV=production`), the server will refuse to start without `JWT_SECRET` set.
+
+### Deployment Commands
+
+| Command | Description |
+|---------|-------------|
+| `./build-docker.sh` | Build with Docker (glibc 2.35 compat) |
+| `./deploy.sh package` | Create deployment package |
+| `./deploy.sh deploy` | Full deploy (build + package + upload) |
+| `./deploy.sh status` | Check service status |
+| `./deploy.sh logs` | View service logs |
+| `./deploy.sh restart` | Restart the service |
+
+### File Structure on VPS
+
+```
+/opt/takeitasy/
+├── take_it_easy          # Rust binary
+├── lib/                  # libtorch libraries
+│   ├── libtorch_cpu.so
+│   ├── libc10.so
+│   └── libgomp-*.so
+├── model_weights/        # Neural network weights
+│   └── graph_transformer_policy.safetensors
+├── frontend/             # Elm SPA (static files)
+└── data/
+    ├── auth.db           # User database (SQLite)
+    └── recorded_games/   # Game recordings for AI training
+```
+
+### Game Recording
+
+All games are automatically recorded for future AI improvement:
+
+```bash
+# Download recorded games from VPS
+scp user@vps:/opt/takeitasy/data/recorded_games/*.csv ./recorded_games/
+
+# CSV format: game_id, turn, player_type, plateau_state, tile, position, score
+```
+
+### Free Domain with FreeDNS
+
+1. Create account at https://freedns.afraid.org
+2. Add subdomain → Type: `AAAA` (for IPv6) or `A` (for IPv4)
+3. Point to your VPS IP
+4. Update nginx `server_name` directive
+
+### Troubleshooting Deployment
+
+| Issue | Solution |
+|-------|----------|
+| `libtorch_cpu.so not found` | Check `LD_LIBRARY_PATH` in systemd service |
+| `GLIBC_2.xx not found` | Rebuild with Docker (ensures glibc 2.35) |
+| `JWT_SECRET must be set` | Set `JWT_SECRET` environment variable |
+| `502 Bad Gateway` | Check if backend is running: `systemctl status takeitasy` |
+| gRPC-Web errors | Verify nginx proxies `/takeiteasygame.*` to port 50052 |
+
+---
+
 ## License
 
 MIT
