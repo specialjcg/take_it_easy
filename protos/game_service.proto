@@ -13,6 +13,8 @@ service GameService {
   rpc StartTurn(StartTurnRequest) returns (StartTurnResponse);
   rpc GetGameState(GetGameStateRequest) returns (GetGameStateResponse);
 
+  // 🎲 Mode Jeu Réel: obtenir la recommandation IA pour une tuile donnée
+  rpc GetAiMove(GetAiMoveRequest) returns (GetAiMoveResponse);
 }
 
 message MakeMoveRequest {
@@ -49,6 +51,7 @@ message GetAvailableMovesResponse {
 // Démarrer un nouveau tour
 message StartTurnRequest {
   string session_id = 1;
+  string forced_tile = 2;  // Optionnel: forcer une tuile spécifique (ex: "168") pour mode Jeu Réel
 }
 
 message StartTurnResponse {
@@ -75,4 +78,18 @@ message GetGameStateResponse {
   bool is_game_finished = 7;      // RENUMÉROTÉ
   string final_scores = 8;        // JSON des scores finaux - RENUMÉROTÉ
   Error error = 9;                // RENUMÉROTÉ
+}
+
+// Mode Jeu Réel: demander où l'IA jouerait une tuile
+message GetAiMoveRequest {
+  string tile_code = 1;                    // Code de la tuile (ex: "168")
+  repeated string board_state = 2;         // État du plateau IA (19 cases, "" = vide)
+  repeated int32 available_positions = 3;  // Positions disponibles
+  int32 turn_number = 4;                   // Numéro du tour (0-18)
+}
+
+message GetAiMoveResponse {
+  bool success = 1;
+  int32 recommended_position = 2;  // Position recommandée par l'IA (0-18)
+  Error error = 3;
 }

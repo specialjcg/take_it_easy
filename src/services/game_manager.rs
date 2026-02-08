@@ -15,6 +15,7 @@ use crate::game::tile::Tile;
 use crate::mcts::algorithm::{
     mcts_find_best_position_for_tile_uct, mcts_find_best_position_for_tile_with_qnet,
 };
+use crate::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
 use crate::recording::{get_recorder, PlayerType as RecorderPlayerType};
@@ -352,6 +353,112 @@ pub async fn process_mcts_turn(
     Ok((game_state, mcts_move))
 }
 
+/// Process AI turn using DIRECT Graph Transformer inference (no MCTS)
+/// This is the validated approach achieving 149.38 pts average
+pub async fn process_ai_turn_direct(
+    mut game_state: TakeItEasyGameState,
+    policy_net: &Mutex<PolicyNet>,
+) -> Result<(TakeItEasyGameState, MctsMove), String> {
+    let current_tile = game_state.current_tile.ok_or("NO_CURRENT_TILE")?;
+
+    if !game_state
+        .waiting_for_players
+        .contains(&"mcts_ai".to_string())
+    {
+        return Err("MCTS_NOT_WAITING".to_string());
+    }
+
+    let ai_plateau = game_state
+        .player_plateaus
+        .get("mcts_ai")
+        .ok_or("MCTS_PLAYER_NOT_FOUND")?;
+
+    let legal_moves = get_legal_moves(ai_plateau);
+    if legal_moves.is_empty() {
+        return Err("NO_LEGAL_MOVES_FOR_AI".to_string());
+    }
+
+    // Convert plateau to tensor for Graph Transformer (47 features)
+    let input_tensor = convert_plateau_for_gat_47ch(
+        ai_plateau,
+        &current_tile,
+        &game_state.deck,
+        game_state.current_turn,
+        game_state.total_turns,
+    );
+
+    // Direct policy inference (no MCTS search)
+    let policy_locked = policy_net.lock().await;
+    let policy_output = policy_locked.forward(&input_tensor, false);
+    drop(policy_locked);
+
+    // Extract policy probabilities
+    let policy_vec: Vec<f32> = {
+        let flat = policy_output.flatten(0, -1);
+        let size = flat.size()[0] as usize;
+        let mut buf = vec![0f32; size];
+        flat.copy_data(&mut buf, size);
+        buf
+    };
+
+    // Find best legal position
+    let best_position = legal_moves
+        .iter()
+        .filter(|&&pos| pos < policy_vec.len())
+        .max_by(|&a, &b| {
+            let val_a = policy_vec[*a];
+            let val_b = policy_vec[*b];
+            val_a.partial_cmp(&val_b).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .copied()
+        .unwrap_or(legal_moves[0]);
+
+    log::info!(
+        "🎯 AI Direct: tile {:?} → position {} (score: {:.3})",
+        current_tile,
+        best_position,
+        policy_vec.get(best_position).unwrap_or(&0.0)
+    );
+
+    // Record AI move
+    let ai_plateau = game_state
+        .player_plateaus
+        .get("mcts_ai")
+        .ok_or("MCTS_PLAYER_NOT_FOUND")?;
+    if let Some(recorder) = get_recorder() {
+        recorder.record_move(
+            &game_state.session_id,
+            game_state.current_turn,
+            "mcts_ai",
+            RecorderPlayerType::Mcts,
+            ai_plateau,
+            &current_tile,
+            best_position,
+            policy_vec.get(best_position).map(|&v| v),
+        );
+    }
+
+    // Place tile on AI plateau
+    let ai_plateau = game_state
+        .player_plateaus
+        .get_mut("mcts_ai")
+        .ok_or("MCTS_PLAYER_NOT_FOUND")?;
+    ai_plateau.tiles[best_position] = current_tile;
+
+    // Remove AI from waiting list
+    game_state.waiting_for_players.retain(|id| id != "mcts_ai");
+
+    let ai_move = MctsMove {
+        position: best_position,
+        tile: current_tile,
+        evaluation_score: *policy_vec.get(best_position).unwrap_or(&0.0),
+        search_depth: 0,         // Direct inference, no search
+        variations_considered: 0, // Direct inference, no variations
+    };
+
+    Ok((game_state, ai_move))
+}
+
 /// Process MCTS turn using hybrid Q-Net for superior play quality
 /// Uses Q-Net for position pruning before CNN policy/value evaluation
 pub async fn process_mcts_turn_hybrid(
@@ -606,6 +713,62 @@ pub async fn process_player_move_with_mcts(
         new_game_state: new_state.clone(),
         points_earned,
         mcts_response,
+        is_game_over: is_game_finished(&new_state),
+        turn_completed: new_state.waiting_for_players.is_empty(),
+    })
+}
+
+/// Process player move with direct Graph Transformer inference (no MCTS)
+/// This is the recommended approach for Graph Transformer (149.38 pts)
+pub async fn process_player_move_with_direct_inference(
+    game_state: TakeItEasyGameState,
+    player_move: PlayerMove,
+    policy_net: &Mutex<PolicyNet>,
+) -> Result<MoveResult, String> {
+    // 1. Apply player move
+    let mut new_state = apply_player_move(game_state, player_move.clone())?;
+
+    // 2. AI plays using direct inference (no MCTS)
+    let ai_response = if player_move.player_id != "mcts_ai"
+        && new_state
+            .waiting_for_players
+            .contains(&"mcts_ai".to_string())
+    {
+        match process_ai_turn_direct(new_state.clone(), policy_net).await {
+            Ok((updated_state, ai_move)) => {
+                new_state = updated_state;
+                Some(ai_move)
+            }
+            Err(_e) => {
+                new_state.waiting_for_players.retain(|id| id != "mcts_ai");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // 3. Check turn completion
+    new_state = check_turn_completion(new_state)?;
+
+    // 4. Calculate and update scores
+    for (player_id, plateau) in &new_state.player_plateaus {
+        let current_score = result(plateau);
+        new_state.scores.insert(player_id.clone(), current_score);
+    }
+
+    let initial_score = *new_state.scores.get(&player_move.player_id).unwrap_or(&0);
+    let points_earned = if let Some(plateau) = new_state.player_plateaus.get(&player_move.player_id)
+    {
+        result(plateau) - initial_score
+    } else {
+        0
+    };
+
+    Ok(MoveResult {
+        new_game_state: new_state.clone(),
+        points_earned,
+        mcts_response: ai_response,
         is_game_over: is_game_finished(&new_state),
         turn_completed: new_state.waiting_for_players.is_empty(),
     })

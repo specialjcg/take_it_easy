@@ -36,7 +36,7 @@ safetensors = "0.4"  # Portable model serialization
 
 # Authentication
 argon2 = "0.5"              # Password hashing
-jsonwebtoken = "10"          # JWT tokens
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }  # JWT tokens
 oauth2 = "4"                # OAuth2 client
 rusqlite = { version = "0.31", features = ["bundled"] }  # SQLite database
 lettre = { version = "0.11", features = ["tokio1-native-tls"] }  # Email sending

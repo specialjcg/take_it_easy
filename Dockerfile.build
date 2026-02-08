@@ -1,0 +1,37 @@
+# Dockerfile pour cross-compilation vers Ubuntu 22.04
+FROM ubuntu:22.04
+
+# Éviter les prompts interactifs
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Installer les dépendances de build
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    git \
+    wget \
+    unzip \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installer Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Télécharger et installer libtorch 2.5.1 (version attendue par tch-rs)
+WORKDIR /opt
+RUN wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcpu.zip -O libtorch.zip \
+    && unzip -q libtorch.zip \
+    && rm libtorch.zip
+
+# Variables d'environnement pour libtorch
+ENV LIBTORCH=/opt/libtorch
+ENV LD_LIBRARY_PATH=/opt/libtorch/lib:$LD_LIBRARY_PATH
+
+# Répertoire de travail
+WORKDIR /app
+
+# Commande par défaut
+CMD ["bash"]

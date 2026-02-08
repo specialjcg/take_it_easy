@@ -260,24 +260,24 @@ impl GrpcServer {
         );
 
         // Log server startup info
-        let mcts_mode = if self.qvalue_net.is_some() {
+        let ai_mode = if self.qvalue_net.is_some() {
             format!(
-                "HYBRID Q-Net (top-{}, {} sims)",
+                "HYBRID Q-Net MCTS (top-{}, {} sims)",
                 self.top_k, self.num_simulations
             )
         } else {
-            format!("CNN ({} sims)", self.num_simulations)
+            "Graph Transformer Direct (149.38 pts)".to_string()
         };
 
         if self.single_player {
             log::info!(
-                "🤖 Mode SINGLE-PLAYER démarré : 1 joueur vs MCTS {}",
-                mcts_mode
+                "🤖 Mode SINGLE-PLAYER démarré : 1 joueur vs {}",
+                ai_mode
             );
         } else {
             log::info!(
-                "👥 Mode MULTIJOUEUR démarré : Plusieurs joueurs + MCTS {}",
-                mcts_mode
+                "👥 Mode MULTIJOUEUR démarré : Plusieurs joueurs + {}",
+                ai_mode
             );
         }
         let web_layer_info = if self.config.enable_web_layer {

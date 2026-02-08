@@ -9,8 +9,9 @@ use crate::generated::takeiteasygame::v1::*;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
 use crate::services::game_manager::{
-    ensure_current_tile, player_move_from_json, process_player_move_with_hybrid_mcts,
-    process_player_move_with_mcts, MoveResult, PlayerMove, TakeItEasyGameState,
+    ensure_current_tile, player_move_from_json, process_player_move_with_direct_inference,
+    process_player_move_with_hybrid_mcts, process_player_move_with_mcts, MoveResult, PlayerMove,
+    TakeItEasyGameState,
 };
 use crate::services::session_manager::{
     get_store_from_manager, update_session_in_store, SessionManager,
@@ -99,7 +100,7 @@ pub async fn make_move_async_logic(
     let game_mode = session.game_mode.clone();
 
     log::info!(
-        "🎯 MCTS avec {} simulations (mode: {})",
+        "🎯 Graph Transformer avec {} simulations max (mode: {})",
         session_simulations,
         game_mode
     );
@@ -153,7 +154,9 @@ fn create_immediate_move_confirmation(
     response
 }
 
-/// Traite MCTS de façon synchrone et retourne la réponse complète
+/// Process AI move synchronously and return response
+/// Uses direct Graph Transformer inference by default (149.38 pts)
+/// Falls back to MCTS only when Q-Net hybrid is explicitly enabled
 #[allow(clippy::too_many_arguments)]
 async fn process_mcts_and_respond(
     session_manager: Arc<SessionManager>,
@@ -167,19 +170,22 @@ async fn process_mcts_and_respond(
     session_id: String,
     game_mode: String,
 ) -> MakeMoveResponse {
-    let mcts_type = if qvalue_net.is_some() {
-        "HYBRID"
+    // Use direct Graph Transformer inference by default
+    // Only use MCTS if hybrid Q-Net is explicitly enabled
+    let ai_type = if qvalue_net.is_some() {
+        "HYBRID MCTS"
     } else {
-        "CNN"
+        "Graph Transformer Direct"
     };
     log::info!(
-        "🔄 Traitement MCTS {} synchrone pour joueur {}",
-        mcts_type,
+        "🎯 Traitement {} pour joueur {}",
+        ai_type,
         player_move.player_id
     );
 
-    // Use hybrid MCTS if Q-Net is available, otherwise standard CNN MCTS
+    // Use direct inference for Graph Transformer, MCTS only for hybrid mode
     let result = if let Some(ref qnet) = qvalue_net {
+        // Hybrid MCTS mode (legacy)
         process_player_move_with_hybrid_mcts(
             game_state.clone(),
             player_move.clone(),
@@ -191,12 +197,11 @@ async fn process_mcts_and_respond(
         )
         .await
     } else {
-        process_player_move_with_mcts(
+        // Direct Graph Transformer inference (recommended)
+        process_player_move_with_direct_inference(
             game_state.clone(),
             player_move.clone(),
             &policy_net,
-            &value_net,
-            num_simulations,
         )
         .await
     };
@@ -235,7 +240,7 @@ async fn process_mcts_and_respond(
                     log::error!("❌ Échec mise à jour session: {}", e);
                 } else {
                     log::info!(
-                        "✅ Traitement MCTS terminé avec succès pour session {}",
+                        "✅ Traitement AI terminé avec succès pour session {}",
                         session_id
                     );
                 }
@@ -245,10 +250,10 @@ async fn process_mcts_and_respond(
             make_move_success_response(move_result, &game_mode)
         }
         Err(error_code) => {
-            log::error!("❌ Échec traitement MCTS: {}", error_code);
+            log::error!("❌ Échec traitement AI: {}", error_code);
             make_move_error_response(
                 error_code.clone(),
-                format!("MCTS processing failed: {}", error_code),
+                format!("AI processing failed: {}", error_code),
             )
         }
     }

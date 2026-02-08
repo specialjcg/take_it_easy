@@ -83,3 +83,23 @@ coverage/
 
 # Root-level text snapshots (status dumps, etc.)
 /*.txt
+
+# Deployment artifacts
+deploy_package/
+docker-libs/
+.docker-cargo/
+target-docker/
+
+# Docker
+*.tar
+
+# Sensitive - never commit
+*.pem
+*.key
+.env.production
+deploy.sh
+build-docker.sh
+
+# Keep templates
+!deploy.sh.example
+!build-docker.sh.example

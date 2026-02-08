@@ -180,6 +180,9 @@ impl<'a> ExpectimaxMCTS<'a> {
             NNArchitecture::Gnn => {
                 convert_plateau_for_gnn(plateau, self.current_turn, self.total_turns)
             }
+            NNArchitecture::GraphTransformer => {
+                crate::neural::tensor_conversion::convert_plateau_for_gat_47ch(plateau, tile, deck, self.current_turn, self.total_turns)
+            }
         };
 
         // Get value prediction from CNN
@@ -315,6 +318,9 @@ impl<'a> ExpectimaxMCTS<'a> {
             ),
             NNArchitecture::Gnn => {
                 convert_plateau_for_gnn(plateau, self.current_turn, self.total_turns)
+            }
+            NNArchitecture::GraphTransformer => {
+                crate::neural::tensor_conversion::convert_plateau_for_gat_47ch(plateau, &first_tile, deck, self.current_turn, self.total_turns)
             }
         };
 

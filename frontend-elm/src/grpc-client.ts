@@ -2,21 +2,28 @@
 // Ce fichier sera bundlé en JavaScript pur
 
 import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
-import { SessionServiceClient } from '../../frontend/src/generated/session_service.client';
-import { GameServiceClient } from '../../frontend/src/generated/game_service.client';
+import { SessionServiceClient } from './generated/session_service.client';
+import { GameServiceClient } from './generated/game_service.client';
 import {
     CreateSessionRequest,
     JoinSessionRequest,
     SetReadyRequest,
     GetSessionStateRequest
-} from '../../frontend/src/generated/session_service';
+} from './generated/session_service';
 import {
     MakeMoveRequest,
     StartTurnRequest,
-    GetGameStateRequest
-} from '../../frontend/src/generated/game_service';
+    GetGameStateRequest,
+    GetAiMoveRequest
+} from './generated/game_service';
 
-const GRPC_WEB_URL = 'http://localhost:50052';
+// Auto-detect environment
+const IS_PRODUCTION = typeof window !== 'undefined' &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1';
+const GRPC_WEB_URL = IS_PRODUCTION
+    ? `${window.location.protocol}//${window.location.host}`  // Production: nginx proxy
+    : 'http://localhost:50052';  // Development: direct gRPC-Web
 
 class GrpcClient {
     private sessionClient: SessionServiceClient;
@@ -26,12 +33,8 @@ class GrpcClient {
         const transport = new GrpcWebFetchTransport({
             baseUrl: GRPC_WEB_URL,
             fetchInit: { mode: 'cors', credentials: 'omit' },
-            format: "binary",
-            timeout: 10000,
-            meta: {
-                'content-type': 'application/grpc-web+proto',
-                'accept': 'application/grpc-web+proto'
-            }
+            format: "text",
+            timeout: 30000
         });
 
         this.sessionClient = new SessionServiceClient(transport);
@@ -129,9 +132,13 @@ class GrpcClient {
         }
     }
 
-    async startTurn(sessionId: string) {
+    async startTurn(sessionId: string, forcedTile?: string) {
         try {
-            const request: StartTurnRequest = { sessionId };
+            // Support du mode Jeu Réel avec tuile forcée
+            const request: any = { sessionId };
+            if (forcedTile) {
+                request.forcedTile = forcedTile;
+            }
             const { response } = await this.gameClient.startTurn(request);
 
             if (response.success) {
@@ -152,13 +159,40 @@ class GrpcClient {
         }
     }
 
+    // Mode Jeu Réel: obtenir la recommandation IA pour une tuile
+    async getAiMove(tileCode: string, boardState: string[], availablePositions: number[], turnNumber: number) {
+        try {
+            const request: GetAiMoveRequest = {
+                tileCode,
+                boardState,
+                availablePositions,
+                turnNumber
+            };
+            const { response } = await this.gameClient.getAiMove(request);
+
+            if (response.success) {
+                return {
+                    success: true,
+                    recommendedPosition: response.recommendedPosition
+                };
+            } else if (response.error) {
+                return { success: false, error: response.error.message };
+            }
+            return { success: false, error: "Échec" };
+        } catch (error: any) {
+            // Si getAiMove n'existe pas dans le client généré, on retourne une erreur gracieuse
+            console.warn('getAiMove non disponible:', error);
+            return { success: false, error: 'AI non disponible - utilisez le mode avec session' };
+        }
+    }
+
     async makeMove(sessionId: string, playerId: string, position: number) {
         try {
             const request: MakeMoveRequest = {
                 sessionId,
                 playerId,
                 moveData: `{"position":${position}}`,
-                timestamp: BigInt(Date.now())
+                timestamp: 0n
             };
 
             const { response } = await this.gameClient.makeMove(request);

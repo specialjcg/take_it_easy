@@ -16,6 +16,7 @@
     "@protobuf-ts/runtime-rpc": "^2.9.4"
   },
   "devDependencies": {
+    "@protobuf-ts/plugin": "^2.11.1",
     "esbuild": "^0.20.0",
     "typescript": "^5.3.0"
   }

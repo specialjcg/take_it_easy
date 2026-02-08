@@ -770,6 +770,9 @@ pub struct GetAvailableMovesResponse {
 pub struct StartTurnRequest {
     #[prost(string, tag = "1")]
     pub session_id: ::prost::alloc::string::String,
+    /// Optionnel: forcer une tuile spécifique (ex: "168") pour mode Jeu Réel
+    #[prost(string, tag = "2")]
+    pub forced_tile: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StartTurnResponse {
@@ -824,6 +827,32 @@ pub struct GetGameStateResponse {
     pub final_scores: ::prost::alloc::string::String,
     /// RENUMÉROTÉ
     #[prost(message, optional, tag = "9")]
+    pub error: ::core::option::Option<Error>,
+}
+/// Mode Jeu Réel: demander où l'IA jouerait une tuile
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetAiMoveRequest {
+    /// Code de la tuile (ex: "168")
+    #[prost(string, tag = "1")]
+    pub tile_code: ::prost::alloc::string::String,
+    /// État du plateau IA (19 cases, "" = vide)
+    #[prost(string, repeated, tag = "2")]
+    pub board_state: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Positions disponibles
+    #[prost(int32, repeated, tag = "3")]
+    pub available_positions: ::prost::alloc::vec::Vec<i32>,
+    /// Numéro du tour (0-18)
+    #[prost(int32, tag = "4")]
+    pub turn_number: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetAiMoveResponse {
+    #[prost(bool, tag = "1")]
+    pub success: bool,
+    /// Position recommandée par l'IA (0-18)
+    #[prost(int32, tag = "2")]
+    pub recommended_position: i32,
+    #[prost(message, optional, tag = "3")]
     pub error: ::core::option::Option<Error>,
 }
 /// Generated client implementations.
@@ -1020,6 +1049,31 @@ pub mod game_service_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        /// 🎲 Mode Jeu Réel: obtenir la recommandation IA pour une tuile donnée
+        pub async fn get_ai_move(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetAiMoveRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetAiMoveResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/takeiteasygame.v1.GameService/GetAiMove",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("takeiteasygame.v1.GameService", "GetAiMove"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -1064,6 +1118,14 @@ pub mod game_service_server {
             request: tonic::Request<super::GetGameStateRequest>,
         ) -> std::result::Result<
             tonic::Response<super::GetGameStateResponse>,
+            tonic::Status,
+        >;
+        /// 🎲 Mode Jeu Réel: obtenir la recommandation IA pour une tuile donnée
+        async fn get_ai_move(
+            &self,
+            request: tonic::Request<super::GetAiMoveRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetAiMoveResponse>,
             tonic::Status,
         >;
     }
@@ -1309,6 +1371,51 @@ pub mod game_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = GetGameStateSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/takeiteasygame.v1.GameService/GetAiMove" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetAiMoveSvc<T: GameService>(pub Arc<T>);
+                    impl<
+                        T: GameService,
+                    > tonic::server::UnaryService<super::GetAiMoveRequest>
+                    for GetAiMoveSvc<T> {
+                        type Response = super::GetAiMoveResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetAiMoveRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as GameService>::get_ai_move(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetAiMoveSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

@@ -82,6 +82,36 @@ body {
     font-size: 0.9rem;
 }
 
+.auth-success {
+    background: rgba(107, 255, 148, 0.2);
+    border: 1px solid rgba(107, 255, 148, 0.4);
+    color: #6bff94;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.forgot-password-link,
+.back-to-login {
+    text-align: center;
+    margin-top: 0.5rem;
+}
+
+.link-button {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    font-size: 0.85rem;
+    text-decoration: underline;
+    padding: 0;
+}
+
+.link-button:hover {
+    color: white;
+}
+
 .auth-form {
     display: flex;
     flex-direction: column;
@@ -871,6 +901,187 @@ body {
 }
 
 /* ============================================================================
+   REAL GAME MODE (Jeu Réel)
+   ============================================================================ */
+
+.real-game-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.real-game-boards {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.real-game-boards .game-board {
+    flex: 0 0 auto;
+    padding: 1rem;
+}
+
+.real-game-boards .game-board h3 {
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.real-game-boards .ai-board h3 {
+    color: #ffa500;
+}
+
+.ai-hex-board .hex-cell {
+    opacity: 0.9;
+}
+
+@media (max-width: 1000px) {
+    .real-game-boards {
+        flex-direction: column;
+        align-items: center;
+    }
+}
+
+.real-game-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.real-game-info h2 {
+    color: #4ecdc4;
+    margin: 0;
+}
+
+.reset-button {
+    background: transparent;
+    border: 1px solid rgba(255, 165, 0, 0.5);
+    color: #ffa500;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reset-button:hover {
+    background: rgba(255, 165, 0, 0.1);
+}
+
+/* Tile Picker - 3 lignes de 9 tuiles dans 150px */
+.tile-picker {
+    text-align: center;
+    padding: 1rem;
+}
+
+.tile-picker h3 {
+    margin-bottom: 0.5rem;
+    color: #4ecdc4;
+    font-size: 1rem;
+}
+
+.tiles-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 600px;
+    margin: 0 auto;
+    height: 150px;
+}
+
+.tiles-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 46px;
+}
+
+.row-label {
+    width: 24px;
+    height: 24px;
+    background: rgba(78, 205, 196, 0.3);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+    color: #4ecdc4;
+    flex-shrink: 0;
+}
+
+.row-tiles {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    justify-content: center;
+}
+
+.picker-tile {
+    width: 56px;
+    height: 42px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 6px;
+    position: relative;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px;
+    flex-shrink: 0;
+}
+
+.picker-tile:hover:not(.used) {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(78, 205, 196, 0.5);
+    z-index: 10;
+}
+
+.picker-tile.used {
+    opacity: 0.25;
+    cursor: not-allowed;
+}
+
+.used-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 18px;
+    color: #4ecdc4;
+    text-shadow: 0 0 8px rgba(78, 205, 196, 0.8);
+}
+
+/* Current tile display */
+.current-tile-section {
+    text-align: center;
+}
+
+.current-tile-section h3 {
+    margin-bottom: 1rem;
+    color: #4ecdc4;
+}
+
+.selected-tile-display {
+    width: 120px;
+    height: 104px;
+    margin: 0 auto 1rem;
+}
+
+/* Game over state */
+.game-over {
+    text-align: center;
+    background: rgba(78, 205, 196, 0.1);
+    border: 1px solid rgba(78, 205, 196, 0.3);
+}
+
+.game-over h2 {
+    color: #4ecdc4;
+    margin-bottom: 0.5rem;
+}
+
+/* ============================================================================
    RESPONSIVE
    ============================================================================ */
 
@@ -895,5 +1106,29 @@ body {
     .hex-board {
         transform: scale(0.8);
         transform-origin: top center;
+    }
+
+    .tiles-rows {
+        height: 130px;
+    }
+
+    .tiles-row {
+        height: 40px;
+    }
+
+    .picker-tile {
+        width: 32px;
+        height: 28px;
+    }
+
+    .row-label {
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+    }
+
+    .real-game-info {
+        flex-direction: column;
+        text-align: center;
     }
 }

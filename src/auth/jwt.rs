@@ -20,8 +20,15 @@ impl JwtConfig {
     }
 
     pub fn from_env() -> Self {
-        let secret =
-            std::env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-change-me".to_string());
+        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+            // En développement, utiliser un secret par défaut avec avertissement
+            // En production, JWT_SECRET DOIT être défini
+            if std::env::var("RUST_ENV").unwrap_or_default() == "production" {
+                panic!("JWT_SECRET must be set in production! Use: export JWT_SECRET=$(openssl rand -base64 32)");
+            }
+            eprintln!("⚠️  WARNING: Using default JWT secret. Set JWT_SECRET for production!");
+            "dev-secret-not-for-production".to_string()
+        });
         let expiration_hours = std::env::var("JWT_EXPIRATION_HOURS")
             .ok()
             .and_then(|v| v.parse().ok())

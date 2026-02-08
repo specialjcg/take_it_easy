@@ -6,27 +6,13 @@ set -e
 # Add protoc to PATH
 export PATH="$HOME/.local/bin:$PATH"
 
-# Load NVM and use compatible Node.js version
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-# Ensure we have Node.js 22.12.0 installed and use it
-if ! nvm ls 22.12.0 > /dev/null 2>&1; then
-    echo "📦 Installing Node.js v22.12.0..."
-    nvm install 22.12.0
-fi
-nvm use 22.12.0 > /dev/null 2>&1 || {
-    echo "❌ Failed to activate Node.js v22.12.0. Please install NVM and Node.js v22.12.0"
-    exit 1
-}
-
-echo "🚀 Starting Take It Easy - Backend + Frontend"
-echo "📦 Using Node.js version: $(node --version)"
+echo "🚀 Starting Take It Easy - Backend + Frontend (Elm)"
 
 # Function to kill background processes on exit
 cleanup() {
     echo "🛑 Stopping all processes..."
     pkill -f "take_it_easy --mode" 2>/dev/null || true
-    pkill -f "npm run dev" 2>/dev/null || true
+    pkill -f "python3 -m http.server" 2>/dev/null || true
     exit
 }
 
@@ -37,32 +23,30 @@ trap cleanup EXIT INT TERM
 echo "🔧 Building Rust backend..."
 cargo build --release
 
-# Build frontend
+# Build frontend Elm
 GRPC_PORT=50051
 GRPC_WEB_PORT=$((GRPC_PORT + 1))
 
-# Install frontend dependencies if needed
-if [ ! -d "frontend/node_modules" ]; then
-    echo "📦 Installing frontend dependencies..."
-    cd frontend && npm install && cd ..
-fi
-
-echo "🔧 Building frontend..."
-cd frontend && VITE_GRPC_WEB_BASE_URL="http://localhost:${GRPC_WEB_PORT}" npm run build && cd ..
+echo "🔧 Building Elm frontend..."
+cd frontend-elm
+elm make src/Main.elm --optimize --output=public/main.js
+npm run build:grpc
+cd ..
 
 echo "✅ Build completed!"
 
 # Start backend in background
 echo "🤖 Starting backend (gRPC port ${GRPC_PORT}, gRPC-Web port ${GRPC_WEB_PORT})..."
-./target/release/take_it_easy --mode multiplayer --port ${GRPC_PORT} > backend.log 2>&1 &
+echo "   Architecture: Graph Transformer Direct (149.38 pts, sans MCTS)"
+./target/release/take_it_easy --mode multiplayer --port ${GRPC_PORT} --nn-architecture graph-transformer > backend.log 2>&1 &
 BACKEND_PID=$!
 
 # Wait a moment for backend to start
 sleep 2
 
-# Start frontend in background (from project root)
-echo "🌐 Starting frontend (http://localhost:3000)..."
-(cd frontend && VITE_GRPC_WEB_BASE_URL="http://localhost:${GRPC_WEB_PORT}" npm run dev > ../frontend.log 2>&1) &
+# Start frontend in background (Python HTTP server)
+echo "🌐 Starting Elm frontend (http://localhost:3000)..."
+(cd frontend-elm/public && python3 -m http.server 3000 > ../../frontend.log 2>&1) &
 FRONTEND_PID=$!
 
 echo "✅ All services started!"

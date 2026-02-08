@@ -45,7 +45,7 @@ pub fn train_network_with_game_data(
             NNArchitecture::Cnn | NNArchitecture::CnnOnehot => {
                 (normalized_state.shallow_clone(), normalized_state)
             }
-            NNArchitecture::Gnn => {
+            NNArchitecture::Gnn | NNArchitecture::GraphTransformer => {
                 let plateau_ref = result.plateau.as_ref().expect("MCTSResult.plateau is None");
                 let current_turn = result
                     .current_turn

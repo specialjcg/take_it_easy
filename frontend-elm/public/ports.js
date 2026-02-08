@@ -4,8 +4,11 @@
  * and direct fetch for Auth API
  */
 
-// Configuration
-const AUTH_API_BASE = 'http://localhost:51051/auth';
+// Configuration - Auto-detect environment
+const IS_PRODUCTION = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+const AUTH_API_BASE = IS_PRODUCTION
+    ? '/auth'  // Production: nginx reverse proxy
+    : 'http://localhost:51051/auth';  // Development: direct backend
 
 // LocalStorage keys
 const TOKEN_KEY = 'auth_token';
@@ -34,6 +37,12 @@ function initPorts(app) {
                 case 'checkAuth':
                     await handleCheckAuth(app);
                     break;
+                case 'forgotPassword':
+                    await handleForgotPassword(app, message.email);
+                    break;
+                case 'resetPassword':
+                    await handleResetPassword(app, message.token, message.newPassword);
+                    break;
 
                 // ========== SESSION (via gRPC) ==========
                 case 'createSession':
@@ -51,10 +60,15 @@ function initPorts(app) {
 
                 // ========== GAMEPLAY (via gRPC) ==========
                 case 'startTurn':
-                    await handleStartTurn(app, message.sessionId);
+                    await handleStartTurn(app, message.sessionId, message.forcedTile);
                     break;
                 case 'playMove':
                     await handlePlayMove(app, message.sessionId, message.playerId, message.position);
+                    break;
+
+                // ========== REAL GAME MODE (Jeu Réel) ==========
+                case 'getAiMove':
+                    await handleGetAiMove(app, message.tileCode, message.boardState, message.availablePositions, message.turnNumber);
                     break;
 
                 default:
@@ -180,6 +194,66 @@ async function handleCheckAuth(app) {
     app.ports.receiveFromJs.send({ type: 'checkAuthFailure' });
 }
 
+async function handleForgotPassword(app, email) {
+    try {
+        const response = await fetch(`${AUTH_API_BASE}/forgot-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            app.ports.receiveFromJs.send({
+                type: 'forgotPasswordSuccess',
+                message: data.message || 'Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.'
+            });
+        } else {
+            app.ports.receiveFromJs.send({
+                type: 'forgotPasswordFailure',
+                error: data.error || 'Erreur lors de l\'envoi'
+            });
+        }
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        app.ports.receiveFromJs.send({
+            type: 'forgotPasswordFailure',
+            error: 'Erreur de connexion au serveur'
+        });
+    }
+}
+
+async function handleResetPassword(app, token, newPassword) {
+    try {
+        const response = await fetch(`${AUTH_API_BASE}/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, new_password: newPassword })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            app.ports.receiveFromJs.send({
+                type: 'resetPasswordSuccess',
+                message: data.message || 'Mot de passe réinitialisé avec succès !'
+            });
+        } else {
+            app.ports.receiveFromJs.send({
+                type: 'resetPasswordFailure',
+                error: data.error || 'Lien invalide ou expiré'
+            });
+        }
+    } catch (error) {
+        console.error('Reset password error:', error);
+        app.ports.receiveFromJs.send({
+            type: 'resetPasswordFailure',
+            error: 'Erreur de connexion au serveur'
+        });
+    }
+}
+
 // ============================================================================
 // SESSION HANDLERS (via gRPC client)
 // ============================================================================
@@ -299,7 +373,7 @@ async function handleSetReady(app, sessionId, playerId) {
 // GAMEPLAY HANDLERS (via gRPC client)
 // ============================================================================
 
-async function handleStartTurn(app, sessionId) {
+async function handleStartTurn(app, sessionId, forcedTile) {
     if (!window.grpcClient) {
         app.ports.receiveFromJs.send({
             type: 'gameError',
@@ -309,7 +383,7 @@ async function handleStartTurn(app, sessionId) {
     }
 
     try {
-        const result = await window.grpcClient.startTurn(sessionId);
+        const result = await window.grpcClient.startTurn(sessionId, forcedTile);
         console.log('startTurn result:', result);
 
         if (result.success) {
@@ -388,10 +462,54 @@ async function handlePlayMove(app, sessionId, playerId, position) {
         console.log('makeMove result:', result);
 
         if (result.success) {
+            // Parse game state to extract AI data
+            let gameState = result.newGameState;
+            if (typeof gameState === 'string') {
+                try {
+                    gameState = JSON.parse(gameState);
+                } catch (e) {
+                    gameState = {};
+                }
+            }
+
+            let boardData = gameState;
+            if (gameState?.boardState) {
+                try {
+                    boardData = typeof gameState.boardState === 'string'
+                        ? JSON.parse(gameState.boardState)
+                        : gameState.boardState;
+                } catch (e) {
+                    boardData = {};
+                }
+            }
+
+            // Extract AI tiles and score for Solo mode display
+            let aiTiles = [];
+            let aiScore = 0;
+            const scores = boardData?.scores || {};
+
+            if (boardData && boardData.player_plateaus && boardData.player_plateaus.mcts_ai) {
+                const aiPlateau = boardData.player_plateaus.mcts_ai;
+                aiScore = scores.mcts_ai || 0;
+
+                if (aiPlateau.tiles) {
+                    for (let i = 0; i < 19; i++) {
+                        const tile = aiPlateau.tiles[i];
+                        if (tile && (tile[0] !== 0 || tile[1] !== 0 || tile[2] !== 0)) {
+                            aiTiles.push(`image/${tile[0]}${tile[1]}${tile[2]}.png`);
+                        } else {
+                            aiTiles.push('');
+                        }
+                    }
+                }
+            }
+
             app.ports.receiveFromJs.send({
                 type: 'movePlayed',
                 position: position,
-                points: result.pointsEarned || 0
+                points: result.pointsEarned || 0,
+                aiTiles: aiTiles,
+                aiScore: aiScore
             });
 
             if (result.isGameOver) {
@@ -473,6 +591,64 @@ async function handlePlayMove(app, sessionId, playerId, position) {
             type: 'gameError',
             error: e.message || 'Erreur réseau'
         });
+    }
+}
+
+// ============================================================================
+// REAL GAME MODE - AI MOVE
+// ============================================================================
+
+async function handleGetAiMove(app, tileCode, boardState, availablePositions, turnNumber) {
+    if (!window.grpcClient) {
+        app.ports.receiveFromJs.send({
+            type: 'aiMoveResult',
+            success: false,
+            position: -1,
+            error: 'gRPC client not loaded'
+        });
+        return;
+    }
+
+    try {
+        console.log('🤖 Calling getAiMove:', { tileCode, boardState, availablePositions, turnNumber });
+        const result = await window.grpcClient.getAiMove(tileCode, boardState, availablePositions, turnNumber);
+        console.log('🤖 getAiMove result:', result);
+
+        if (result.success) {
+            const msg = {
+                type: 'aiMoveResult',
+                position: result.recommendedPosition,
+                error: ''
+            };
+            console.log('🤖 Sending to Elm:', msg);
+            app.ports.receiveFromJs.send(msg);
+        } else {
+            // Fallback: position aléatoire parmi les disponibles
+            const fallbackPosition = availablePositions.length > 0
+                ? availablePositions[Math.floor(Math.random() * availablePositions.length)]
+                : 0;
+            console.warn('AI move failed, using fallback:', result.error);
+            const fallbackMsg = {
+                type: 'aiMoveResult',
+                position: fallbackPosition,
+                error: 'Fallback: ' + (result.error || 'AI non disponible')
+            };
+            console.log('🤖 Sending fallback to Elm:', fallbackMsg);
+            app.ports.receiveFromJs.send(fallbackMsg);
+        }
+    } catch (e) {
+        console.error('getAiMove error:', e);
+        // Fallback aléatoire en cas d'erreur
+        const fallbackPosition = availablePositions.length > 0
+            ? availablePositions[Math.floor(Math.random() * availablePositions.length)]
+            : 0;
+        const errorMsg = {
+            type: 'aiMoveResult',
+            position: fallbackPosition,
+            error: 'Fallback: erreur réseau'
+        };
+        console.log('🤖 Sending error fallback to Elm:', errorMsg);
+        app.ports.receiveFromJs.send(errorMsg);
     }
 }
 

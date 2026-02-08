@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+# Script de déploiement Take It Easy
+# Cross-compilation locale + déploiement sur VPS
+#
+# INSTRUCTIONS:
+# 1. Copiez ce fichier vers deploy.sh
+# 2. Modifiez les variables ci-dessous
+# 3. Ne commitez JAMAIS deploy.sh (il est dans .gitignore)
+
+set -e
+
+# ============================================================================
+# CONFIGURATION - À MODIFIER
+# ============================================================================
+
+# Connexion SSH au VPS
+VPS_USER="root"                          # Utilisateur SSH
+VPS_HOST="your-vps-hostname.example.com" # Hostname ou IP du VPS
+VPS_PORT="22"                            # Port SSH
+VPS_APP_DIR="/opt/takeitasy"             # Répertoire d'installation
+
+# Domaine (pour config nginx)
+DOMAIN="takeitasy.example.com"
+
+# ... (le reste du script est identique)

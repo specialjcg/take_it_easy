@@ -14,6 +14,7 @@ pub fn load_game_data_with_arch(file_path: &str, arch: NNArchitecture) -> Vec<MC
         NNArchitecture::Cnn => "_cnn",
         NNArchitecture::Gnn => "_gnn",
         NNArchitecture::CnnOnehot => "_cnn_onehot",
+        NNArchitecture::GraphTransformer => "_graph_transformer",
     };
     let prefixed_path = format!("{}{}", file_path, arch_suffix);
 

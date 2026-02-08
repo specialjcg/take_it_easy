@@ -413,15 +413,15 @@ fn prepare_batch_with_arch(
 ) -> Result<(Tensor, Tensor, Tensor), Box<dyn Error>> {
     let batch_size = examples.len();
 
-    // GNN uses different tensor shape: [batch, 19, 8] instead of [batch, channels, 5, 5]
-    if arch == NNArchitecture::Gnn {
+    // GNN/GraphTransformer use different tensor shapes
+    if arch == NNArchitecture::Gnn || arch == NNArchitecture::GraphTransformer {
         return prepare_batch_gnn(examples, device);
     }
 
     let (input_channels, encode_fn): (i64, fn(&[i32], &(i32, i32, i32)) -> Vec<f32>) = match arch {
         NNArchitecture::Cnn => (47, encode_state),
         NNArchitecture::CnnOnehot => (37, encode_state_onehot),
-        NNArchitecture::Gnn => unreachable!(), // Handled above
+        NNArchitecture::Gnn | NNArchitecture::GraphTransformer => unreachable!(), // Handled above
     };
 
     let state_size = (input_channels as usize) * 5 * 5;

@@ -15,6 +15,9 @@ pub enum NNArchitecture {
     /// CNN with one-hot oriented encoding (37 channels)
     /// Better for pattern matching and line completion detection
     CnnOnehot,
+    /// Graph Transformer with full self-attention (149.38 pts - BEST)
+    /// Uses 47 features per node, 19 nodes
+    GraphTransformer,
 }
 
 impl std::str::FromStr for NNArchitecture {
@@ -24,8 +27,9 @@ impl std::str::FromStr for NNArchitecture {
             "cnn" => Ok(NNArchitecture::Cnn),
             "gnn" => Ok(NNArchitecture::Gnn),
             "cnn-onehot" | "cnn_onehot" | "onehot" => Ok(NNArchitecture::CnnOnehot),
+            "graph-transformer" | "graph_transformer" | "gt" => Ok(NNArchitecture::GraphTransformer),
             _ => Err(format!(
-                "Unknown architecture: {}. Valid: cnn, gnn, cnn-onehot",
+                "Unknown architecture: {}. Valid: cnn, gnn, cnn-onehot, graph-transformer",
                 s
             )),
         }
@@ -38,6 +42,7 @@ impl std::fmt::Display for NNArchitecture {
             NNArchitecture::Cnn => write!(f, "cnn"),
             NNArchitecture::Gnn => write!(f, "gnn"),
             NNArchitecture::CnnOnehot => write!(f, "cnn-onehot"),
+            NNArchitecture::GraphTransformer => write!(f, "graph-transformer"),
         }
     }
 }
@@ -49,6 +54,7 @@ impl NNArchitecture {
             NNArchitecture::Cnn => (47, 5, 5), // 17 base + 30 line features
             NNArchitecture::Gnn => (8, 19, 1), // 19 nodes × 8 features (graph format)
             NNArchitecture::CnnOnehot => (37, 5, 5), // One-hot oriented encoding
+            NNArchitecture::GraphTransformer => (47, 19, 1), // 47 features per node, 19 nodes
         }
     }
 }
@@ -156,16 +162,13 @@ impl NeuralManager {
             );
 
             // Load policy from its architecture folder
-            let policy_arch_dir = match policy_arch {
-                NNArchitecture::Cnn => "cnn",
-                NNArchitecture::Gnn => "gnn",
-                NNArchitecture::CnnOnehot => "cnn-onehot",
+            let policy_path = match policy_arch {
+                NNArchitecture::Cnn => format!("{}/cnn/policy/policy.params", config.model_path),
+                NNArchitecture::Gnn => format!("{}/gnn/policy/policy.params", config.model_path),
+                NNArchitecture::CnnOnehot => format!("{}/cnn-onehot/policy/policy.params", config.model_path),
+                NNArchitecture::GraphTransformer => format!("{}/graph_transformer_policy.safetensors", config.model_path),
             };
 
-            let policy_path = format!(
-                "{}/{}/policy/policy.params",
-                config.model_path, policy_arch_dir
-            );
             if let Err(e) = policy_net.load_model(&mut vs_policy, &policy_path) {
                 log::warn!("⚠️ Failed to load PolicyNet from {}: {:?}", policy_path, e);
             } else {
@@ -173,16 +176,12 @@ impl NeuralManager {
             }
 
             // Load value from its architecture folder (may be different)
-            let value_arch_dir = match value_arch {
-                NNArchitecture::Cnn => "cnn",
-                NNArchitecture::Gnn => "gnn",
-                NNArchitecture::CnnOnehot => "cnn-onehot",
+            let value_path = match value_arch {
+                NNArchitecture::Cnn => format!("{}/cnn/value/value.params", config.model_path),
+                NNArchitecture::Gnn => format!("{}/gnn/value/value.params", config.model_path),
+                NNArchitecture::CnnOnehot => format!("{}/cnn-onehot/value/value.params", config.model_path),
+                NNArchitecture::GraphTransformer => format!("{}/gat_value_value.safetensors", config.model_path),
             };
-
-            let value_path = format!(
-                "{}/{}/value/value.params",
-                config.model_path, value_arch_dir
-            );
             if let Err(e) = value_net.load_model(&mut vs_value, &value_path) {
                 log::warn!("⚠️ Failed to load ValueNet from {}: {:?}", value_path, e);
             } else {
@@ -302,6 +301,7 @@ impl NeuralManager {
             NNArchitecture::Cnn => "cnn",
             NNArchitecture::Gnn => "gnn",
             NNArchitecture::CnnOnehot => "cnn-onehot",
+            NNArchitecture::GraphTransformer => "graph-transformer",
         };
         let model_path = format!("{}/{}", self.config.model_path, arch_dir);
         log::info!("💾 Saving neural network models to {}", model_path);

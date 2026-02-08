@@ -19,7 +19,7 @@ use crate::neural::manager::NNArchitecture;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
 use crate::neural::tensor_conversion::{
-    convert_plateau_to_graph_features, convert_plateau_to_tensor,
+    convert_plateau_for_gat_47ch, convert_plateau_to_graph_features, convert_plateau_to_tensor,
 };
 use crate::scoring::scoring::result;
 use crate::strategy::contextual_boost::calculate_contextual_boost_entropy;
@@ -58,6 +58,10 @@ fn convert_plateau_by_arch(
                 deck,
                 current_turn,
             )
+        }
+        NNArchitecture::GraphTransformer => {
+            // Graph Transformer uses 47 features per node, 19 nodes
+            convert_plateau_for_gat_47ch(plateau, chosen_tile, deck, current_turn, total_turns)
         }
     }
 }
@@ -353,6 +357,10 @@ fn mcts_core(
                     let gnn_feat = convert_plateau_to_graph_features(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
+                NNArchitecture::GraphTransformer => {
+                    let gt_feat = convert_plateau_for_gat_47ch(plateau, &chosen_tile, deck, current_turn, total_turns);
+                    (gt_feat.shallow_clone(), Some(gt_feat))
+                }
             }
         }
         _ => (
@@ -497,6 +505,9 @@ fn mcts_core(
                     }
                     NNArchitecture::Gnn => {
                         convert_plateau_to_graph_features(&temp_plateau, current_turn, total_turns)
+                    }
+                    NNArchitecture::GraphTransformer => {
+                        convert_plateau_for_gat_47ch(&temp_plateau, &chosen_tile, &temp_deck, current_turn, total_turns)
                     }
                 };
 
@@ -928,6 +939,10 @@ fn mcts_core_cow(
                 NNArchitecture::Gnn => {
                     let gnn_feat = convert_plateau_to_graph_features(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
+                }
+                NNArchitecture::GraphTransformer => {
+                    let gt_feat = convert_plateau_for_gat_47ch(plateau, &chosen_tile, deck, current_turn, total_turns);
+                    (gt_feat.shallow_clone(), Some(gt_feat))
                 }
             }
         }
@@ -1604,6 +1619,10 @@ fn mcts_core_gumbel(
                     let gnn_feat = convert_plateau_to_graph_features(plateau, current_turn, total_turns);
                     (gnn_feat.shallow_clone(), Some(gnn_feat))
                 }
+                NNArchitecture::GraphTransformer => {
+                    let gt_feat = convert_plateau_for_gat_47ch(plateau, &chosen_tile, deck, current_turn, total_turns);
+                    (gt_feat.shallow_clone(), Some(gt_feat))
+                }
             }
         }
         _ => (
@@ -1654,6 +1673,9 @@ fn mcts_core_gumbel(
                     }
                     NNArchitecture::Gnn => {
                         convert_plateau_to_graph_features(&temp_plateau, current_turn, total_turns)
+                    }
+                    NNArchitecture::GraphTransformer => {
+                        convert_plateau_for_gat_47ch(&temp_plateau, &chosen_tile, &temp_deck, current_turn, total_turns)
                     }
                 };
 

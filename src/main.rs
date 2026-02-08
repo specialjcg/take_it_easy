@@ -32,6 +32,8 @@ mod services;
 pub enum NnArchitectureCli {
     Cnn,
     Gnn,
+    #[value(name = "graph-transformer")]
+    GraphTransformer,
 }
 
 impl From<NnArchitectureCli> for neural::manager::NNArchitecture {
@@ -39,6 +41,7 @@ impl From<NnArchitectureCli> for neural::manager::NNArchitecture {
         match cli {
             NnArchitectureCli::Cnn => neural::manager::NNArchitecture::Cnn,
             NnArchitectureCli::Gnn => neural::manager::NNArchitecture::Gnn,
+            NnArchitectureCli::GraphTransformer => neural::manager::NNArchitecture::GraphTransformer,
         }
     }
 }
@@ -90,12 +93,12 @@ struct Config {
     #[arg(long, default_value_t = 50)]
     dynamic_sim_boost: usize,
 
-    /// Architecture du réseau de neurones (cnn ou gnn)
-    #[arg(long, value_enum, default_value = "cnn")]
+    /// Architecture du réseau de neurones (cnn, gnn ou graph-transformer)
+    #[arg(long, value_enum, default_value = "graph-transformer")]
     nn_architecture: NnArchitectureCli,
 
-    /// Enable Q-Net hybrid MCTS for improved AI performance (recommended)
-    #[arg(long, default_value_t = true)]
+    /// Enable Q-Net hybrid MCTS (not needed for Graph Transformer)
+    #[arg(long, default_value_t = false)]
     hybrid_mcts: bool,
 
     /// Path to Q-value network weights for hybrid MCTS
@@ -191,7 +194,7 @@ async fn start_multiplayer_server(
             top_k,
         )
     } else {
-        log::info!("📊 MCTS CNN standard (sans Q-Net)");
+        log::info!("🎯 Graph Transformer Direct (sans MCTS)");
         servers::GrpcServer::new(
             grpc_config,
             components.policy_net,
@@ -284,7 +287,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         GameMode::Multiplayer => {
-            // Load Q-Net for hybrid MCTS if enabled
+            // Load Q-Net for hybrid MCTS if enabled (legacy mode)
             let qnet_manager = if config.hybrid_mcts {
                 match QNetManager::new(&config.qnet_path) {
                     Ok(qnet) => {
@@ -292,12 +295,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Some(qnet)
                     }
                     Err(e) => {
-                        log::warn!("⚠️ Impossible de charger Q-Net ({}), mode CNN standard", e);
+                        log::warn!("⚠️ Impossible de charger Q-Net ({}), utilisation de Graph Transformer Direct", e);
                         None
                     }
                 }
             } else {
-                log::info!("ℹ️ Mode Hybrid désactivé, utilisation du MCTS CNN standard");
+                log::info!("🎯 Mode Graph Transformer Direct activé (149.38 pts sans MCTS)");
                 None
             };
 

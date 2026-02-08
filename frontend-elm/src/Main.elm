@@ -90,6 +90,8 @@ type View
 type AuthView
     = Login
     | Register
+    | ForgotPassword
+    | ResetPassword
 
 
 type alias Model =
@@ -111,6 +113,8 @@ type alias Model =
     , usernameInput : String
     , passwordInput : String
     , confirmPasswordInput : String
+    , resetToken : String
+    , resetMessage : String
 
     -- Game Mode Selection
     , selectedGameMode : Maybe GameMode
@@ -130,6 +134,18 @@ type alias Model =
     , availablePositions : List Int
     , myTurn : Bool
     , currentTurnNumber : Int
+
+    -- Real Game Mode (Jeu Réel)
+    , isRealGameMode : Bool
+    , showTilePicker : Bool
+    , usedTiles : List String
+    , realGameScore : Int
+    , pendingAiPosition : Maybe Int
+
+    -- Solo Mode
+    , isSoloMode : Bool
+    , aiScore : Int
+    , showAiBoard : Bool
 
     -- UI
     , loading : Bool
@@ -157,6 +173,8 @@ initialModel key url =
     , usernameInput = ""
     , passwordInput = ""
     , confirmPasswordInput = ""
+    , resetToken = ""
+    , resetMessage = ""
 
     -- Game Mode Selection
     , selectedGameMode = Nothing
@@ -177,6 +195,18 @@ initialModel key url =
     , myTurn = False
     , currentTurnNumber = 0
 
+    -- Real Game Mode (Jeu Réel)
+    , isRealGameMode = False
+    , showTilePicker = False
+    , usedTiles = []
+    , realGameScore = 0
+    , pendingAiPosition = Nothing
+
+    -- Solo Mode
+    , isSoloMode = False
+    , aiScore = 0
+    , showAiBoard = False
+
     -- UI
     , loading = False
     , error = ""
@@ -186,26 +216,19 @@ initialModel key url =
 
 defaultGameModes : List GameMode
 defaultGameModes =
-    [ { id = "single-player-easy"
-      , name = "Solo Facile"
-      , description = "IA avec 150 simulations MCTS"
-      , icon = "🎯"
-      , simulations = Just 150
-      , difficulty = Just "easy"
+    [ { id = "single-player"
+      , name = "Solo"
+      , description = "Affrontez l'IA Graph Transformer (149 pts)"
+      , icon = "🤖"
+      , simulations = Nothing
+      , difficulty = Nothing
       }
-    , { id = "single-player-normal"
-      , name = "Solo Normal"
-      , description = "IA avec 300 simulations MCTS"
-      , icon = "🎮"
-      , simulations = Just 300
-      , difficulty = Just "normal"
-      }
-    , { id = "single-player-hard"
-      , name = "Solo Difficile"
-      , description = "IA avec 1000 simulations MCTS"
-      , icon = "🔥"
-      , simulations = Just 1000
-      , difficulty = Just "hard"
+    , { id = "real-game"
+      , name = "Jeu Réel"
+      , description = "Jouez avec le vrai jeu - sélectionnez les tuiles tirées"
+      , icon = "🎲"
+      , simulations = Nothing
+      , difficulty = Nothing
       }
     , { id = "multiplayer"
       , name = "Multijoueur"
@@ -237,6 +260,8 @@ type Msg
       -- Auth Actions
     | SubmitLogin
     | SubmitRegister
+    | SubmitForgotPassword
+    | SubmitResetPassword
     | Logout
     | CheckAuth
       -- Auth Responses (from JS)
@@ -244,12 +269,18 @@ type Msg
     | LoginFailure String
     | RegisterSuccess User String
     | RegisterFailure String
+    | ForgotPasswordSuccess String
+    | ForgotPasswordFailure String
+    | ResetPasswordSuccess String
+    | ResetPasswordFailure String
     | CheckAuthSuccess User String
     | CheckAuthFailure
       -- Game Mode
     | SelectGameMode GameMode
     | StartGame
     | BackToModeSelection
+    | ToggleAiBoard
+    | RestartSoloGame
       -- Session
     | SetPlayerName String
     | SetSessionCode String
@@ -266,9 +297,15 @@ type Msg
       -- Gameplay
     | StartTurn
     | PlayMove Int
+      -- Real Game Mode
+    | OpenTilePicker
+    | SelectRealTile String
+    | PlaceRealTile Int
+    | ResetRealGame
+    | AiMoveResult Int String
       -- Gameplay Responses (from JS)
     | TurnStarted String String Int (List Int) (List Player)
-    | MovePlayed Int Int
+    | MovePlayed Int Int (List String) Int
     | GameStateUpdated GameState
     | GameFinished (List Player) (List String) (List String)
     | GameError String
@@ -353,6 +390,29 @@ update msg model =
                         ]
                 )
 
+        SubmitForgotPassword ->
+            ( { model | authLoading = True, authError = "", resetMessage = "" }
+            , sendToJs <|
+                Encode.object
+                    [ ( "type", Encode.string "forgotPassword" )
+                    , ( "email", Encode.string model.emailInput )
+                    ]
+            )
+
+        SubmitResetPassword ->
+            if model.passwordInput /= model.confirmPasswordInput then
+                ( { model | authError = "Les mots de passe ne correspondent pas" }, Cmd.none )
+
+            else
+                ( { model | authLoading = True, authError = "" }
+                , sendToJs <|
+                    Encode.object
+                        [ ( "type", Encode.string "resetPassword" )
+                        , ( "token", Encode.string model.resetToken )
+                        , ( "newPassword", Encode.string model.passwordInput )
+                        ]
+                )
+
         Logout ->
             ( { model
                 | isAuthenticated = False
@@ -401,6 +461,28 @@ update msg model =
         RegisterFailure error ->
             ( { model | authLoading = False, authError = error }, Cmd.none )
 
+        ForgotPasswordSuccess message ->
+            ( { model | authLoading = False, resetMessage = message, authError = "" }, Cmd.none )
+
+        ForgotPasswordFailure error ->
+            ( { model | authLoading = False, authError = error }, Cmd.none )
+
+        ResetPasswordSuccess message ->
+            ( { model
+                | authLoading = False
+                , resetMessage = message
+                , authError = ""
+                , authView = Login
+                , passwordInput = ""
+                , confirmPasswordInput = ""
+                , resetToken = ""
+              }
+            , Cmd.none
+            )
+
+        ResetPasswordFailure error ->
+            ( { model | authLoading = False, authError = error }, Cmd.none )
+
         CheckAuthSuccess user token ->
             ( { model
                 | isAuthenticated = True
@@ -422,7 +504,26 @@ update msg model =
         StartGame ->
             case model.selectedGameMode of
                 Just mode ->
-                    ( { model | currentView = GameView }, Cmd.none )
+                    if mode.id == "real-game" then
+                        -- Mode Jeu Réel: pas besoin de serveur
+                        ( { model
+                            | currentView = GameView
+                            , isRealGameMode = True
+                            , showTilePicker = True
+                            , usedTiles = []
+                            , plateauTiles = List.repeat 19 ""
+                            , availablePositions = List.range 0 18
+                            , currentTurnNumber = 0
+                            , realGameScore = 0
+                            , currentTile = Nothing
+                            , currentTileImage = Nothing
+                            , myTurn = True
+                          }
+                        , Cmd.none
+                        )
+
+                    else
+                        ( { model | currentView = GameView, isRealGameMode = False }, Cmd.none )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -437,6 +538,40 @@ update msg model =
                 , statusMessage = ""
               }
             , Cmd.none
+            )
+
+        ToggleAiBoard ->
+            ( { model | showAiBoard = not model.showAiBoard }, Cmd.none )
+
+        RestartSoloGame ->
+            -- Reset game state and create new session
+            let
+                gameMode =
+                    model.selectedGameMode
+                        |> Maybe.map .id
+                        |> Maybe.withDefault "single-player"
+            in
+            ( { model
+                | session = Nothing
+                , gameState = Nothing
+                , plateauTiles = List.repeat 19 ""
+                , aiPlateauTiles = List.repeat 19 ""
+                , availablePositions = List.range 0 18
+                , currentTurnNumber = 0
+                , currentTile = Nothing
+                , currentTileImage = Nothing
+                , aiScore = 0
+                , showAiBoard = False
+                , loading = True
+                , error = ""
+                , statusMessage = ""
+              }
+            , sendToJs <|
+                Encode.object
+                    [ ( "type", Encode.string "createSession" )
+                    , ( "playerName", Encode.string model.playerName )
+                    , ( "gameMode", Encode.string gameMode )
+                    ]
             )
 
         -- Session
@@ -523,6 +658,7 @@ update msg model =
                 | session = Just session
                 , gameState = Just gameState
                 , loading = isSoloMode  -- Reste en loading si auto-ready
+                , isSoloMode = isSoloMode
                 , statusMessage = "Session créée: " ++ session.sessionCode
               }
             , autoReadyCmd
@@ -609,6 +745,147 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        -- Real Game Mode
+        OpenTilePicker ->
+            ( { model | showTilePicker = True }, Cmd.none )
+
+        SelectRealTile tileCode ->
+            -- tileCode est comme "168" pour la tuile avec v1=1, v2=6, v3=8
+            -- Calculer les positions disponibles pour l'IA
+            let
+                aiAvailablePositions =
+                    List.indexedMap
+                        (\i tile -> ( i, tile ))
+                        model.aiPlateauTiles
+                        |> List.filter (\( _, tile ) -> tile == "")
+                        |> List.map Tuple.first
+            in
+            ( { model
+                | currentTile = Just tileCode
+                , currentTileImage = Just ("image/" ++ tileCode ++ ".png")
+                , showTilePicker = False
+                , usedTiles = tileCode :: model.usedTiles
+              }
+            , sendToJs <|
+                Encode.object
+                    [ ( "type", Encode.string "getAiMove" )
+                    , ( "tileCode", Encode.string tileCode )
+                    , ( "boardState", Encode.list Encode.string model.aiPlateauTiles )
+                    , ( "availablePositions", Encode.list Encode.int aiAvailablePositions )
+                    , ( "turnNumber", Encode.int model.currentTurnNumber )
+                    ]
+            )
+
+        PlaceRealTile position ->
+            let
+                tileImage =
+                    model.currentTileImage |> Maybe.withDefault ""
+
+                -- Placer la tuile du joueur
+                newPlateauTiles =
+                    List.indexedMap
+                        (\i tile ->
+                            if i == position then
+                                tileImage
+
+                            else
+                                tile
+                        )
+                        model.plateauTiles
+
+                -- Placer la tuile de l'IA (même tuile, position différente)
+                newAiPlateauTiles =
+                    case model.pendingAiPosition of
+                        Just aiPos ->
+                            List.indexedMap
+                                (\i tile ->
+                                    if i == aiPos then
+                                        tileImage
+
+                                    else
+                                        tile
+                                )
+                                model.aiPlateauTiles
+
+                        Nothing ->
+                            model.aiPlateauTiles
+
+                newAvailablePositions =
+                    List.filter (\p -> p /= position) model.availablePositions
+
+                newTurnNumber =
+                    model.currentTurnNumber + 1
+
+                isGameOver =
+                    newTurnNumber >= 19
+
+                aiMessage =
+                    case model.pendingAiPosition of
+                        Just aiPos ->
+                            "IA joue en position " ++ String.fromInt aiPos
+
+                        Nothing ->
+                            ""
+            in
+            ( { model
+                | plateauTiles = newPlateauTiles
+                , aiPlateauTiles = newAiPlateauTiles
+                , availablePositions = newAvailablePositions
+                , currentTurnNumber = newTurnNumber
+                , currentTile = Nothing
+                , currentTileImage = Nothing
+                , pendingAiPosition = Nothing
+                , showTilePicker = not isGameOver
+                , statusMessage =
+                    if isGameOver then
+                        "Partie terminée! Calculez votre score."
+
+                    else
+                        aiMessage
+              }
+            , Cmd.none
+            )
+
+        ResetRealGame ->
+            ( { model
+                | plateauTiles = List.repeat 19 ""
+                , aiPlateauTiles = List.repeat 19 ""
+                , availablePositions = List.range 0 18
+                , currentTurnNumber = 0
+                , usedTiles = []
+                , currentTile = Nothing
+                , currentTileImage = Nothing
+                , pendingAiPosition = Nothing
+                , showTilePicker = True
+                , realGameScore = 0
+                , statusMessage = ""
+              }
+            , Cmd.none
+            )
+
+        AiMoveResult position errorMsg ->
+            -- L'IA a choisi une position, on la stocke pour la placer après le joueur
+            if position >= 0 && position < 19 then
+                ( { model
+                    | pendingAiPosition = Just position
+                    , statusMessage =
+                        if errorMsg /= "" then
+                            "IA: " ++ errorMsg
+
+                        else
+                            ""
+                  }
+                , Cmd.none
+                )
+
+            else
+                ( { model
+                    | pendingAiPosition = Nothing
+                    , statusMessage = "IA: position invalide"
+                  }
+                , Cmd.none
+                )
+
         -- Gameplay Responses
         TurnStarted tile tileImage turnNumber positions players ->
             let
@@ -639,7 +916,7 @@ update msg model =
             , Cmd.none
             )
 
-        MovePlayed position points ->
+        MovePlayed position points aiTiles aiScore ->
             let
                 -- Place la tuile actuelle sur le plateau
                 newPlateauTiles =
@@ -659,12 +936,21 @@ update msg model =
                 -- Retire la position des positions disponibles
                 newAvailablePositions =
                     List.filter (\p -> p /= position) model.availablePositions
+
+                -- Update AI tiles if provided
+                newAiPlateauTiles =
+                    if List.isEmpty aiTiles then
+                        model.aiPlateauTiles
+                    else
+                        aiTiles
             in
             ( { model
                 | myTurn = False
                 , loading = False
                 , statusMessage = "+" ++ String.fromInt points ++ " points"
                 , plateauTiles = newPlateauTiles
+                , aiPlateauTiles = newAiPlateauTiles
+                , aiScore = aiScore
                 , availablePositions = newAvailablePositions
                 , currentTile = Nothing
                 , currentTileImage = Nothing
@@ -746,6 +1032,18 @@ handleJsMessage value model =
                 JsRegisterFailure error ->
                     update (RegisterFailure error) model
 
+                JsForgotPasswordSuccess message ->
+                    update (ForgotPasswordSuccess message) model
+
+                JsForgotPasswordFailure error ->
+                    update (ForgotPasswordFailure error) model
+
+                JsResetPasswordSuccess message ->
+                    update (ResetPasswordSuccess message) model
+
+                JsResetPasswordFailure error ->
+                    update (ResetPasswordFailure error) model
+
                 JsCheckAuthSuccess user token ->
                     update (CheckAuthSuccess user token) model
 
@@ -770,8 +1068,8 @@ handleJsMessage value model =
                 JsTurnStarted tile tileImage turnNumber positions players ->
                     update (TurnStarted tile tileImage turnNumber positions players) model
 
-                JsMovePlayed position points ->
-                    update (MovePlayed position points) model
+                JsMovePlayed position points aiTiles aiScore ->
+                    update (MovePlayed position points aiTiles aiScore) model
 
                 JsGameStateUpdated gameState ->
                     update (GameStateUpdated gameState) model
@@ -782,6 +1080,9 @@ handleJsMessage value model =
                 JsGameError error ->
                     update (GameError error) model
 
+                JsAiMoveResult position error ->
+                    update (AiMoveResult position error) model
+
         Err _ ->
             ( model, Cmd.none )
 
@@ -791,6 +1092,10 @@ type JsMessage
     | JsLoginFailure String
     | JsRegisterSuccess User String
     | JsRegisterFailure String
+    | JsForgotPasswordSuccess String
+    | JsForgotPasswordFailure String
+    | JsResetPasswordSuccess String
+    | JsResetPasswordFailure String
     | JsCheckAuthSuccess User String
     | JsCheckAuthFailure
     | JsSessionCreated Session GameState
@@ -799,10 +1104,11 @@ type JsMessage
     | JsReadySet Bool
     | JsSessionError String
     | JsTurnStarted String String Int (List Int) (List Player)
-    | JsMovePlayed Int Int
+    | JsMovePlayed Int Int (List String) Int
     | JsGameStateUpdated GameState
     | JsGameFinished (List Player) (List String) (List String)
     | JsGameError String
+    | JsAiMoveResult Int String
 
 
 jsMessageDecoder : Decode.Decoder JsMessage
@@ -829,6 +1135,18 @@ jsMessageDecoderByType msgType =
 
         "registerFailure" ->
             Decode.map JsRegisterFailure (Decode.field "error" Decode.string)
+
+        "forgotPasswordSuccess" ->
+            Decode.map JsForgotPasswordSuccess (Decode.field "message" Decode.string)
+
+        "forgotPasswordFailure" ->
+            Decode.map JsForgotPasswordFailure (Decode.field "error" Decode.string)
+
+        "resetPasswordSuccess" ->
+            Decode.map JsResetPasswordSuccess (Decode.field "message" Decode.string)
+
+        "resetPasswordFailure" ->
+            Decode.map JsResetPasswordFailure (Decode.field "error" Decode.string)
 
         "checkAuthSuccess" ->
             Decode.map2 JsCheckAuthSuccess
@@ -870,9 +1188,19 @@ jsMessageDecoderByType msgType =
                 )
 
         "movePlayed" ->
-            Decode.map2 JsMovePlayed
+            Decode.map4 JsMovePlayed
                 (Decode.field "position" Decode.int)
                 (Decode.field "points" Decode.int)
+                (Decode.oneOf
+                    [ Decode.field "aiTiles" (Decode.list Decode.string)
+                    , Decode.succeed []
+                    ]
+                )
+                (Decode.oneOf
+                    [ Decode.field "aiScore" Decode.int
+                    , Decode.succeed 0
+                    ]
+                )
 
         "gameStateUpdated" ->
             Decode.map JsGameStateUpdated (Decode.field "gameState" gameStateDecoder)
@@ -906,6 +1234,15 @@ jsMessageDecoderByType msgType =
 
         "gameError" ->
             Decode.map JsGameError (Decode.field "error" Decode.string)
+
+        "aiMoveResult" ->
+            Decode.map2 JsAiMoveResult
+                (Decode.field "position" Decode.int)
+                (Decode.oneOf
+                    [ Decode.field "error" Decode.string
+                    , Decode.succeed ""
+                    ]
+                )
 
         _ ->
             Decode.fail ("Unknown message type: " ++ msgType)
@@ -1002,151 +1339,281 @@ viewAuth model =
             [ div [ class "auth-header" ]
                 [ h1 [] [ text "Take It Easy" ]
                 , p [ class "auth-subtitle" ]
-                    [ text
-                        (if model.authView == Login then
-                            "Connectez-vous pour jouer"
-
-                         else
-                            "Créez votre compte"
-                        )
-                    ]
+                    [ text (authSubtitle model.authView) ]
                 ]
             , if model.authError /= "" then
                 div [ class "auth-error" ] [ text model.authError ]
 
+              else if model.resetMessage /= "" then
+                div [ class "auth-success" ] [ text model.resetMessage ]
+
               else
                 text ""
-            , Html.form [ onSubmitPreventDefault (if model.authView == Login then SubmitLogin else SubmitRegister), class "auth-form" ]
-                [ div [ class "form-group" ]
-                    [ label [ for "email" ] [ text "Email" ]
-                    , input
-                        [ type_ "email"
-                        , id "email"
-                        , value model.emailInput
-                        , onInput SetEmailInput
-                        , placeholder "votre@email.com"
-                        , required True
-                        , disabled model.authLoading
-                        ]
-                        []
-                    ]
-                , if model.authView == Register then
-                    div [ class "form-group" ]
-                        [ label [ for "username" ] [ text "Nom d'utilisateur" ]
-                        , input
-                            [ type_ "text"
-                            , id "username"
-                            , value model.usernameInput
-                            , onInput SetUsernameInput
-                            , placeholder "Votre pseudo"
-                            , required True
-                            , minlength 3
-                            , maxlength 30
-                            , disabled model.authLoading
-                            ]
-                            []
-                        ]
+            , case model.authView of
+                ForgotPassword ->
+                    viewForgotPasswordForm model
 
-                  else
-                    text ""
-                , div [ class "form-group" ]
-                    [ label [ for "password" ] [ text "Mot de passe" ]
-                    , input
-                        [ type_ "password"
-                        , id "password"
-                        , value model.passwordInput
-                        , onInput SetPasswordInput
-                        , placeholder "••••••••"
-                        , required True
-                        , minlength 8
-                        , disabled model.authLoading
-                        ]
-                        []
-                    ]
-                , if model.authView == Register then
-                    div [ class "form-group" ]
-                        [ label [ for "confirmPassword" ] [ text "Confirmer le mot de passe" ]
-                        , input
-                            [ type_ "password"
-                            , id "confirmPassword"
-                            , value model.confirmPasswordInput
-                            , onInput SetConfirmPasswordInput
-                            , placeholder "••••••••"
-                            , required True
-                            , disabled model.authLoading
-                            ]
-                            []
-                        ]
+                ResetPassword ->
+                    viewResetPasswordForm model
 
-                  else
-                    text ""
-                , button
-                    [ type_ "button"
-                    , class "auth-submit-button"
+                _ ->
+                    viewLoginRegisterForm model
+            , viewAuthFooter model
+            ]
+        ]
+
+
+authSubtitle : AuthView -> String
+authSubtitle authView =
+    case authView of
+        Login ->
+            "Connectez-vous pour jouer"
+
+        Register ->
+            "Créez votre compte"
+
+        ForgotPassword ->
+            "Réinitialiser votre mot de passe"
+
+        ResetPassword ->
+            "Choisissez un nouveau mot de passe"
+
+
+viewLoginRegisterForm : Model -> Html Msg
+viewLoginRegisterForm model =
+    Html.form [ onSubmitPreventDefault (if model.authView == Login then SubmitLogin else SubmitRegister), class "auth-form" ]
+        [ div [ class "form-group" ]
+            [ label [ for "email" ] [ text "Email" ]
+            , input
+                [ type_ "email"
+                , id "email"
+                , value model.emailInput
+                , onInput SetEmailInput
+                , placeholder ""
+                , required True
+                , disabled model.authLoading
+                ]
+                []
+            ]
+        , if model.authView == Register then
+            div [ class "form-group" ]
+                [ label [ for "username" ] [ text "Nom d'utilisateur" ]
+                , input
+                    [ type_ "text"
+                    , id "username"
+                    , value model.usernameInput
+                    , onInput SetUsernameInput
+                    , placeholder ""
+                    , required True
+                    , minlength 3
+                    , maxlength 30
                     , disabled model.authLoading
-                    , onClick
-                        (if model.authView == Login then
-                            SubmitLogin
-
-                         else
-                            SubmitRegister
-                        )
                     ]
-                    [ if model.authLoading then
-                        span [ class "loading-spinner" ] []
-
-                      else
-                        text
-                            (if model.authView == Login then
-                                "Se connecter"
-
-                             else
-                                "Créer mon compte"
-                            )
-                    ]
+                    []
                 ]
-            , div [ class "auth-switch" ]
-                [ p []
-                    [ text
-                        (if model.authView == Login then
-                            "Pas encore de compte ? "
 
-                         else
-                            "Déjà un compte ? "
-                        )
-                    , button
-                        [ type_ "button"
-                        , class "auth-switch-button"
-                        , onClick
-                            (SwitchAuthView
-                                (if model.authView == Login then
-                                    Register
-
-                                 else
-                                    Login
-                                )
-                            )
-                        , disabled model.authLoading
-                        ]
-                        [ text
-                            (if model.authView == Login then
-                                "S'inscrire"
-
-                             else
-                                "Se connecter"
-                            )
-                        ]
-                    ]
+          else
+            text ""
+        , div [ class "form-group" ]
+            [ label [ for "password" ] [ text "Mot de passe" ]
+            , input
+                [ type_ "password"
+                , id "password"
+                , value model.passwordInput
+                , onInput SetPasswordInput
+                , placeholder ""
+                , required True
+                , minlength 8
+                , disabled model.authLoading
+                , attribute "autocomplete" (if model.authView == Register then "new-password" else "current-password")
                 ]
-            , div [ class "auth-skip" ]
+                []
+            ]
+        , if model.authView == Register then
+            div [ class "form-group" ]
+                [ label [ for "confirmPassword" ] [ text "Confirmer le mot de passe" ]
+                , input
+                    [ type_ "password"
+                    , id "confirmPassword"
+                    , value model.confirmPasswordInput
+                    , onInput SetConfirmPasswordInput
+                    , placeholder ""
+                    , required True
+                    , disabled model.authLoading
+                    , attribute "autocomplete" "new-password"
+                    ]
+                    []
+                ]
+
+          else
+            text ""
+        , button
+            [ type_ "button"
+            , class "auth-submit-button"
+            , disabled model.authLoading
+            , onClick
+                (if model.authView == Login then
+                    SubmitLogin
+
+                 else
+                    SubmitRegister
+                )
+            ]
+            [ if model.authLoading then
+                span [ class "loading-spinner" ] []
+
+              else
+                text
+                    (if model.authView == Login then
+                        "Se connecter"
+
+                     else
+                        "Créer mon compte"
+                    )
+            ]
+        , if model.authView == Login then
+            div [ class "forgot-password-link" ]
                 [ button
                     [ type_ "button"
-                    , class "skip-button"
-                    , onClick SkipAuth
-                    , disabled model.authLoading
+                    , class "link-button"
+                    , onClick (SwitchAuthView ForgotPassword)
                     ]
-                    [ text "Jouer en mode invité" ]
+                    [ text "Mot de passe oublié ?" ]
                 ]
+
+          else
+            text ""
+        ]
+
+
+viewForgotPasswordForm : Model -> Html Msg
+viewForgotPasswordForm model =
+    Html.form [ onSubmitPreventDefault SubmitForgotPassword, class "auth-form" ]
+        [ div [ class "form-group" ]
+            [ label [ for "email" ] [ text "Email" ]
+            , input
+                [ type_ "email"
+                , id "email"
+                , value model.emailInput
+                , onInput SetEmailInput
+                , placeholder ""
+                , required True
+                , disabled model.authLoading
+                ]
+                []
+            ]
+        , button
+            [ type_ "button"
+            , class "auth-submit-button"
+            , disabled model.authLoading
+            , onClick SubmitForgotPassword
+            ]
+            [ if model.authLoading then
+                span [ class "loading-spinner" ] []
+
+              else
+                text "Envoyer le lien de réinitialisation"
+            ]
+        , div [ class "back-to-login" ]
+            [ button
+                [ type_ "button"
+                , class "link-button"
+                , onClick (SwitchAuthView Login)
+                ]
+                [ text "← Retour à la connexion" ]
+            ]
+        ]
+
+
+viewResetPasswordForm : Model -> Html Msg
+viewResetPasswordForm model =
+    Html.form [ onSubmitPreventDefault SubmitResetPassword, class "auth-form" ]
+        [ div [ class "form-group" ]
+            [ label [ for "password" ] [ text "Nouveau mot de passe" ]
+            , input
+                [ type_ "password"
+                , id "password"
+                , value model.passwordInput
+                , onInput SetPasswordInput
+                , placeholder ""
+                , required True
+                , minlength 8
+                , disabled model.authLoading
+                , attribute "autocomplete" "new-password"
+                ]
+                []
+            ]
+        , div [ class "form-group" ]
+            [ label [ for "confirmPassword" ] [ text "Confirmer le mot de passe" ]
+            , input
+                [ type_ "password"
+                , id "confirmPassword"
+                , value model.confirmPasswordInput
+                , onInput SetConfirmPasswordInput
+                , placeholder ""
+                , required True
+                , disabled model.authLoading
+                , attribute "autocomplete" "new-password"
+                ]
+                []
+            ]
+        , button
+            [ type_ "button"
+            , class "auth-submit-button"
+            , disabled model.authLoading
+            , onClick SubmitResetPassword
+            ]
+            [ if model.authLoading then
+                span [ class "loading-spinner" ] []
+
+              else
+                text "Réinitialiser le mot de passe"
+            ]
+        ]
+
+
+viewAuthFooter : Model -> Html Msg
+viewAuthFooter model =
+    div []
+        [ case model.authView of
+            Login ->
+                div [ class "auth-switch" ]
+                    [ p []
+                        [ text "Pas encore de compte ? "
+                        , button
+                            [ type_ "button"
+                            , class "auth-switch-button"
+                            , onClick (SwitchAuthView Register)
+                            , disabled model.authLoading
+                            ]
+                            [ text "S'inscrire" ]
+                        ]
+                    ]
+
+            Register ->
+                div [ class "auth-switch" ]
+                    [ p []
+                        [ text "Déjà un compte ? "
+                        , button
+                            [ type_ "button"
+                            , class "auth-switch-button"
+                            , onClick (SwitchAuthView Login)
+                            , disabled model.authLoading
+                            ]
+                            [ text "Se connecter" ]
+                        ]
+                    ]
+
+            _ ->
+                text ""
+        , div [ class "auth-skip" ]
+            [ button
+                [ type_ "button"
+                , class "skip-button"
+                , onClick SkipAuth
+                , disabled model.authLoading
+                ]
+                [ text "Jouer en mode invité" ]
             ]
         ]
 
@@ -1172,12 +1639,6 @@ viewModeSelection model =
                     [ div [ class "selected-mode-info" ]
                         [ h3 [] [ text (mode.icon ++ " " ++ mode.name) ]
                         , p [] [ text mode.description ]
-                        , case mode.simulations of
-                            Just sims ->
-                                p [ class "tech-info" ] [ text ("MCTS: " ++ String.fromInt sims ++ " simulations") ]
-
-                            Nothing ->
-                                text ""
                         ]
                     , button [ class "start-button", onClick StartGame ]
                         [ text "Commencer"
@@ -1242,14 +1703,6 @@ viewModeCard selectedMode mode =
         , div [ class "mode-icon" ] [ text mode.icon ]
         , h3 [] [ text mode.name ]
         , p [ class "mode-description" ] [ text mode.description ]
-        , case mode.simulations of
-            Just sims ->
-                div [ class "mode-details" ]
-                    [ span [ class "simulations" ] [ text (String.fromInt sims ++ " simulations MCTS") ]
-                    ]
-
-            Nothing ->
-                text ""
         ]
 
 
@@ -1281,12 +1734,16 @@ viewGame model =
 
           else
             text ""
-        , case model.session of
-            Nothing ->
-                viewConnectionInterface model
+        , if model.isRealGameMode then
+            viewRealGame model
 
-            Just session ->
-                viewGameSession model session
+          else
+            case model.session of
+                Nothing ->
+                    viewConnectionInterface model
+
+                Just session ->
+                    viewGameSession model session
         ]
 
 
@@ -1440,6 +1897,17 @@ viewInProgressState model session =
     div [ class "in-progress-state" ]
         [ div [ class "turn-info glass-container" ]
             [ h3 [] [ text ("Tour " ++ String.fromInt model.currentTurnNumber ++ "/19") ]
+            , -- Solo mode: Show both scores
+              if model.isSoloMode then
+                div [ class "solo-scores", style "display" "flex", style "gap" "30px", style "justify-content" "center", style "margin-bottom" "15px" ]
+                    [ span [ style "font-size" "1.2em", style "font-weight" "bold" ]
+                        [ text ("👤 Vous: " ++ String.fromInt (getPlayerScore model) ++ " pts") ]
+                    , span [ style "font-size" "1.2em", style "font-weight" "bold" ]
+                        [ text ("🤖 IA: " ++ String.fromInt model.aiScore ++ " pts") ]
+                    ]
+
+              else
+                text ""
             , case model.currentTile of
                 Just tile ->
                     div [ class "current-tile" ]
@@ -1469,8 +1937,59 @@ viewInProgressState model session =
         , div [ class "game-board glass-container" ]
             [ h3 [] [ text "Plateau de jeu" ]
             , viewHexBoard model
+            , -- Solo mode: Toggle button to show AI board
+              if model.isSoloMode then
+                div [ style "margin-top" "15px", style "text-align" "center" ]
+                    [ button
+                        [ class "toggle-ai-board-button"
+                        , onClick ToggleAiBoard
+                        , style "padding" "8px 16px"
+                        , style "border-radius" "8px"
+                        , style "border" "none"
+                        , style "background" "rgba(255,255,255,0.2)"
+                        , style "cursor" "pointer"
+                        ]
+                        [ text
+                            (if model.showAiBoard then
+                                "🤖 Masquer plateau IA"
+
+                             else
+                                "🤖 Voir plateau IA"
+                            )
+                        ]
+                    ]
+
+              else
+                text ""
             ]
+        , -- Show AI board if toggled
+          if model.isSoloMode && model.showAiBoard then
+            div [ class "game-board glass-container", style "margin-top" "20px" ]
+                [ h3 [] [ text ("🤖 Plateau IA - " ++ String.fromInt model.aiScore ++ " pts") ]
+                , viewAiHexBoard model.aiPlateauTiles
+                ]
+
+          else
+            text ""
         ]
+
+
+getPlayerScore : Model -> Int
+getPlayerScore model =
+    case model.gameState of
+        Just gs ->
+            case model.session of
+                Just session ->
+                    List.filter (\p -> p.id == session.playerId) gs.players
+                        |> List.head
+                        |> Maybe.map .score
+                        |> Maybe.withDefault 0
+
+                Nothing ->
+                    0
+
+        Nothing ->
+            0
 
 
 viewHexBoard : Model -> Html Msg
@@ -1579,6 +2098,179 @@ viewHexBoard model =
         )
 
 
+-- Smaller hex board for side-by-side display in Solo mode (player's board with interaction)
+viewHexBoardSmall : List String -> List Int -> Bool -> Maybe String -> Html Msg
+viewHexBoardSmall tiles availablePositions myTurn currentTile =
+    let
+        hexRadius =
+            40
+
+        hexWidth =
+            2 * hexRadius
+
+        hexHeight =
+            1.732 * hexRadius
+
+        spacingX =
+            0.75 * hexWidth
+
+        spacingY =
+            hexHeight
+
+        hexPositions =
+            [ ( 0, 1 ), ( 0, 2 ), ( 0, 3 )
+            , ( 1, 0.5 ), ( 1, 1.5 ), ( 1, 2.5 ), ( 1, 3.5 )
+            , ( 2, 0 ), ( 2, 1 ), ( 2, 2 ), ( 2, 3 ), ( 2, 4 )
+            , ( 3, 0.5 ), ( 3, 1.5 ), ( 3, 2.5 ), ( 3, 3.5 )
+            , ( 4, 1 ), ( 4, 2 ), ( 4, 3 )
+            ]
+
+        gridOriginX =
+            20
+
+        gridOriginY =
+            20
+    in
+    div [ class "hex-board", style "position" "relative", style "width" "340px", style "height" "380px", style "margin" "0 auto" ]
+        (List.indexedMap
+            (\index ( col, row ) ->
+                let
+                    x =
+                        gridOriginX + col * spacingX
+
+                    y =
+                        gridOriginY + row * spacingY
+
+                    tile =
+                        List.head (List.drop index tiles) |> Maybe.withDefault ""
+
+                    isAvailable =
+                        List.member index availablePositions && myTurn
+
+                    canClick =
+                        isAvailable && currentTile /= Nothing
+                in
+                div
+                    [ class
+                        ("hex-cell"
+                            ++ (if isAvailable then
+                                    " available"
+
+                                else
+                                    ""
+                               )
+                            ++ (if tile /= "" then
+                                    " filled"
+
+                                else
+                                    ""
+                               )
+                        )
+                    , style "left" (String.fromFloat x ++ "px")
+                    , style "top" (String.fromFloat y ++ "px")
+                    , style "width" (String.fromFloat hexWidth ++ "px")
+                    , style "height" (String.fromFloat hexHeight ++ "px")
+                    , if canClick then
+                        onClick (PlayMove index)
+
+                      else
+                        class ""
+                    ]
+                    [ if tile /= "" then
+                        case parseTileFromPath tile of
+                            Just tileData ->
+                                div [ class "hex-tile-svg" ]
+                                    [ viewTileSvg tileData ]
+
+                            Nothing ->
+                                Html.img [ src tile, class "hex-tile-image" ] []
+
+                      else
+                        viewEmptyHexSvg isAvailable index
+                    ]
+            )
+            hexPositions
+        )
+
+
+-- AI hex board for Solo mode (display only, no interaction)
+viewAiHexBoard : List String -> Html Msg
+viewAiHexBoard tiles =
+    let
+        hexRadius =
+            40
+
+        hexWidth =
+            2 * hexRadius
+
+        hexHeight =
+            1.732 * hexRadius
+
+        spacingX =
+            0.75 * hexWidth
+
+        spacingY =
+            hexHeight
+
+        hexPositions =
+            [ ( 0, 1 ), ( 0, 2 ), ( 0, 3 )
+            , ( 1, 0.5 ), ( 1, 1.5 ), ( 1, 2.5 ), ( 1, 3.5 )
+            , ( 2, 0 ), ( 2, 1 ), ( 2, 2 ), ( 2, 3 ), ( 2, 4 )
+            , ( 3, 0.5 ), ( 3, 1.5 ), ( 3, 2.5 ), ( 3, 3.5 )
+            , ( 4, 1 ), ( 4, 2 ), ( 4, 3 )
+            ]
+
+        gridOriginX =
+            20
+
+        gridOriginY =
+            20
+    in
+    div [ class "hex-board ai-board", style "position" "relative", style "width" "340px", style "height" "380px", style "margin" "0 auto" ]
+        (List.indexedMap
+            (\index ( col, row ) ->
+                let
+                    x =
+                        gridOriginX + col * spacingX
+
+                    y =
+                        gridOriginY + row * spacingY
+
+                    tile =
+                        List.head (List.drop index tiles) |> Maybe.withDefault ""
+                in
+                div
+                    [ class
+                        ("hex-cell"
+                            ++ (if tile /= "" then
+                                    " filled"
+
+                                else
+                                    ""
+                               )
+                        )
+                    , style "left" (String.fromFloat x ++ "px")
+                    , style "top" (String.fromFloat y ++ "px")
+                    , style "width" (String.fromFloat hexWidth ++ "px")
+                    , style "height" (String.fromFloat hexHeight ++ "px")
+                    ]
+                    [ if tile /= "" then
+                        case parseTileFromPath tile of
+                            Just tileData ->
+                                div [ class "hex-tile-svg" ]
+                                    [ viewTileSvg tileData ]
+
+                            Nothing ->
+                                Html.img [ src tile, class "hex-tile-image" ] []
+
+                      else
+                        viewEmptyHexSvg False index
+                    ]
+            )
+            hexPositions
+        )
+
+
 viewFinishedState : Model -> GameState -> Html Msg
 viewFinishedState model gameState =
     let
@@ -1637,7 +2329,11 @@ viewFinishedState model gameState =
                 , viewFinalHexBoard model.aiPlateauTiles
                 ]
             ]
-        , button [ class "play-again-button", onClick BackToModeSelection ] [ text "Rejouer" ]
+        , if model.isSoloMode then
+            button [ class "play-again-button", onClick RestartSoloGame ] [ text "🔄 Rejouer" ]
+
+          else
+            button [ class "play-again-button", onClick BackToModeSelection ] [ text "Rejouer" ]
         ]
 
 
@@ -1722,6 +2418,315 @@ viewFinalHexBoard tiles =
 
 
 -- ============================================================================
+-- REAL GAME MODE (Jeu Réel avec tuiles physiques)
+-- ============================================================================
+
+
+{-| Vue principale du mode Jeu Réel
+-}
+viewRealGame : Model -> Html Msg
+viewRealGame model =
+    div [ class "real-game-container" ]
+        [ div [ class "real-game-info glass-container" ]
+            [ h2 [] [ text ("Tour " ++ String.fromInt (model.currentTurnNumber + 1) ++ "/19") ]
+            , p [] [ text ("Tuiles utilisées: " ++ String.fromInt (List.length model.usedTiles) ++ "/27") ]
+            , button [ class "reset-button", onClick ResetRealGame ] [ text "🔄 Recommencer" ]
+            ]
+        , if model.showTilePicker then
+            viewTilePicker model
+
+          else
+            div [ class "current-tile-section glass-container" ]
+                [ h3 [] [ text "Tuile sélectionnée" ]
+                , case model.currentTileImage of
+                    Just img ->
+                        case parseTileFromPath img of
+                            Just tileData ->
+                                div [ class "selected-tile-display" ]
+                                    [ viewTileSvg tileData ]
+
+                            Nothing ->
+                                text ""
+
+                    Nothing ->
+                        text ""
+                , p [] [ text "Cliquez sur une case pour placer la tuile" ]
+                ]
+        , div [ class "real-game-boards" ]
+            [ div [ class "game-board glass-container" ]
+                [ h3 [] [ text "Votre plateau" ]
+                , viewRealGameBoard model
+                ]
+            , div [ class "game-board glass-container ai-board" ]
+                [ h3 [] [ text "🤖 Plateau IA" ]
+                , viewAiRealGameBoard model
+                ]
+            ]
+        , if model.currentTurnNumber >= 19 then
+            div [ class "game-over glass-container" ]
+                [ h2 [] [ text "🎉 Partie terminée!" ]
+                , p [] [ text "Comptez vos points sur le plateau!" ]
+                , button [ class "play-again-button", onClick ResetRealGame ] [ text "Nouvelle partie" ]
+                ]
+
+          else
+            text ""
+        ]
+
+
+{-| Grille de sélection des 27 tuiles - 3 lignes par valeur verticale
+-}
+viewTilePicker : Model -> Html Msg
+viewTilePicker model =
+    let
+        -- Génère les 9 tuiles pour une valeur v1 donnée
+        tilesForV1 v1 =
+            List.concatMap
+                (\v2 ->
+                    List.map
+                        (\v3 ->
+                            String.fromInt v1 ++ String.fromInt v2 ++ String.fromInt v3
+                        )
+                        [ 3, 4, 8 ]
+                )
+                [ 2, 6, 7 ]
+    in
+    div [ class "tile-picker glass-container" ]
+        [ h3 [] [ text "🎲 Sélectionnez la tuile tirée" ]
+        , div [ class "tiles-rows" ]
+            [ div [ class "tiles-row" ]
+                [ span [ class "row-label" ] [ text "1" ]
+                , div [ class "row-tiles" ] (List.map (viewPickerTile model.usedTiles) (tilesForV1 1))
+                ]
+            , div [ class "tiles-row" ]
+                [ span [ class "row-label" ] [ text "5" ]
+                , div [ class "row-tiles" ] (List.map (viewPickerTile model.usedTiles) (tilesForV1 5))
+                ]
+            , div [ class "tiles-row" ]
+                [ span [ class "row-label" ] [ text "9" ]
+                , div [ class "row-tiles" ] (List.map (viewPickerTile model.usedTiles) (tilesForV1 9))
+                ]
+            ]
+        ]
+
+
+{-| Une tuile dans le sélecteur
+-}
+viewPickerTile : List String -> String -> Html Msg
+viewPickerTile usedTiles tileCode =
+    let
+        isUsed =
+            List.member tileCode usedTiles
+
+        tileData =
+            parseTileFromPath ("image/" ++ tileCode ++ ".png")
+    in
+    div
+        [ class
+            ("picker-tile"
+                ++ (if isUsed then
+                        " used"
+
+                    else
+                        ""
+                   )
+            )
+        , if isUsed then
+            class ""
+
+          else
+            onClick (SelectRealTile tileCode)
+        ]
+        [ case tileData of
+            Just td ->
+                viewTileSvg td
+
+            Nothing ->
+                text tileCode
+        , if isUsed then
+            div [ class "used-overlay" ] [ text "✓" ]
+
+          else
+            text ""
+        ]
+
+
+{-| Plateau de jeu pour le mode Jeu Réel
+-}
+viewRealGameBoard : Model -> Html Msg
+viewRealGameBoard model =
+    let
+        hexRadius =
+            45
+
+        hexWidth =
+            2 * hexRadius
+
+        hexHeight =
+            1.732 * hexRadius
+
+        spacingX =
+            0.75 * hexWidth
+
+        spacingY =
+            hexHeight
+
+        hexPositions =
+            [ ( 0, 1 ), ( 0, 2 ), ( 0, 3 )
+            , ( 1, 0.5 ), ( 1, 1.5 ), ( 1, 2.5 ), ( 1, 3.5 )
+            , ( 2, 0 ), ( 2, 1 ), ( 2, 2 ), ( 2, 3 ), ( 2, 4 )
+            , ( 3, 0.5 ), ( 3, 1.5 ), ( 3, 2.5 ), ( 3, 3.5 )
+            , ( 4, 1 ), ( 4, 2 ), ( 4, 3 )
+            ]
+
+        gridOriginX =
+            70
+
+        gridOriginY =
+            35
+    in
+    div [ class "hex-board", style "position" "relative", style "width" "450px", style "height" "430px", style "margin" "0 auto" ]
+        (List.indexedMap
+            (\index ( col, row ) ->
+                let
+                    x =
+                        gridOriginX + col * spacingX
+
+                    y =
+                        gridOriginY + row * spacingY
+
+                    tile =
+                        List.head (List.drop index model.plateauTiles) |> Maybe.withDefault ""
+
+                    isAvailable =
+                        List.member index model.availablePositions
+
+                    canClick =
+                        isAvailable && model.currentTile /= Nothing && not model.showTilePicker
+                in
+                div
+                    [ class
+                        ("hex-cell"
+                            ++ (if isAvailable && not model.showTilePicker then
+                                    " available"
+
+                                else
+                                    ""
+                               )
+                            ++ (if tile /= "" then
+                                    " filled"
+
+                                else
+                                    ""
+                               )
+                        )
+                    , style "left" (String.fromFloat x ++ "px")
+                    , style "top" (String.fromFloat y ++ "px")
+                    , style "width" (String.fromFloat hexWidth ++ "px")
+                    , style "height" (String.fromFloat hexHeight ++ "px")
+                    , if canClick then
+                        onClick (PlaceRealTile index)
+
+                      else
+                        class ""
+                    ]
+                    [ if tile /= "" then
+                        case parseTileFromPath tile of
+                            Just tileData ->
+                                div [ class "hex-tile-svg" ]
+                                    [ viewTileSvg tileData ]
+
+                            Nothing ->
+                                text ""
+
+                      else
+                        viewEmptyHexSvg (isAvailable && not model.showTilePicker) index
+                    ]
+            )
+            hexPositions
+        )
+
+
+{-| Plateau IA pour le mode Jeu Réel (non-interactif)
+-}
+viewAiRealGameBoard : Model -> Html Msg
+viewAiRealGameBoard model =
+    let
+        hexRadius =
+            45
+
+        hexWidth =
+            2 * hexRadius
+
+        hexHeight =
+            1.732 * hexRadius
+
+        spacingX =
+            0.75 * hexWidth
+
+        spacingY =
+            hexHeight
+
+        hexPositions =
+            [ ( 0, 1 ), ( 0, 2 ), ( 0, 3 )
+            , ( 1, 0.5 ), ( 1, 1.5 ), ( 1, 2.5 ), ( 1, 3.5 )
+            , ( 2, 0 ), ( 2, 1 ), ( 2, 2 ), ( 2, 3 ), ( 2, 4 )
+            , ( 3, 0.5 ), ( 3, 1.5 ), ( 3, 2.5 ), ( 3, 3.5 )
+            , ( 4, 1 ), ( 4, 2 ), ( 4, 3 )
+            ]
+
+        gridOriginX =
+            70
+
+        gridOriginY =
+            35
+    in
+    div [ class "hex-board ai-hex-board", style "position" "relative", style "width" "450px", style "height" "430px", style "margin" "0 auto" ]
+        (List.indexedMap
+            (\index ( col, row ) ->
+                let
+                    x =
+                        gridOriginX + col * spacingX
+
+                    y =
+                        gridOriginY + row * spacingY
+
+                    tile =
+                        List.head (List.drop index model.aiPlateauTiles) |> Maybe.withDefault ""
+                in
+                div
+                    [ class
+                        ("hex-cell"
+                            ++ (if tile /= "" then
+                                    " filled"
+
+                                else
+                                    ""
+                               )
+                        )
+                    , style "left" (String.fromFloat x ++ "px")
+                    , style "top" (String.fromFloat y ++ "px")
+                    , style "width" (String.fromFloat hexWidth ++ "px")
+                    , style "height" (String.fromFloat hexHeight ++ "px")
+                    ]
+                    [ if tile /= "" then
+                        case parseTileFromPath tile of
+                            Just tileData ->
+                                div [ class "hex-tile-svg" ]
+                                    [ viewTileSvg tileData ]
+
+                            Nothing ->
+                                text ""
+
+                      else
+                        viewEmptyHexSvg False index
+                    ]
+            )
+            hexPositions
+        )
+
+
+-- ============================================================================
 -- SUBSCRIPTIONS
 -- ============================================================================
 
@@ -1751,6 +2756,43 @@ main =
 
 init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init _ url key =
-    ( initialModel key url
+    let
+        baseModel =
+            initialModel key url
+
+        -- Check for reset_token in URL query
+        modelWithResetToken =
+            case url.query of
+                Just query ->
+                    case extractResetToken query of
+                        Just token ->
+                            { baseModel
+                                | authView = ResetPassword
+                                , resetToken = token
+                            }
+
+                        Nothing ->
+                            baseModel
+
+                Nothing ->
+                    baseModel
+    in
+    ( modelWithResetToken
     , sendToJs <| Encode.object [ ( "type", Encode.string "checkAuth" ) ]
     )
+
+
+extractResetToken : String -> Maybe String
+extractResetToken query =
+    query
+        |> String.split "&"
+        |> List.filterMap
+            (\param ->
+                case String.split "=" param of
+                    [ "reset_token", value ] ->
+                        Just value
+
+                    _ ->
+                        Nothing
+            )
+        |> List.head

@@ -1,0 +1,37 @@
+# Ignore target directory (except release binary)
+target/
+target-docker/
+target/debug
+target/.rustc_info.json
+target/.cargo-lock
+target/CACHEDIR.TAG
+
+# Ignore model weights (not needed for build)
+model_weights/*.pt
+model_weights/*.safetensors
+
+# Ignore data
+data/
+
+# Ignore deploy package
+deploy_package/
+docker-libs/
+.docker-cargo/
+
+# Ignore frontend node_modules
+frontend-elm/node_modules/
+frontend-elm/elm-stuff/
+
+# Ignore git
+.git/
+
+# Ignore IDE
+.idea/
+*.iml
+
+# Ignore logs
+*.log
+
+# Ignore backup files
+*~
+*.bak

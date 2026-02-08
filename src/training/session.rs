@@ -365,6 +365,7 @@ pub async fn train_and_evaluate(
                 NNArchitecture::Cnn => "cnn",
                 NNArchitecture::Gnn => "gnn",
                 NNArchitecture::CnnOnehot => "cnn-onehot",
+                NNArchitecture::GraphTransformer => "graph-transformer",
             };
             let policy_path = format!("model_weights/{}/policy/policy.params", arch_dir);
             let value_path = format!("model_weights/{}/value/value.params", arch_dir);
@@ -413,9 +414,9 @@ pub async fn train_and_evaluate_offline(
                 .into_iter()
                 .filter(|r| r.subscore >= options.min_score_medium)
                 .filter(|r| {
-                    // Pour le GNN, ne garder que les résultats avec plateau/turn renseignés
+                    // Pour le GNN/GraphTransformer, ne garder que les résultats avec plateau/turn renseignés
                     match policy_net.arch {
-                        NNArchitecture::Gnn => {
+                        NNArchitecture::Gnn | NNArchitecture::GraphTransformer => {
                             r.plateau.is_some()
                                 && r.current_turn.is_some()
                                 && r.total_turns.is_some()
@@ -612,6 +613,7 @@ pub async fn train_and_evaluate_offline(
             NNArchitecture::Cnn => "cnn",
             NNArchitecture::Gnn => "gnn",
             NNArchitecture::CnnOnehot => "cnn-onehot",
+            NNArchitecture::GraphTransformer => "graph-transformer",
         };
         let policy_path = format!("model_weights/{}/policy/policy.params", arch_dir);
         let value_path = format!("model_weights/{}/value/value.params", arch_dir);

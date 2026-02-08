@@ -1,4 +1,5 @@
 use crate::neural::gnn::{GraphPolicyNet, GraphValueNet};
+use crate::neural::graph_transformer::GraphTransformerPolicyNet;
 use crate::neural::manager::NNArchitecture;
 use tch::{nn, Tensor};
 
@@ -58,6 +59,7 @@ pub struct PolicyNet {
 pub enum PolicyNetImpl {
     Cnn(Box<PolicyNetCNN>),
     Gnn(GraphPolicyNet),
+    GraphTransformer(GraphTransformerPolicyNet),
 }
 
 impl PolicyNet {
@@ -71,6 +73,13 @@ impl PolicyNet {
             NNArchitecture::Gnn => Self {
                 arch,
                 net: PolicyNetImpl::Gnn(GraphPolicyNet::new(vs, 8, &[64, 64, 64], 0.1)), // 8 features per node for GNN (matches training data)
+            },
+            NNArchitecture::GraphTransformer => Self {
+                arch,
+                // Graph Transformer: 47 features, 128 embed, 2 layers, 4 heads, 0.1 dropout
+                net: PolicyNetImpl::GraphTransformer(GraphTransformerPolicyNet::new(
+                    vs, 47, 128, 2, 4, 0.1,
+                )),
             },
         }
     }
@@ -97,6 +106,11 @@ impl PolicyNet {
                     }
                 };
                 net.forward(&reshaped, train)
+            }
+            PolicyNetImpl::GraphTransformer(net) => {
+                // Graph Transformer expects [batch, 19, 47]
+                // Input from MCTS/production should already be [batch, 19, 47]
+                net.forward(input, train)
             }
         }
     }
@@ -309,6 +323,11 @@ impl ValueNet {
                 arch,
                 net: ValueNetImpl::Gnn(GraphValueNet::new(vs, 8, &[64, 64, 64], 0.1)), // 8 features per node for GNN (matches training data)
             },
+            NNArchitecture::GraphTransformer => Self {
+                // Graph Transformer uses GAT-style value network with 47 features
+                arch,
+                net: ValueNetImpl::Gnn(GraphValueNet::new(vs, 47, &[64, 64, 64], 0.1)),
+            },
         }
     }
 
@@ -316,22 +335,29 @@ impl ValueNet {
         match &self.net {
             ValueNetImpl::Cnn(net) => net.forward(input, train),
             ValueNetImpl::Gnn(net) => {
-                // Handle both input shapes: [batch, 8, 5, 5] from MCTS or [batch, 19, 8] from supervised
+                // Handle input shapes based on architecture:
+                // - GNN: [batch, 19, 8] or [batch, 8, 5, 5]
+                // - Graph Transformer: [batch, 19, 47]
                 let input_shape = input.size();
                 let reshaped = if input_shape.len() == 4 {
-                    // [batch, 8, 5, 5] -> [batch, 19, 8]
+                    // CNN format [batch, C, 5, 5] -> [batch, 19, C]
                     let batch_size = input_shape[0];
+                    let channels = input_shape[1];
                     input
-                        .view([batch_size, 8, 25])
+                        .view([batch_size, channels, 25])
                         .narrow(2, 0, 19)
                         .permute([0, 2, 1])
-                } else {
-                    // Already [batch, 19, 8] or [batch, 8, 19], check and permute if needed
-                    if input_shape[1] == 8 {
-                        input.permute([0, 2, 1]) // [batch, 8, 19] -> [batch, 19, 8]
+                } else if input_shape.len() == 3 {
+                    // Already 3D: [batch, 19, features] or [batch, features, 19]
+                    if input_shape[1] == 19 {
+                        input.shallow_clone() // Already [batch, 19, features]
+                    } else if input_shape[2] == 19 {
+                        input.permute([0, 2, 1]) // [batch, features, 19] -> [batch, 19, features]
                     } else {
-                        input.shallow_clone() // Already [batch, 19, 8]
+                        input.shallow_clone() // Unknown format, pass through
                     }
+                } else {
+                    input.shallow_clone()
                 };
                 net.forward(&reshaped, train)
             }

@@ -1,0 +1,100 @@
+#!/bin/bash
+#
+# Build Take It Easy dans un container Docker Ubuntu 22.04
+# Compatible avec les VPS Ubuntu 22.04 (GLIBC 2.35)
+#
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+IMAGE_NAME="takeitasy-builder"
+CONTAINER_NAME="takeitasy-build"
+
+echo "=== Build Take It Easy (Docker Ubuntu 22.04) ==="
+
+# Étape 1: Construire l'image Docker (si nécessaire)
+if ! docker images | grep -q "$IMAGE_NAME"; then
+    echo "[1/4] Construction de l'image Docker (première fois, ~5 min)..."
+    docker build --network host -f Dockerfile.build -t "$IMAGE_NAME" .
+else
+    echo "[1/4] Image Docker existante, skip..."
+fi
+
+# Étape 2: Compiler le backend Rust dans le container
+echo "[2/4] Compilation du backend Rust (~5-10 min)..."
+
+# Utiliser un répertoire target séparé pour éviter les conflits de cache
+mkdir -p target-docker
+
+# Créer une config cargo spécifique pour le container (contourne le .cargo/config.toml local)
+mkdir -p .docker-cargo
+cat > .docker-cargo/config.toml << 'CARGO_CONFIG'
+[env]
+LIBTORCH = { value = "/opt/libtorch", force = true }
+LD_LIBRARY_PATH = { value = "/opt/libtorch/lib", force = true }
+
+[build]
+rustflags = ["-C", "link-arg=-Wl,-rpath=/opt/libtorch/lib"]
+CARGO_CONFIG
+
+docker run --rm \
+    --network host \
+    -e LIBTORCH=/opt/libtorch \
+    -e LD_LIBRARY_PATH=/opt/libtorch/lib \
+    -e CARGO_TARGET_DIR=/app/target-docker \
+    -e CARGO_HOME=/root/.cargo \
+    -v "$SCRIPT_DIR:/app" \
+    -v cargo-cache:/root/.cargo/registry \
+    -v "$SCRIPT_DIR/.docker-cargo/config.toml:/app/.cargo/config.toml:ro" \
+    -w /app \
+    "$IMAGE_NAME" \
+    bash -c "cargo clean -p torch-sys 2>/dev/null || true; cargo build --release --bin take_it_easy 2>&1 | tail -50"
+
+# Vérifier que le binaire existe
+if [ ! -f "target-docker/release/take_it_easy" ]; then
+    echo "ERREUR: Le binaire n'a pas été créé"
+    exit 1
+fi
+
+# Copier vers target/release pour compatibilité avec deploy.sh
+mkdir -p target/release
+cp target-docker/release/take_it_easy target/release/
+
+echo "[OK] Backend compilé: $(du -h target/release/take_it_easy | cut -f1)"
+
+# Étape 3: Compiler le frontend Elm (local, pas besoin de Docker)
+echo "[3/4] Compilation du frontend Elm..."
+cd frontend-elm
+if [ ! -d "node_modules" ]; then
+    npm install
+fi
+npm run build
+cd ..
+echo "[OK] Frontend compilé"
+
+# Étape 4: Copier les bibliothèques libtorch depuis le container
+echo "[4/4] Extraction des bibliothèques libtorch..."
+LIBTORCH_CONTAINER="/opt/libtorch/lib"
+
+# Créer un container temporaire pour extraire les libs
+docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker create --name "$CONTAINER_NAME" "$IMAGE_NAME" /bin/true >/dev/null 2>&1
+
+mkdir -p docker-libs
+docker cp "$CONTAINER_NAME:$LIBTORCH_CONTAINER/libtorch_cpu.so" docker-libs/
+docker cp "$CONTAINER_NAME:$LIBTORCH_CONTAINER/libc10.so" docker-libs/
+# libgomp a un hash différent selon la version de libtorch
+docker cp "$CONTAINER_NAME:$LIBTORCH_CONTAINER/libgomp-98b21ff3.so.1" docker-libs/
+
+docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+
+echo "[OK] Bibliothèques extraites: $(du -sh docker-libs | cut -f1)"
+
+echo ""
+echo "=== Build terminé ==="
+echo "Binaire: target/release/take_it_easy"
+echo "Libs:    docker-libs/"
+echo ""
+echo "Pour déployer: ./deploy.sh deploy"
