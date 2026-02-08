@@ -103,3 +103,4 @@ build-docker.sh
 # Keep templates
 !deploy.sh.example
 !build-docker.sh.example
+identifier.sqlite
