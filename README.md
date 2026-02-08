@@ -3,7 +3,7 @@
 A comprehensive **Take It Easy** board game implementation featuring:
 - Rust backend with gRPC API
 - Advanced AI with neural networks (CNN + Q-Net or **GAT** - Graph Attention Network)
-- Two frontend options: Elm (recommended) and SolidJS
+- Elm frontend (MVU architecture)
 - User authentication (email/password + OAuth)
 - Multiplayer support
 
@@ -88,13 +88,8 @@ cd take_it_easy
 # Backend dependencies
 cargo fetch
 
-# Elm frontend (recommended)
+# Elm frontend
 cd frontend-elm
-npm install
-cd ..
-
-# OR SolidJS frontend
-cd frontend
 npm install
 cd ..
 ```
@@ -117,7 +112,7 @@ The backend exposes:
 - **gRPC API** on `localhost:50051` (game sessions)
 - **Auth REST API** on `localhost:51051/auth` (login, register, OAuth)
 
-### Frontend (Elm - Recommended)
+### Frontend (Elm)
 
 ```bash
 cd frontend-elm
@@ -130,15 +125,6 @@ cd frontend-elm
 ```
 
 Then open `http://localhost:8000` (dev) or serve `public/` folder.
-
-### Frontend (SolidJS - Alternative)
-
-```bash
-cd frontend
-npm run dev -- --host 0.0.0.0 --port 3000
-```
-
-Visit `http://localhost:3000`
 
 ---
 
@@ -168,7 +154,6 @@ take_it_easy/
 │   ├── src/Main.elm        # Main application
 │   ├── src/TileSvg.elm     # SVG tile rendering
 │   └── public/             # Static assets + JS ports
-├── frontend/               # SolidJS frontend (alternative)
 ├── model_weights/          # Neural network weights
 │   ├── cnn/                # CNN policy & value networks
 │   ├── graph_transformer_policy.safetensors  # Best model (154.26 pts) ⭐
