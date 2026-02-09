@@ -8496,8 +8496,8 @@ var $author$project$Main$viewAiHexBoard = function (tiles) {
 		]);
 	var hexHeight = 1.732 * hexRadius;
 	var spacingY = hexHeight;
-	var gridOriginY = 20;
-	var gridOriginX = 20;
+	var gridOriginY = 17;
+	var gridOriginX = 10;
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(
@@ -8640,8 +8640,8 @@ var $author$project$Main$viewHexBoard = function (model) {
 		]);
 	var hexHeight = 1.732 * hexRadius;
 	var spacingY = hexHeight;
-	var gridOriginY = 45;
-	var gridOriginX = 60;
+	var gridOriginY = 25;
+	var gridOriginX = 55;
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(
@@ -9126,8 +9126,8 @@ var $author$project$Main$viewAiRealGameBoard = function (model) {
 		]);
 	var hexHeight = 1.732 * hexRadius;
 	var spacingY = hexHeight;
-	var gridOriginY = 35;
-	var gridOriginX = 70;
+	var gridOriginY = 20;
+	var gridOriginX = 45;
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(
@@ -9233,8 +9233,8 @@ var $author$project$Main$viewRealGameBoard = function (model) {
 		]);
 	var hexHeight = 1.732 * hexRadius;
 	var spacingY = hexHeight;
-	var gridOriginY = 35;
-	var gridOriginX = 70;
+	var gridOriginY = 20;
+	var gridOriginX = 45;
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(

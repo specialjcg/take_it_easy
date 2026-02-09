@@ -2019,10 +2019,10 @@ viewHexBoard model =
             ]
 
         gridOriginX =
-            60
+            55
 
         gridOriginY =
-            45
+            25
     in
     div [ class "hex-board", style "position" "relative", style "width" "600px", style "height" "570px", style "margin" "0 auto" ]
         (List.indexedMap
@@ -2114,10 +2114,10 @@ viewHexBoardSmall tiles availablePositions myTurn currentTile =
             ]
 
         gridOriginX =
-            20
+            10
 
         gridOriginY =
-            20
+            17
     in
     div [ class "hex-board", style "position" "relative", style "width" "340px", style "height" "380px", style "margin" "0 auto" ]
         (List.indexedMap
@@ -2209,10 +2209,10 @@ viewAiHexBoard tiles =
             ]
 
         gridOriginX =
-            20
+            10
 
         gridOriginY =
-            20
+            17
     in
     div [ class "hex-board ai-board", style "position" "relative", style "width" "340px", style "height" "380px", style "margin" "0 auto" ]
         (List.indexedMap
@@ -2568,10 +2568,10 @@ viewRealGameBoard model =
             ]
 
         gridOriginX =
-            70
+            45
 
         gridOriginY =
-            35
+            20
     in
     div [ class "hex-board", style "position" "relative", style "width" "450px", style "height" "430px", style "margin" "0 auto" ]
         (List.indexedMap
@@ -2664,10 +2664,10 @@ viewAiRealGameBoard model =
             ]
 
         gridOriginX =
-            70
+            45
 
         gridOriginY =
-            35
+            20
     in
     div [ class "hex-board ai-hex-board", style "position" "relative", style "width" "450px", style "height" "430px", style "margin" "0 auto" ]
         (List.indexedMap
