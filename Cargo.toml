@@ -41,7 +41,7 @@ oauth2 = "4"                # OAuth2 client
 rusqlite = { version = "0.31", features = ["bundled"] }  # SQLite database
 lettre = { version = "0.11", features = ["tokio1-native-tls"] }  # Email sending
 base64 = "0.22"             # Token encoding
-reqwest = { version = "0.12", features = ["json"] }  # HTTP client for OAuth
+reqwest = { version = "0.13", features = ["json"] }  # HTTP client for OAuth
 getrandom = "0.2"        # Secure random bytes
 
 [build-dependencies]
