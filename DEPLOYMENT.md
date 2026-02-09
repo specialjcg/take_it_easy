@@ -6,10 +6,14 @@ Complete guide for deploying Take It Easy on a VPS.
 
 ```
 ┌─────────────────┐     HTTPS      ┌─────────────────┐
-│   Browser       │◄──────────────►│   nginx         │
-│   (Elm SPA)     │                │   (reverse      │
+│   Browser       │◄──────────────►│   nginx :443    │
+│   (IPv6)        │                │   (reverse      │
 └─────────────────┘                │    proxy)       │
                                    └────────┬────────┘
+┌─────────────────┐  trycloudflare ┌────────┴────────┐
+│   Browser       │◄──────────────►│ cloudflared     │
+│   (IPv4 mobile) │                │ → nginx :8080   │
+└─────────────────┘                └────────┬────────┘
                                             │
                     ┌───────────────────────┼───────────────────────┐
                     │                       │                       │
@@ -17,7 +21,7 @@ Complete guide for deploying Take It Easy on a VPS.
             ┌───────────────┐      ┌───────────────┐      ┌───────────────┐
             │ Static Files  │      │ Auth API      │      │ gRPC-Web      │
             │ /             │      │ /auth/*       │      │ /takeiteasygame.*
-            │ port 80/443   │      │ port 51051    │      │ port 50052    │
+            │               │      │ port 51051    │      │ port 50052    │
             └───────────────┘      └───────────────┘      └───────────────┘
                                             │
                                             ▼
@@ -233,6 +237,90 @@ ReadWritePaths=/opt/takeitasy/data
 [Install]
 WantedBy=multi-user.target
 ```
+
+## IPv4 Access via Cloudflare Quick Tunnel
+
+If your VPS is IPv6-only, mobile users on IPv4-only networks cannot connect directly. A Cloudflare Quick Tunnel provides free IPv4 access without requiring a registered domain.
+
+### Setup on VPS
+
+1. Install cloudflared:
+```bash
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/bin/cloudflared
+chmod +x /usr/bin/cloudflared
+```
+
+2. Create a dedicated nginx server block at `/etc/nginx/sites-enabled/tunnel`:
+```nginx
+server {
+    listen 127.0.0.1:8080;
+    server_name _;
+    root /opt/takeitasy/frontend;
+    index index.html;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /auth/ {
+        proxy_pass http://127.0.0.1:51051/auth/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location /takeiteasygame. {
+        proxy_pass http://127.0.0.1:50052;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+}
+```
+
+3. Create a systemd service at `/etc/systemd/system/cloudflared-quick.service`:
+```ini
+[Unit]
+Description=Cloudflare Quick Tunnel
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel --url http://127.0.0.1:8080 --edge-ip-version 6
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+4. Enable and start:
+```bash
+nginx -t && systemctl reload nginx
+systemctl daemon-reload
+systemctl enable --now cloudflared-quick
+```
+
+### Get the Tunnel URL
+
+The quick tunnel URL changes on each restart. To retrieve it:
+```bash
+journalctl -u cloudflared-quick --no-pager | grep trycloudflare | tail -1
+```
+
+> **Note**: `--edge-ip-version 6` is required for IPv6-only VPS to reach Cloudflare edge servers.
+
+> **Note**: The dedicated port 8080 nginx block avoids the HTTP→HTTPS redirect loop that would occur if the tunnel pointed to port 80.
 
 ## Troubleshooting
 
