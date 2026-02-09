@@ -8641,7 +8641,7 @@ var $author$project$Main$viewHexBoard = function (model) {
 	var hexHeight = 1.732 * hexRadius;
 	var spacingY = hexHeight;
 	var gridOriginY = 45;
-	var gridOriginX = 90;
+	var gridOriginX = 60;
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(

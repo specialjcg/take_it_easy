@@ -2019,7 +2019,7 @@ viewHexBoard model =
             ]
 
         gridOriginX =
-            90
+            60
 
         gridOriginY =
             45
