@@ -2114,6 +2114,58 @@ getPlayerScore model =
             0
 
 
+{-| Calcule le score d'un plateau Take It Easy.
+    Pour chaque ligne, si toutes les tuiles ont la même valeur
+    dans la direction de la ligne, score = valeur × nombre de tuiles.
+-}
+calculateBoardScore : List String -> Int
+calculateBoardScore tiles =
+    let
+        parsedTiles =
+            List.indexedMap (\i t -> ( i, parseTileFromPath t )) tiles
+
+        tileAt pos =
+            List.filter (\( i, _ ) -> i == pos) parsedTiles
+                |> List.head
+                |> Maybe.andThen Tuple.second
+
+        -- Lignes verticales (v1: 1, 5, 9)
+        v1Lines =
+            [ [ 0, 1, 2 ], [ 3, 4, 5, 6 ], [ 7, 8, 9, 10, 11 ], [ 12, 13, 14, 15 ], [ 16, 17, 18 ] ]
+
+        -- Diagonales haut-gauche vers bas-droit (v2: 2, 6, 7)
+        v2Lines =
+            [ [ 7, 12, 16 ], [ 3, 8, 13, 17 ], [ 0, 4, 9, 14, 18 ], [ 1, 5, 10, 15 ], [ 2, 6, 11 ] ]
+
+        -- Diagonales haut-droit vers bas-gauche (v3: 3, 4, 8)
+        v3Lines =
+            [ [ 0, 3, 7 ], [ 1, 4, 8, 12 ], [ 2, 5, 9, 13, 16 ], [ 6, 10, 14, 17 ], [ 11, 15, 18 ] ]
+
+        scoreLine getValue positions =
+            let
+                values =
+                    List.filterMap (\pos -> tileAt pos |> Maybe.map getValue) positions
+            in
+            if List.length values == List.length positions then
+                case values of
+                    first :: rest ->
+                        if List.all (\v -> v == first) rest then
+                            first * List.length positions
+
+                        else
+                            0
+
+                    [] ->
+                        0
+
+            else
+                0
+    in
+    List.sum (List.map (scoreLine .v1) v1Lines)
+        + List.sum (List.map (scoreLine .v2) v2Lines)
+        + List.sum (List.map (scoreLine .v3) v3Lines)
+
+
 viewHexBoard : Model -> Html Msg
 viewHexBoard model =
     let
@@ -2548,6 +2600,13 @@ viewFinalHexBoard tiles =
 -}
 viewRealGame : Model -> Html Msg
 viewRealGame model =
+    let
+        playerScore =
+            calculateBoardScore model.plateauTiles
+
+        aiScore =
+            calculateBoardScore model.aiPlateauTiles
+    in
     div [ class "real-game-container" ]
         [ div [ class "real-game-info glass-container" ]
             [ h2 [] [ text ("Tour " ++ String.fromInt (model.currentTurnNumber + 1) ++ "/19") ]
@@ -2576,18 +2635,29 @@ viewRealGame model =
                 ]
         , div [ class "real-game-boards" ]
             [ div [ class "game-board glass-container" ]
-                [ h3 [] [ text "Votre plateau" ]
+                [ h3 [] [ text ("Votre plateau - " ++ String.fromInt playerScore ++ " pts") ]
                 , viewRealGameBoard model
                 ]
             , div [ class "game-board glass-container ai-board" ]
-                [ h3 [] [ text "🤖 Plateau IA" ]
+                [ h3 [] [ text ("Plateau IA - " ++ String.fromInt aiScore ++ " pts") ]
                 , viewAiRealGameBoard model
                 ]
             ]
         , if model.currentTurnNumber >= 19 then
             div [ class "game-over glass-container" ]
-                [ h2 [] [ text "🎉 Partie terminée!" ]
-                , p [] [ text "Comptez vos points sur le plateau!" ]
+                [ h2 [] [ text "Partie terminée!" ]
+                , p [ style "font-size" "1.2em" ]
+                    [ text ("Votre score: " ++ String.fromInt playerScore ++ " pts") ]
+                , p [ style "font-size" "1.2em" ]
+                    [ text ("Score IA: " ++ String.fromInt aiScore ++ " pts") ]
+                , if playerScore > aiScore then
+                    p [ style "font-size" "1.3em", style "font-weight" "bold" ] [ text "Vous avez gagné!" ]
+
+                  else if aiScore > playerScore then
+                    p [ style "font-size" "1.3em", style "font-weight" "bold" ] [ text "L'IA a gagné!" ]
+
+                  else
+                    p [ style "font-size" "1.3em", style "font-weight" "bold" ] [ text "Égalité!" ]
                 , button [ class "play-again-button", onClick ResetRealGame ] [ text "Nouvelle partie" ]
                 ]
 
