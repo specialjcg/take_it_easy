@@ -311,7 +311,7 @@ type Msg
     | AiMoveResult Int String
       -- Gameplay Responses (from JS)
     | TurnStarted String String Int (List Int) (List Player) (List String)
-    | MovePlayed Int Int (List String) Int
+    | MovePlayed Int Int (List String) Int Bool
     | PollTurn
     | GameStateUpdated GameState
     | GameFinished (List Player) (List String) (List String)
@@ -1001,7 +1001,7 @@ update msg model =
             , pollCmd
             )
 
-        MovePlayed position points aiTiles aiScore ->
+        MovePlayed position points aiTiles aiScore isGameOver ->
             let
                 -- Place la tuile actuelle sur le plateau
                 newPlateauTiles =
@@ -1040,17 +1040,21 @@ update msg model =
                 , currentTile = Nothing
                 , currentTileImage = Nothing
               }
-            , -- Auto-start next turn
-              case model.session of
-                Just session ->
-                    sendToJs <|
-                        Encode.object
-                            [ ( "type", Encode.string "startTurn" )
-                            , ( "sessionId", Encode.string session.sessionId )
-                            ]
+            , -- Auto-start next turn (sauf si la partie est finie)
+              if isGameOver then
+                Cmd.none
 
-                Nothing ->
-                    Cmd.none
+              else
+                case model.session of
+                    Just session ->
+                        sendToJs <|
+                            Encode.object
+                                [ ( "type", Encode.string "startTurn" )
+                                , ( "sessionId", Encode.string session.sessionId )
+                                ]
+
+                    Nothing ->
+                        Cmd.none
             )
 
         GameStateUpdated gameState ->
@@ -1088,6 +1092,9 @@ update msg model =
                 , statusMessage = "Partie terminée!"
                 , plateauTiles = playerTiles
                 , aiPlateauTiles = aiTiles
+                , error = ""
+                , myTurn = False
+                , waitingForPlayers = []
               }
             , Cmd.none
             )
@@ -1174,8 +1181,8 @@ handleJsMessage value model =
                 JsTurnStarted tile tileImage turnNumber positions players waiting ->
                     update (TurnStarted tile tileImage turnNumber positions players waiting) model
 
-                JsMovePlayed position points aiTiles aiScore ->
-                    update (MovePlayed position points aiTiles aiScore) model
+                JsMovePlayed position points aiTiles aiScore isGameOver ->
+                    update (MovePlayed position points aiTiles aiScore isGameOver) model
 
                 JsGameStateUpdated gameState ->
                     update (GameStateUpdated gameState) model
@@ -1211,7 +1218,7 @@ type JsMessage
     | JsSessionError String
     | JsSessionPolled GameState
     | JsTurnStarted String String Int (List Int) (List Player) (List String)
-    | JsMovePlayed Int Int (List String) Int
+    | JsMovePlayed Int Int (List String) Int Bool
     | JsGameStateUpdated GameState
     | JsGameFinished (List Player) (List String) (List String)
     | JsGameError String
@@ -1303,7 +1310,7 @@ jsMessageDecoderByType msgType =
                 )
 
         "movePlayed" ->
-            Decode.map4 JsMovePlayed
+            Decode.map5 JsMovePlayed
                 (Decode.field "position" Decode.int)
                 (Decode.field "points" Decode.int)
                 (Decode.oneOf
@@ -1314,6 +1321,11 @@ jsMessageDecoderByType msgType =
                 (Decode.oneOf
                     [ Decode.field "aiScore" Decode.int
                     , Decode.succeed 0
+                    ]
+                )
+                (Decode.oneOf
+                    [ Decode.field "isGameOver" Decode.bool
+                    , Decode.succeed False
                     ]
                 )
 

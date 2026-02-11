@@ -473,18 +473,78 @@ async function handleStartTurn(app, sessionId, forcedTile) {
                 waitingForPlayers: result.waitingForPlayers || []
             });
         } else {
-            app.ports.receiveFromJs.send({
-                type: 'gameError',
-                error: result.error || 'Erreur start turn'
-            });
+            // Check if game is finished - fetch final state instead of showing error
+            await handleStartTurnGameOver(app, sessionId, result.error);
         }
     } catch (e) {
         console.error('startTurn error:', e);
-        app.ports.receiveFromJs.send({
-            type: 'gameError',
-            error: e.message || 'Erreur réseau'
+        await handleStartTurnGameOver(app, sessionId, e.message);
+    }
+}
+
+async function handleStartTurnGameOver(app, sessionId, errorMsg) {
+    try {
+        const stateResult = await window.grpcClient.getGameState(sessionId);
+        if (stateResult.success && stateResult.isGameFinished) {
+            sendGameFinishedFromState(app, stateResult.gameState);
+            return;
+        }
+    } catch (e) {
+        // ignore - fall through to error
+    }
+    // Not a game-finished case - send as regular error
+    app.ports.receiveFromJs.send({
+        type: 'gameError',
+        error: errorMsg || 'Erreur start turn'
+    });
+}
+
+function sendGameFinishedFromState(app, rawGameState) {
+    let boardData = rawGameState;
+    if (typeof boardData === 'string') {
+        try { boardData = JSON.parse(boardData); } catch (e) { boardData = {}; }
+    }
+    if (boardData?.boardState) {
+        try {
+            boardData = typeof boardData.boardState === 'string'
+                ? JSON.parse(boardData.boardState) : boardData.boardState;
+        } catch (e) { /* keep boardData */ }
+    }
+
+    const players = [];
+    const plateaus = {};
+    const scores = boardData?.scores || {};
+
+    if (boardData && boardData.player_plateaus) {
+        Object.entries(boardData.player_plateaus).forEach(([id, plateau]) => {
+            players.push({
+                id: id,
+                name: id === 'mcts_ai' ? 'IA' : 'Joueur',
+                score: scores[id] || 0,
+                isReady: true,
+                isConnected: true
+            });
+            const tileImages = [];
+            if (plateau.tiles) {
+                for (let i = 0; i < 19; i++) {
+                    const tile = plateau.tiles[i];
+                    if (tile && (tile[0] !== 0 || tile[1] !== 0 || tile[2] !== 0)) {
+                        tileImages.push(`image/${tile[0]}${tile[1]}${tile[2]}.png`);
+                    } else {
+                        tileImages.push('');
+                    }
+                }
+            }
+            plateaus[id] = tileImages;
         });
     }
+
+    console.log('🏁 Game finished detected from startTurn:', { players, plateaus });
+    app.ports.receiveFromJs.send({
+        type: 'gameFinished',
+        players: players,
+        plateaus: plateaus
+    });
 }
 
 async function handlePlayMove(app, sessionId, playerId, position) {
@@ -548,7 +608,8 @@ async function handlePlayMove(app, sessionId, playerId, position) {
                 position: position,
                 points: result.pointsEarned || 0,
                 aiTiles: aiTiles,
-                aiScore: aiScore
+                aiScore: aiScore,
+                isGameOver: result.isGameOver || false
             });
 
             if (result.isGameOver) {
