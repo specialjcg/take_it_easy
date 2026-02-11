@@ -10,6 +10,8 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Process
+import Task
 import TileSvg exposing (parseTileFromPath, viewEmptyHexSvg, viewTileSvg)
 import Url
 
@@ -134,6 +136,7 @@ type alias Model =
     , availablePositions : List Int
     , myTurn : Bool
     , currentTurnNumber : Int
+    , waitingForPlayers : List String
 
     -- Real Game Mode (Jeu Réel)
     , isRealGameMode : Bool
@@ -194,6 +197,7 @@ initialModel key url =
     , availablePositions = List.range 0 18
     , myTurn = False
     , currentTurnNumber = 0
+    , waitingForPlayers = []
 
     -- Real Game Mode (Jeu Réel)
     , isRealGameMode = False
@@ -294,6 +298,8 @@ type Msg
     | SessionLeft
     | ReadySet Bool
     | SessionError String
+    | PollSession
+    | SessionPolled GameState
       -- Gameplay
     | StartTurn
     | PlayMove Int
@@ -304,8 +310,9 @@ type Msg
     | ResetRealGame
     | AiMoveResult Int String
       -- Gameplay Responses (from JS)
-    | TurnStarted String String Int (List Int) (List Player)
+    | TurnStarted String String Int (List Int) (List Player) (List String)
     | MovePlayed Int Int (List String) Int
+    | PollTurn
     | GameStateUpdated GameState
     | GameFinished (List Player) (List String) (List String)
     | GameError String
@@ -643,7 +650,7 @@ update msg model =
                         Nothing ->
                             False
 
-                autoReadyCmd =
+                cmd =
                     if isSoloMode then
                         sendToJs <|
                             Encode.object
@@ -651,8 +658,11 @@ update msg model =
                                 , ( "sessionId", Encode.string session.sessionId )
                                 , ( "playerId", Encode.string session.playerId )
                                 ]
+
                     else
-                        Cmd.none
+                        -- Mode multijoueur: démarrer le polling du lobby
+                        Process.sleep 2000
+                            |> Task.perform (\_ -> PollSession)
             in
             ( { model
                 | session = Just session
@@ -661,7 +671,7 @@ update msg model =
                 , isSoloMode = isSoloMode
                 , statusMessage = "Session créée: " ++ session.sessionCode
               }
-            , autoReadyCmd
+            , cmd
             )
 
         SessionJoined session gameState ->
@@ -671,7 +681,9 @@ update msg model =
                 , loading = False
                 , statusMessage = "Rejoint la session: " ++ session.sessionCode
               }
-            , Cmd.none
+            , -- Démarrer le polling pour détecter les autres joueurs et le démarrage
+              Process.sleep 2000
+                |> Task.perform (\_ -> PollSession)
             )
 
         SessionLeft ->
@@ -693,7 +705,48 @@ update msg model =
                     else
                         "Prêt! En attente des autres joueurs..."
 
-                -- Auto-start turn pour les modes solo
+                cmd =
+                    if gameStarted then
+                        case model.session of
+                            Just session ->
+                                sendToJs <|
+                                    Encode.object
+                                        [ ( "type", Encode.string "startTurn" )
+                                        , ( "sessionId", Encode.string session.sessionId )
+                                        ]
+
+                            Nothing ->
+                                Cmd.none
+
+                    else
+                        -- Polling pour détecter quand la partie démarre
+                        Process.sleep 2000
+                            |> Task.perform (\_ -> PollSession)
+            in
+            ( { model | loading = gameStarted, statusMessage = newStatusMessage }, cmd )
+
+        SessionError error ->
+            ( { model | loading = False, error = error }, Cmd.none )
+
+        PollSession ->
+            case model.session of
+                Just session ->
+                    ( model
+                    , sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "pollSession" )
+                            , ( "sessionId", Encode.string session.sessionId )
+                            ]
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        SessionPolled gameState ->
+            let
+                gameStarted =
+                    gameState.state == InProgress
+
                 autoStartCmd =
                     if gameStarted then
                         case model.session of
@@ -706,13 +759,18 @@ update msg model =
 
                             Nothing ->
                                 Cmd.none
-                    else
-                        Cmd.none
-            in
-            ( { model | loading = gameStarted, statusMessage = newStatusMessage }, autoStartCmd )
 
-        SessionError error ->
-            ( { model | loading = False, error = error }, Cmd.none )
+                    else
+                        -- Continuer le polling si encore en attente
+                        Process.sleep 2000
+                            |> Task.perform (\_ -> PollSession)
+            in
+            ( { model
+                | gameState = Just gameState
+                , loading = gameStarted
+              }
+            , autoStartCmd
+            )
 
         -- Gameplay
         StartTurn ->
@@ -887,8 +945,15 @@ update msg model =
                 )
 
         -- Gameplay Responses
-        TurnStarted tile tileImage turnNumber positions players ->
+        TurnStarted tile tileImage turnNumber positions players waiting ->
             let
+                -- Déterminer si c'est le tour du joueur actuel
+                currentPlayerId =
+                    model.session |> Maybe.map .playerId |> Maybe.withDefault ""
+
+                isMyTurn =
+                    List.member currentPlayerId waiting
+
                 -- Mettre à jour gameState.state vers InProgress et les joueurs
                 updatedGameState =
                     Maybe.map
@@ -903,17 +968,37 @@ update msg model =
                             }
                         )
                         model.gameState
+
+                -- Si ce n'est pas notre tour, poll après 2 secondes
+                pollCmd =
+                    if not isMyTurn then
+                        Process.sleep 2000
+                            |> Task.perform (\_ -> PollTurn)
+
+                    else
+                        Cmd.none
             in
             ( { model
-                | currentTile = Just tile
-                , currentTileImage = Just tileImage
+                | currentTile =
+                    if isMyTurn then
+                        Just tile
+
+                    else
+                        Nothing
+                , currentTileImage =
+                    if isMyTurn then
+                        Just tileImage
+
+                    else
+                        Nothing
                 , currentTurnNumber = turnNumber
                 , availablePositions = positions
-                , myTurn = True
+                , myTurn = isMyTurn
                 , loading = False
                 , gameState = updatedGameState
+                , waitingForPlayers = waiting
               }
-            , Cmd.none
+            , pollCmd
             )
 
         MovePlayed position points aiTiles aiScore ->
@@ -1010,6 +1095,24 @@ update msg model =
         GameError error ->
             ( { model | loading = False, error = error }, Cmd.none )
 
+        PollTurn ->
+            case model.session of
+                Just session ->
+                    if not model.myTurn then
+                        ( model
+                        , sendToJs <|
+                            Encode.object
+                                [ ( "type", Encode.string "startTurn" )
+                                , ( "sessionId", Encode.string session.sessionId )
+                                ]
+                        )
+
+                    else
+                        ( model, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
         -- JS Interop
         ReceivedFromJs value ->
             handleJsMessage value model
@@ -1065,8 +1168,11 @@ handleJsMessage value model =
                 JsSessionError error ->
                     update (SessionError error) model
 
-                JsTurnStarted tile tileImage turnNumber positions players ->
-                    update (TurnStarted tile tileImage turnNumber positions players) model
+                JsSessionPolled gameState ->
+                    update (SessionPolled gameState) model
+
+                JsTurnStarted tile tileImage turnNumber positions players waiting ->
+                    update (TurnStarted tile tileImage turnNumber positions players waiting) model
 
                 JsMovePlayed position points aiTiles aiScore ->
                     update (MovePlayed position points aiTiles aiScore) model
@@ -1103,7 +1209,8 @@ type JsMessage
     | JsSessionLeft
     | JsReadySet Bool
     | JsSessionError String
-    | JsTurnStarted String String Int (List Int) (List Player)
+    | JsSessionPolled GameState
+    | JsTurnStarted String String Int (List Int) (List Player) (List String)
     | JsMovePlayed Int Int (List String) Int
     | JsGameStateUpdated GameState
     | JsGameFinished (List Player) (List String) (List String)
@@ -1175,14 +1282,22 @@ jsMessageDecoderByType msgType =
         "sessionError" ->
             Decode.map JsSessionError (Decode.field "error" Decode.string)
 
+        "sessionPolled" ->
+            Decode.map JsSessionPolled (Decode.field "gameState" gameStateDecoder)
+
         "turnStarted" ->
-            Decode.map5 JsTurnStarted
+            Decode.map6 JsTurnStarted
                 (Decode.field "tile" Decode.string)
                 (Decode.field "tileImage" Decode.string)
                 (Decode.field "turnNumber" Decode.int)
                 (Decode.field "positions" (Decode.list Decode.int))
                 (Decode.oneOf
                     [ Decode.field "players" (Decode.list playerDecoder)
+                    , Decode.succeed []
+                    ]
+                )
+                (Decode.oneOf
+                    [ Decode.field "waitingForPlayers" (Decode.list Decode.string)
                     , Decode.succeed []
                     ]
                 )
@@ -1915,12 +2030,19 @@ viewInProgressState model session =
                         ]
 
                 Nothing ->
-                    button
-                        [ class "start-turn-button"
-                        , onClick StartTurn
-                        , disabled model.loading
-                        ]
-                        [ text "Commencer le tour" ]
+                    if not model.myTurn && not (List.isEmpty model.waitingForPlayers) then
+                        div [ class "waiting-message" ]
+                            [ p [ style "opacity" "0.8" ]
+                                [ text ("En attente de " ++ String.fromInt (List.length model.waitingForPlayers) ++ " joueur(s)...") ]
+                            ]
+
+                    else
+                        button
+                            [ class "start-turn-button"
+                            , onClick StartTurn
+                            , disabled model.loading
+                            ]
+                            [ text "Commencer le tour" ]
             ]
         , div [ class "game-board glass-container" ]
             [ h3 [] [ text "Plateau de jeu" ]

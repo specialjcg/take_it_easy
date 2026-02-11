@@ -14,6 +14,9 @@ const AUTH_API_BASE = IS_PRODUCTION
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 
+// Current player ID (set on session create/join)
+let currentPlayerId = null;
+
 /**
  * Initialize ports for the Elm app
  */
@@ -59,6 +62,9 @@ function initPorts(app) {
                     break;
 
                 // ========== GAMEPLAY (via gRPC) ==========
+                case 'pollSession':
+                    await handlePollSession(app, message.sessionId);
+                    break;
                 case 'startTurn':
                     await handleStartTurn(app, message.sessionId, message.forcedTile);
                     break;
@@ -272,6 +278,7 @@ async function handleCreateSession(app, playerName, gameMode) {
         console.log('createSession result:', result);
 
         if (result.success) {
+            currentPlayerId = result.playerId;
             app.ports.receiveFromJs.send({
                 type: 'sessionCreated',
                 session: {
@@ -309,6 +316,7 @@ async function handleJoinSession(app, sessionCode, playerName) {
         const result = await window.grpcClient.joinSession(sessionCode, playerName);
 
         if (result.success) {
+            currentPlayerId = result.playerId;
             app.ports.receiveFromJs.send({
                 type: 'sessionJoined',
                 session: {
@@ -370,6 +378,33 @@ async function handleSetReady(app, sessionId, playerId) {
 }
 
 // ============================================================================
+// SESSION POLLING
+// ============================================================================
+
+async function handlePollSession(app, sessionId) {
+    console.log('🔄 Polling session:', sessionId);
+    if (!window.grpcClient) {
+        console.warn('🔄 Poll: no grpcClient');
+        return;
+    }
+
+    try {
+        const result = await window.grpcClient.getSessionState(sessionId);
+        console.log('🔄 Poll result:', result);
+        if (result.success) {
+            const gameState = parseGameState(result.sessionState);
+            console.log('🔄 Poll parsed gameState:', gameState);
+            app.ports.receiveFromJs.send({
+                type: 'sessionPolled',
+                gameState: gameState
+            });
+        }
+    } catch (e) {
+        console.warn('Poll session error:', e);
+    }
+}
+
+// ============================================================================
 // GAMEPLAY HANDLERS (via gRPC client)
 // ============================================================================
 
@@ -396,10 +431,13 @@ async function handleStartTurn(app, sessionId, forcedTile) {
                         ? JSON.parse(result.gameState)
                         : result.gameState;
 
-                    // Extraire les positions disponibles (joueur humain uniquement)
-                    if (gs.player_plateaus) {
+                    // Extraire les positions disponibles du joueur courant
+                    if (gs.player_plateaus && currentPlayerId && gs.player_plateaus[currentPlayerId]) {
+                        positions = gs.player_plateaus[currentPlayerId].available_positions || [];
+                    } else if (gs.player_plateaus) {
+                        // Fallback: premier joueur non-IA
                         Object.entries(gs.player_plateaus).forEach(([id, plateau]) => {
-                            if (plateau.available_positions && id !== 'mcts_ai') {
+                            if (plateau.available_positions && id !== 'mcts_ai' && positions.length === 0) {
                                 positions = plateau.available_positions;
                             }
                         });
@@ -431,7 +469,8 @@ async function handleStartTurn(app, sessionId, forcedTile) {
                 tileImage: tileImage,
                 turnNumber: result.turnNumber || 0,
                 positions: positions,
-                players: players
+                players: players,
+                waitingForPlayers: result.waitingForPlayers || []
             });
         } else {
             app.ports.receiveFromJs.send({
