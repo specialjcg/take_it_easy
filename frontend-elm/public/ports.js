@@ -17,6 +17,14 @@ const USER_KEY = 'auth_user';
 // Current player ID (set on session create/join)
 let currentPlayerId = null;
 
+// Cache player names from session events
+let playerNames = {};
+
+function getPlayerName(id) {
+    if (id === 'mcts_ai') return 'IA';
+    return playerNames[id] || 'Joueur';
+}
+
 /**
  * Initialize ports for the Elm app
  */
@@ -342,6 +350,7 @@ async function handleJoinSession(app, sessionCode, playerName) {
 }
 
 async function handleLeaveSession(app, sessionId, playerId) {
+    playerNames = {};
     app.ports.receiveFromJs.send({ type: 'sessionLeft' });
 }
 
@@ -448,7 +457,7 @@ async function handleStartTurn(app, sessionId, forcedTile) {
                         Object.entries(gs.scores).forEach(([id, score]) => {
                             players.push({
                                 id: id,
-                                name: id === 'mcts_ai' ? 'IA' : 'Joueur',
+                                name: getPlayerName(id),
                                 score: score || 0,
                                 isReady: true,
                                 isConnected: true
@@ -519,7 +528,7 @@ function sendGameFinishedFromState(app, rawGameState) {
         Object.entries(boardData.player_plateaus).forEach(([id, plateau]) => {
             players.push({
                 id: id,
-                name: id === 'mcts_ai' ? 'IA' : 'Joueur',
+                name: getPlayerName(id),
                 score: scores[id] || 0,
                 isReady: true,
                 isConnected: true
@@ -648,7 +657,7 @@ async function handlePlayMove(app, sessionId, playerId, position) {
                     Object.entries(boardData.player_plateaus).forEach(([id, plateau]) => {
                         players.push({
                             id: id,
-                            name: id === 'mcts_ai' ? 'IA' : 'Joueur',
+                            name: getPlayerName(id),
                             score: scores[id] || 0,
                             isReady: true,
                             isConnected: true
@@ -766,16 +775,25 @@ function parseGameState(sessionState) {
         };
     }
 
+    const players = (sessionState.players || []).map(p => ({
+        id: p.id || '',
+        name: p.name || 'Joueur',
+        score: p.score || 0,
+        isReady: p.isReady || false,
+        isConnected: p.isConnected !== false
+    }));
+
+    // Cache player names for use in gameplay events
+    players.forEach(p => {
+        if (p.id && p.name) {
+            playerNames[p.id] = p.name;
+        }
+    });
+
     return {
         sessionCode: sessionState.sessionId || '',
         state: sessionState.state || 0,
-        players: (sessionState.players || []).map(p => ({
-            id: p.id || '',
-            name: p.name || 'Joueur',
-            score: p.score || 0,
-            isReady: p.isReady || false,
-            isConnected: p.isConnected !== false
-        })),
+        players: players,
         currentTurn: sessionState.currentPlayerId || null
     };
 }

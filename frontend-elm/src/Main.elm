@@ -90,7 +90,8 @@ type View
 
 
 type AuthView
-    = Login
+    = Welcome
+    | Login
     | Register
     | ForgotPassword
     | ResetPassword
@@ -150,6 +151,9 @@ type alias Model =
     , aiScore : Int
     , showAiBoard : Bool
 
+    -- End of game: all player boards (id, name, tiles)
+    , allPlayerPlateaus : List ( String, String, List String )
+
     -- UI
     , loading : Bool
     , error : String
@@ -167,7 +171,7 @@ initialModel key url =
     , isAuthenticated = False
     , user = Nothing
     , token = Nothing
-    , authView = Login
+    , authView = Welcome
     , authLoading = False
     , authError = ""
 
@@ -210,6 +214,9 @@ initialModel key url =
     , isSoloMode = False
     , aiScore = 0
     , showAiBoard = False
+
+    -- End of game
+    , allPlayerPlateaus = []
 
     -- UI
     , loading = False
@@ -314,7 +321,7 @@ type Msg
     | MovePlayed Int Int (List String) Int Bool
     | PollTurn
     | GameStateUpdated GameState
-    | GameFinished (List Player) (List String) (List String)
+    | GameFinished (List Player) (List String) (List String) (List ( String, List String ))
     | GameError String
       -- JS Interop
     | ReceivedFromJs Decode.Value
@@ -426,6 +433,7 @@ update msg model =
                 , user = Nothing
                 , token = Nothing
                 , currentView = LoginView
+                , authView = Welcome
               }
             , sendToJs <| Encode.object [ ( "type", Encode.string "logout" ) ]
             )
@@ -543,6 +551,7 @@ update msg model =
                 , selectedGameMode = Nothing
                 , error = ""
                 , statusMessage = ""
+                , allPlayerPlateaus = []
               }
             , Cmd.none
             )
@@ -569,6 +578,7 @@ update msg model =
                 , currentTileImage = Nothing
                 , aiScore = 0
                 , showAiBoard = False
+                , allPlayerPlateaus = []
                 , loading = True
                 , error = ""
                 , statusMessage = ""
@@ -1060,7 +1070,7 @@ update msg model =
         GameStateUpdated gameState ->
             ( { model | gameState = Just gameState }, Cmd.none )
 
-        GameFinished players playerTiles aiTiles ->
+        GameFinished players playerTiles aiTiles allPlateaus ->
             let
                 -- Merge final scores with existing player names
                 mergePlayerScores existingPlayers newPlayers =
@@ -1077,21 +1087,51 @@ update msg model =
                         )
                         newPlayers
 
+                mergedPlayers =
+                    case model.gameState of
+                        Just gs ->
+                            mergePlayerScores gs.players players
+
+                        Nothing ->
+                            players
+
                 newGameState =
                     Maybe.map
                         (\gs ->
                             { gs
                                 | state = Finished
-                                , players = mergePlayerScores gs.players players
+                                , players = mergedPlayers
                             }
                         )
                         model.gameState
+
+                -- Resolve player names for all plateaus
+                resolvedPlateaus =
+                    List.map
+                        (\( id, tiles ) ->
+                            let
+                                name =
+                                    List.filter (\p -> p.id == id) mergedPlayers
+                                        |> List.head
+                                        |> Maybe.map .name
+                                        |> Maybe.withDefault
+                                            (if id == "mcts_ai" then
+                                                "IA"
+
+                                             else
+                                                "Joueur"
+                                            )
+                            in
+                            ( id, name, tiles )
+                        )
+                        allPlateaus
             in
             ( { model
                 | gameState = newGameState
                 , statusMessage = "Partie terminée!"
                 , plateauTiles = playerTiles
                 , aiPlateauTiles = aiTiles
+                , allPlayerPlateaus = resolvedPlateaus
                 , error = ""
                 , myTurn = False
                 , waitingForPlayers = []
@@ -1187,8 +1227,8 @@ handleJsMessage value model =
                 JsGameStateUpdated gameState ->
                     update (GameStateUpdated gameState) model
 
-                JsGameFinished players playerTiles aiTiles ->
-                    update (GameFinished players playerTiles aiTiles) model
+                JsGameFinished players playerTiles aiTiles allPlateaus ->
+                    update (GameFinished players playerTiles aiTiles allPlateaus) model
 
                 JsGameError error ->
                     update (GameError error) model
@@ -1220,7 +1260,7 @@ type JsMessage
     | JsTurnStarted String String Int (List Int) (List Player) (List String)
     | JsMovePlayed Int Int (List String) Int Bool
     | JsGameStateUpdated GameState
-    | JsGameFinished (List Player) (List String) (List String)
+    | JsGameFinished (List Player) (List String) (List String) (List ( String, List String ))
     | JsGameError String
     | JsAiMoveResult Int String
 
@@ -1333,7 +1373,7 @@ jsMessageDecoderByType msgType =
             Decode.map JsGameStateUpdated (Decode.field "gameState" gameStateDecoder)
 
         "gameFinished" ->
-            Decode.map3 JsGameFinished
+            Decode.map4 JsGameFinished
                 (Decode.field "players" (Decode.list playerDecoder))
                 (Decode.oneOf
                     [ Decode.at [ "plateaus", "player" ] (Decode.list Decode.string)
@@ -1356,6 +1396,11 @@ jsMessageDecoderByType msgType =
                 (Decode.oneOf
                     [ Decode.at [ "plateaus", "mcts_ai" ] (Decode.list Decode.string)
                     , Decode.succeed (List.repeat 19 "")
+                    ]
+                )
+                (Decode.oneOf
+                    [ Decode.field "plateaus" (Decode.keyValuePairs (Decode.list Decode.string))
+                    , Decode.succeed []
                     ]
                 )
 
@@ -1477,6 +1522,9 @@ viewAuth model =
               else
                 text ""
             , case model.authView of
+                Welcome ->
+                    viewWelcome model
+
                 ForgotPassword ->
                     viewForgotPasswordForm model
 
@@ -1493,6 +1541,9 @@ viewAuth model =
 authSubtitle : AuthView -> String
 authSubtitle authView =
     case authView of
+        Welcome ->
+            "Le jeu de stratégie et de chance"
+
         Login ->
             "Connectez-vous pour jouer"
 
@@ -1504,6 +1555,35 @@ authSubtitle authView =
 
         ResetPassword ->
             "Choisissez un nouveau mot de passe"
+
+
+viewWelcome : Model -> Html Msg
+viewWelcome _ =
+    div [ class "welcome-content" ]
+        [ p [ class "welcome-pitch" ]
+            [ text "Placez vos tuiles, marquez des points et défiez l'IA ou vos amis !" ]
+        , button
+            [ class "welcome-play-button"
+            , onClick SkipAuth
+            ]
+            [ text "Jouer maintenant" ]
+        , div [ class "welcome-separator" ] [ text "ou" ]
+        , div [ class "welcome-links" ]
+            [ button
+                [ type_ "button"
+                , class "link-button"
+                , onClick (SwitchAuthView Login)
+                ]
+                [ text "Se connecter" ]
+            , text " · "
+            , button
+                [ type_ "button"
+                , class "link-button"
+                , onClick (SwitchAuthView Register)
+                ]
+                [ text "Créer un compte" ]
+            ]
+        ]
 
 
 viewLoginRegisterForm : Model -> Html Msg
@@ -1701,6 +1781,10 @@ viewResetPasswordForm model =
 
 viewAuthFooter : Model -> Html Msg
 viewAuthFooter model =
+    if model.authView == Welcome then
+        text ""
+
+    else
     div []
         [ case model.authView of
             Login ->
@@ -2491,18 +2575,61 @@ viewFinishedState model gameState =
                     )
                 ]
             ]
-        , div [ class "finished-boards" ]
-            [ -- Player's final plateau
-              div [ class "final-board glass-container" ]
-                [ h3 [] [ text "👤 Votre plateau" ]
-                , viewFinalHexBoard model.plateauTiles
+        , if List.length model.allPlayerPlateaus > 2 then
+            -- Multiplayer: show all player boards
+            let
+                myId =
+                    model.session |> Maybe.map .playerId |> Maybe.withDefault ""
+            in
+            div [ class "finished-boards" ]
+                (List.map
+                    (\( pid, pname, tiles ) ->
+                        let
+                            isMe =
+                                pid == myId
+
+                            isAi =
+                                pid == "mcts_ai"
+
+                            label =
+                                if isAi then
+                                    "🤖 " ++ pname
+
+                                else if isMe then
+                                    "👤 " ++ pname ++ " (vous)"
+
+                                else
+                                    "👤 " ++ pname
+
+                            boardClass =
+                                "final-board glass-container"
+                                    ++ (if isMe then
+                                            " current-player-board"
+
+                                        else
+                                            ""
+                                       )
+                        in
+                        div [ class boardClass ]
+                            [ h3 [] [ text label ]
+                            , viewFinalHexBoard tiles
+                            ]
+                    )
+                    model.allPlayerPlateaus
+                )
+
+          else
+            -- Solo / 1v1: show player + AI boards
+            div [ class "finished-boards" ]
+                [ div [ class "final-board glass-container" ]
+                    [ h3 [] [ text "👤 Votre plateau" ]
+                    , viewFinalHexBoard model.plateauTiles
+                    ]
+                , div [ class "final-board glass-container" ]
+                    [ h3 [] [ text "🤖 Plateau IA" ]
+                    , viewFinalHexBoard model.aiPlateauTiles
+                    ]
                 ]
-            , -- AI's final plateau
-              div [ class "final-board glass-container" ]
-                [ h3 [] [ text "🤖 Plateau IA" ]
-                , viewFinalHexBoard model.aiPlateauTiles
-                ]
-            ]
         , if model.isSoloMode then
             button [ class "play-again-button", onClick RestartSoloGame ] [ text "🔄 Rejouer" ]
 

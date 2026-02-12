@@ -219,6 +219,48 @@ body {
     color: #fff;
 }
 
+/* Welcome / Landing Page */
+.welcome-content {
+    text-align: center;
+    padding: 1rem 0;
+}
+
+.welcome-pitch {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1.05rem;
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+}
+
+.welcome-play-button {
+    background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 12px;
+    padding: 1rem 2.5rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 20px rgba(78, 205, 196, 0.35);
+}
+
+.welcome-play-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(78, 205, 196, 0.5);
+}
+
+.welcome-separator {
+    color: rgba(255, 255, 255, 0.4);
+    margin: 1.25rem 0;
+    font-size: 0.9rem;
+}
+
+.welcome-links {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9rem;
+}
+
 .loading-spinner {
     display: inline-block;
     width: 20px;
@@ -874,6 +916,11 @@ body {
     text-align: center;
     margin-bottom: 0.5rem;
     color: rgba(255, 255, 255, 0.9);
+}
+
+.final-board.current-player-board {
+    border-color: #4ecdc4;
+    box-shadow: 0 0 20px rgba(78, 205, 196, 0.3);
 }
 
 .final-hex-board {
