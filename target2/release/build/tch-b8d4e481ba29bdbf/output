@@ -1,0 +1,4 @@
+cargo:rustc-link-arg=-Wl,-rpath=/home/jcgouleau/libtorch-clean/libtorch/lib
+cargo:rustc-link-arg=-Wl,--no-as-needed
+cargo:rustc-link-arg=-Wl,--copy-dt-needed-entries
+cargo:rustc-link-arg=-ltorch

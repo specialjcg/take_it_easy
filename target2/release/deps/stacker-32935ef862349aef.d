@@ -1,0 +1,10 @@
+/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/target2/release/deps/stacker-32935ef862349aef.d: /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/lib.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/backends/mod.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/backends/unix.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/mmap_stack_restore_guard.rs
+
+/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/target2/release/deps/libstacker-32935ef862349aef.rlib: /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/lib.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/backends/mod.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/backends/unix.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/mmap_stack_restore_guard.rs
+
+/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/target2/release/deps/libstacker-32935ef862349aef.rmeta: /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/lib.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/backends/mod.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/backends/unix.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/mmap_stack_restore_guard.rs
+
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/lib.rs:
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/backends/mod.rs:
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/backends/unix.rs:
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.22/src/mmap_stack_restore_guard.rs:

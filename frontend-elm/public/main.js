@@ -6181,6 +6181,12 @@ var $author$project$Main$update = F2(
 						model,
 						{currentView: $author$project$Main$ModeSelectionView, isAuthenticated: false}),
 					$elm$core$Platform$Cmd$none);
+			case 'GoToLogin':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{authError: '', authView: $author$project$Main$Login, currentView: $author$project$Main$LoginView, emailInput: '', passwordInput: ''}),
+					$elm$core$Platform$Cmd$none);
 			case 'SubmitLogin':
 				return _Utils_Tuple2(
 					_Utils_update(
@@ -7800,6 +7806,722 @@ var $author$project$Main$viewResetPasswordForm = function (model) {
 					]))
 			]));
 };
+var $elm$core$String$fromFloat = _String_fromNumber;
+var $author$project$TileSvg$Tile = F3(
+	function (v1, v2, v3) {
+		return {v1: v1, v2: v2, v3: v3};
+	});
+var $elm$core$String$cons = _String_cons;
+var $elm$core$String$fromChar = function (_char) {
+	return A2($elm$core$String$cons, _char, '');
+};
+var $elm$core$Maybe$map3 = F4(
+	function (func, ma, mb, mc) {
+		if (ma.$ === 'Nothing') {
+			return $elm$core$Maybe$Nothing;
+		} else {
+			var a = ma.a;
+			if (mb.$ === 'Nothing') {
+				return $elm$core$Maybe$Nothing;
+			} else {
+				var b = mb.a;
+				if (mc.$ === 'Nothing') {
+					return $elm$core$Maybe$Nothing;
+				} else {
+					var c = mc.a;
+					return $elm$core$Maybe$Just(
+						A3(func, a, b, c));
+				}
+			}
+		}
+	});
+var $elm$core$String$foldr = _String_foldr;
+var $elm$core$String$toList = function (string) {
+	return A3($elm$core$String$foldr, $elm$core$List$cons, _List_Nil, string);
+};
+var $author$project$TileSvg$parseTileFromPath = function (imagePath) {
+	var filename = A3(
+		$elm$core$String$replace,
+		'.png',
+		'',
+		A3(
+			$elm$core$String$replace,
+			'image/',
+			'',
+			A3($elm$core$String$replace, '../', '', imagePath)));
+	var _v0 = $elm$core$String$toList(filename);
+	if (((_v0.b && _v0.b.b) && _v0.b.b.b) && (!_v0.b.b.b.b)) {
+		var c1 = _v0.a;
+		var _v1 = _v0.b;
+		var c2 = _v1.a;
+		var _v2 = _v1.b;
+		var c3 = _v2.a;
+		return A4(
+			$elm$core$Maybe$map3,
+			$author$project$TileSvg$Tile,
+			$elm$core$String$toInt(
+				$elm$core$String$fromChar(c1)),
+			$elm$core$String$toInt(
+				$elm$core$String$fromChar(c2)),
+			$elm$core$String$toInt(
+				$elm$core$String$fromChar(c3)));
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
+var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
+var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
+var $elm$svg$Svg$trustedNode = _VirtualDom_nodeNS('http://www.w3.org/2000/svg');
+var $elm$svg$Svg$clipPath = $elm$svg$Svg$trustedNode('clipPath');
+var $elm$svg$Svg$Attributes$clipPath = _VirtualDom_attribute('clip-path');
+var $author$project$TileSvg$colorForValue = function (value) {
+	switch (value) {
+		case 1:
+			return '#a0a0a0';
+		case 2:
+			return '#ffb6c1';
+		case 3:
+			return '#ff69b4';
+		case 4:
+			return '#00a0ff';
+		case 5:
+			return '#00b4a0';
+		case 6:
+			return '#ff3030';
+		case 7:
+			return '#a0d800';
+		case 8:
+			return '#ff8c00';
+		case 9:
+			return '#f0d000';
+		default:
+			return '#666666';
+	}
+};
+var $elm$svg$Svg$defs = $elm$svg$Svg$trustedNode('defs');
+var $elm$svg$Svg$Attributes$fill = _VirtualDom_attribute('fill');
+var $elm$svg$Svg$g = $elm$svg$Svg$trustedNode('g');
+var $elm$svg$Svg$Attributes$height = _VirtualDom_attribute('height');
+var $elm$svg$Svg$Attributes$id = _VirtualDom_attribute('id');
+var $elm$svg$Svg$Attributes$points = _VirtualDom_attribute('points');
+var $elm$svg$Svg$polygon = $elm$svg$Svg$trustedNode('polygon');
+var $elm$svg$Svg$Attributes$stroke = _VirtualDom_attribute('stroke');
+var $elm$svg$Svg$Attributes$strokeWidth = _VirtualDom_attribute('stroke-width');
+var $elm$svg$Svg$svg = $elm$svg$Svg$trustedNode('svg');
+var $elm$svg$Svg$Attributes$viewBox = _VirtualDom_attribute('viewBox');
+var $elm$svg$Svg$rect = $elm$svg$Svg$trustedNode('rect');
+var $elm$svg$Svg$Attributes$transform = _VirtualDom_attribute('transform');
+var $elm$svg$Svg$Attributes$width = _VirtualDom_attribute('width');
+var $elm$svg$Svg$Attributes$x = _VirtualDom_attribute('x');
+var $elm$svg$Svg$Attributes$y = _VirtualDom_attribute('y');
+var $author$project$TileSvg$viewDiagonalBandLeft = F2(
+	function (value, bandWidth) {
+		return A2(
+			$elm$svg$Svg$g,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$transform('rotate(-60, 50, 43.3)')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$svg$Svg$rect,
+					_List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$x(
+							$elm$core$String$fromFloat(50 - (bandWidth / 2))),
+							$elm$svg$Svg$Attributes$y('-20'),
+							$elm$svg$Svg$Attributes$width(
+							$elm$core$String$fromFloat(bandWidth)),
+							$elm$svg$Svg$Attributes$height('130'),
+							$elm$svg$Svg$Attributes$fill(
+							$author$project$TileSvg$colorForValue(value))
+						]),
+					_List_Nil)
+				]));
+	});
+var $author$project$TileSvg$viewDiagonalBandRight = F2(
+	function (value, bandWidth) {
+		return A2(
+			$elm$svg$Svg$g,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$transform('rotate(60, 50, 43.3)')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$svg$Svg$rect,
+					_List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$x(
+							$elm$core$String$fromFloat(50 - (bandWidth / 2))),
+							$elm$svg$Svg$Attributes$y('-20'),
+							$elm$svg$Svg$Attributes$width(
+							$elm$core$String$fromFloat(bandWidth)),
+							$elm$svg$Svg$Attributes$height('130'),
+							$elm$svg$Svg$Attributes$fill(
+							$author$project$TileSvg$colorForValue(value))
+						]),
+					_List_Nil)
+				]));
+	});
+var $elm$svg$Svg$Attributes$dominantBaseline = _VirtualDom_attribute('dominant-baseline');
+var $elm$svg$Svg$Attributes$fontFamily = _VirtualDom_attribute('font-family');
+var $elm$svg$Svg$Attributes$fontSize = _VirtualDom_attribute('font-size');
+var $elm$svg$Svg$Attributes$fontWeight = _VirtualDom_attribute('font-weight');
+var $elm$svg$Svg$text = $elm$virtual_dom$VirtualDom$text;
+var $elm$svg$Svg$Attributes$textAnchor = _VirtualDom_attribute('text-anchor');
+var $elm$svg$Svg$text_ = $elm$svg$Svg$trustedNode('text');
+var $author$project$TileSvg$viewNumber = F4(
+	function (value, xPos, yPos, bgColor) {
+		return A2(
+			$elm$svg$Svg$g,
+			_List_Nil,
+			_List_fromArray(
+				[
+					A2(
+					$elm$svg$Svg$text_,
+					_List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$x(
+							$elm$core$String$fromFloat(xPos)),
+							$elm$svg$Svg$Attributes$y(
+							$elm$core$String$fromFloat(yPos)),
+							$elm$svg$Svg$Attributes$textAnchor('middle'),
+							$elm$svg$Svg$Attributes$dominantBaseline('middle'),
+							$elm$svg$Svg$Attributes$fontSize('16'),
+							$elm$svg$Svg$Attributes$fontWeight('bold'),
+							$elm$svg$Svg$Attributes$fontFamily('Arial, sans-serif'),
+							$elm$svg$Svg$Attributes$stroke('#000'),
+							$elm$svg$Svg$Attributes$strokeWidth('3'),
+							$elm$svg$Svg$Attributes$fill('#000')
+						]),
+					_List_fromArray(
+						[
+							$elm$svg$Svg$text(
+							$elm$core$String$fromInt(value))
+						])),
+					A2(
+					$elm$svg$Svg$text_,
+					_List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$x(
+							$elm$core$String$fromFloat(xPos)),
+							$elm$svg$Svg$Attributes$y(
+							$elm$core$String$fromFloat(yPos)),
+							$elm$svg$Svg$Attributes$textAnchor('middle'),
+							$elm$svg$Svg$Attributes$dominantBaseline('middle'),
+							$elm$svg$Svg$Attributes$fontSize('16'),
+							$elm$svg$Svg$Attributes$fontWeight('bold'),
+							$elm$svg$Svg$Attributes$fontFamily('Arial, sans-serif'),
+							$elm$svg$Svg$Attributes$fill('#fff')
+						]),
+					_List_fromArray(
+						[
+							$elm$svg$Svg$text(
+							$elm$core$String$fromInt(value))
+						]))
+				]));
+	});
+var $author$project$TileSvg$viewVerticalBand = F2(
+	function (value, bandWidth) {
+		return A2(
+			$elm$svg$Svg$rect,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$x(
+					$elm$core$String$fromFloat(50 - (bandWidth / 2))),
+					$elm$svg$Svg$Attributes$y('-5'),
+					$elm$svg$Svg$Attributes$width(
+					$elm$core$String$fromFloat(bandWidth)),
+					$elm$svg$Svg$Attributes$height('100'),
+					$elm$svg$Svg$Attributes$fill(
+					$author$project$TileSvg$colorForValue(value))
+				]),
+			_List_Nil);
+	});
+var $author$project$TileSvg$viewTileSvg = function (tile) {
+	var width = 100;
+	var hexPoints = '25,0 75,0 100,43.3 75,86.6 25,86.6 0,43.3';
+	var height = 86.6;
+	var bandWidth = 14;
+	return A2(
+		$elm$svg$Svg$svg,
+		_List_fromArray(
+			[
+				$elm$svg$Svg$Attributes$viewBox('0 0 100 86.6'),
+				$elm$svg$Svg$Attributes$width('100%'),
+				$elm$svg$Svg$Attributes$height('100%')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$svg$Svg$defs,
+				_List_Nil,
+				_List_fromArray(
+					[
+						A2(
+						$elm$svg$Svg$clipPath,
+						_List_fromArray(
+							[
+								$elm$svg$Svg$Attributes$id('hexClip')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$svg$Svg$polygon,
+								_List_fromArray(
+									[
+										$elm$svg$Svg$Attributes$points(hexPoints)
+									]),
+								_List_Nil)
+							]))
+					])),
+				A2(
+				$elm$svg$Svg$polygon,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$points(hexPoints),
+						$elm$svg$Svg$Attributes$fill('#1a1a2e'),
+						$elm$svg$Svg$Attributes$stroke('#333'),
+						$elm$svg$Svg$Attributes$strokeWidth('1')
+					]),
+				_List_Nil),
+				A2(
+				$elm$svg$Svg$g,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$clipPath('url(#hexClip)')
+					]),
+				_List_fromArray(
+					[
+						A2($author$project$TileSvg$viewDiagonalBandRight, tile.v2, bandWidth),
+						A2($author$project$TileSvg$viewDiagonalBandLeft, tile.v3, bandWidth),
+						A2($author$project$TileSvg$viewVerticalBand, tile.v1, bandWidth)
+					])),
+				A4(
+				$author$project$TileSvg$viewNumber,
+				tile.v1,
+				50,
+				18,
+				$author$project$TileSvg$colorForValue(tile.v1)),
+				A4(
+				$author$project$TileSvg$viewNumber,
+				tile.v2,
+				22,
+				62,
+				$author$project$TileSvg$colorForValue(tile.v2)),
+				A4(
+				$author$project$TileSvg$viewNumber,
+				tile.v3,
+				78,
+				62,
+				$author$project$TileSvg$colorForValue(tile.v3))
+			]));
+};
+var $author$project$Main$viewWelcomeBoard = function () {
+	var viewScoringOverlay = function (_v6) {
+		var phaseClass = _v6.a;
+		var delay = _v6.b;
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('scoring-overlay ' + phaseClass),
+					A2(
+					$elm$html$Html$Attributes$style,
+					'animation-delay',
+					$elm$core$String$fromFloat(delay) + 's')
+				]),
+			_List_Nil);
+	};
+	var hexRadius = 36;
+	var hexWidth = 2 * hexRadius;
+	var spacingX = 0.75 * hexWidth;
+	var hexPositions = _List_fromArray(
+		[
+			_Utils_Tuple2(0, 1),
+			_Utils_Tuple2(0, 2),
+			_Utils_Tuple2(0, 3),
+			_Utils_Tuple2(1, 0.5),
+			_Utils_Tuple2(1, 1.5),
+			_Utils_Tuple2(1, 2.5),
+			_Utils_Tuple2(1, 3.5),
+			_Utils_Tuple2(2, 0),
+			_Utils_Tuple2(2, 1),
+			_Utils_Tuple2(2, 2),
+			_Utils_Tuple2(2, 3),
+			_Utils_Tuple2(2, 4),
+			_Utils_Tuple2(3, 0.5),
+			_Utils_Tuple2(3, 1.5),
+			_Utils_Tuple2(3, 2.5),
+			_Utils_Tuple2(3, 3.5),
+			_Utils_Tuple2(4, 1),
+			_Utils_Tuple2(4, 2),
+			_Utils_Tuple2(4, 3)
+		]);
+	var hexHeight = 1.732 * hexRadius;
+	var spacingY = hexHeight;
+	var gridOriginY = 20;
+	var gridOriginX = 16;
+	var getScoringOverlays = function (idx) {
+		return _Utils_ap(
+			A2(
+				$elm$core$List$member,
+				idx,
+				_List_fromArray(
+					[0, 1, 2])) ? _List_fromArray(
+				[
+					_Utils_Tuple2('phase-v1', 5.5)
+				]) : _List_Nil,
+			_Utils_ap(
+				A2(
+					$elm$core$List$member,
+					idx,
+					_List_fromArray(
+						[16, 17, 18])) ? _List_fromArray(
+					[
+						_Utils_Tuple2('phase-v1', 5.5)
+					]) : _List_Nil,
+				_Utils_ap(
+					A2(
+						$elm$core$List$member,
+						idx,
+						_List_fromArray(
+							[0, 3, 7])) ? _List_fromArray(
+						[
+							_Utils_Tuple2('phase-v2', 8.0)
+						]) : _List_Nil,
+					_Utils_ap(
+						A2(
+							$elm$core$List$member,
+							idx,
+							_List_fromArray(
+								[11, 15, 18])) ? _List_fromArray(
+							[
+								_Utils_Tuple2('phase-v2', 8.0)
+							]) : _List_Nil,
+						A2(
+							$elm$core$List$member,
+							idx,
+							_List_fromArray(
+								[2, 6, 11])) ? _List_fromArray(
+							[
+								_Utils_Tuple2('phase-v3', 10.5)
+							]) : _List_Nil))));
+	};
+	var allTiles = _List_fromArray(
+		[
+			_Utils_Tuple2(0, '963'),
+			_Utils_Tuple2(1, '974'),
+			_Utils_Tuple2(2, '928'),
+			_Utils_Tuple2(3, '164'),
+			_Utils_Tuple2(4, '123'),
+			_Utils_Tuple2(5, '524'),
+			_Utils_Tuple2(6, '568'),
+			_Utils_Tuple2(7, '563'),
+			_Utils_Tuple2(8, '173'),
+			_Utils_Tuple2(9, '924'),
+			_Utils_Tuple2(10, '168'),
+			_Utils_Tuple2(11, '178'),
+			_Utils_Tuple2(12, '964'),
+			_Utils_Tuple2(13, '573'),
+			_Utils_Tuple2(14, '124'),
+			_Utils_Tuple2(15, '973'),
+			_Utils_Tuple2(16, '523'),
+			_Utils_Tuple2(17, '528'),
+			_Utils_Tuple2(18, '574')
+		]);
+	var getTileCode = function (idx) {
+		return A2(
+			$elm$core$Maybe$map,
+			$elm$core$Tuple$second,
+			$elm$core$List$head(
+				A2(
+					$elm$core$List$filter,
+					function (_v5) {
+						var i = _v5.a;
+						return _Utils_eq(i, idx);
+					},
+					allTiles)));
+	};
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('welcome-board-wrapper')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('welcome-tile-preview')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('preview-label')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Tuile a placer')
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('preview-tile-area')
+							]),
+						A2(
+							$elm$core$List$indexedMap,
+							F2(
+								function (i, _v0) {
+									var tileCode = _v0.b;
+									var _v1 = $author$project$TileSvg$parseTileFromPath(tileCode);
+									if (_v1.$ === 'Just') {
+										var tileData = _v1.a;
+										return A2(
+											$elm$html$Html$div,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class(
+													(i === 18) ? 'preview-tile preview-last' : 'preview-tile'),
+													A2(
+													$elm$html$Html$Attributes$style,
+													'animation-delay',
+													$elm$core$String$fromFloat(i * 0.25) + 's')
+												]),
+											_List_fromArray(
+												[
+													A2(
+													$elm$html$Html$div,
+													_List_fromArray(
+														[
+															$elm$html$Html$Attributes$class('hex-tile-svg')
+														]),
+													_List_fromArray(
+														[
+															$author$project$TileSvg$viewTileSvg(tileData)
+														]))
+												]));
+									} else {
+										return $elm$html$Html$text('');
+									}
+								}),
+							allTiles)),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('preview-arrow')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('\u2193')
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('welcome-direction-labels')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('direction-label phase-v1'),
+								A2($elm$html$Html$Attributes$style, 'animation-delay', '5.5s')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Colonnes ↕')
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('direction-label phase-v2'),
+								A2($elm$html$Html$Attributes$style, 'animation-delay', '8.0s')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Diagonales ↗')
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('direction-label phase-v3'),
+								A2($elm$html$Html$Attributes$style, 'animation-delay', '10.5s')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Diagonales ↘')
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('hex-board welcome-hex-board'),
+						A2($elm$html$Html$Attributes$style, 'position', 'relative'),
+						A2($elm$html$Html$Attributes$style, 'width', '320px'),
+						A2($elm$html$Html$Attributes$style, 'height', '360px')
+					]),
+				_Utils_ap(
+					A2(
+						$elm$core$List$indexedMap,
+						F2(
+							function (index, _v2) {
+								var col = _v2.a;
+								var row = _v2.b;
+								var y = gridOriginY + (row * spacingY);
+								var x = gridOriginX + (col * spacingX);
+								var tileDelay = index * 0.25;
+								var overlays = getScoringOverlays(index);
+								var _v3 = getTileCode(index);
+								if (_v3.$ === 'Just') {
+									var tileCode = _v3.a;
+									var _v4 = $author$project$TileSvg$parseTileFromPath(tileCode);
+									if (_v4.$ === 'Just') {
+										var tileData = _v4.a;
+										return A2(
+											$elm$html$Html$div,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('hex-cell filled welcome-tile'),
+													A2(
+													$elm$html$Html$Attributes$style,
+													'left',
+													$elm$core$String$fromFloat(x) + 'px'),
+													A2(
+													$elm$html$Html$Attributes$style,
+													'top',
+													$elm$core$String$fromFloat(y) + 'px'),
+													A2(
+													$elm$html$Html$Attributes$style,
+													'width',
+													$elm$core$String$fromFloat(hexWidth) + 'px'),
+													A2(
+													$elm$html$Html$Attributes$style,
+													'height',
+													$elm$core$String$fromFloat(hexHeight) + 'px'),
+													A2(
+													$elm$html$Html$Attributes$style,
+													'animation-delay',
+													$elm$core$String$fromFloat(tileDelay) + 's')
+												]),
+											A2(
+												$elm$core$List$cons,
+												A2(
+													$elm$html$Html$div,
+													_List_fromArray(
+														[
+															$elm$html$Html$Attributes$class('hex-tile-svg')
+														]),
+													_List_fromArray(
+														[
+															$author$project$TileSvg$viewTileSvg(tileData)
+														])),
+												A2($elm$core$List$map, viewScoringOverlay, overlays)));
+									} else {
+										return $elm$html$Html$text('');
+									}
+								} else {
+									return $elm$html$Html$text('');
+								}
+							}),
+						hexPositions),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('score-label phase-v1'),
+									A2($elm$html$Html$Attributes$style, 'animation-delay', '5.5s'),
+									A2($elm$html$Html$Attributes$style, 'left', '-22px'),
+									A2($elm$html$Html$Attributes$style, 'top', '158px')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('27')
+								])),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('score-label phase-v1'),
+									A2($elm$html$Html$Attributes$style, 'animation-delay', '5.5s'),
+									A2($elm$html$Html$Attributes$style, 'left', '310px'),
+									A2($elm$html$Html$Attributes$style, 'top', '158px')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('15')
+								])),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('score-label phase-v2'),
+									A2($elm$html$Html$Attributes$style, 'animation-delay', '8.0s'),
+									A2($elm$html$Html$Attributes$style, 'left', '166px'),
+									A2($elm$html$Html$Attributes$style, 'top', '8px')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('18')
+								])),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('score-label phase-v2'),
+									A2($elm$html$Html$Attributes$style, 'animation-delay', '8.0s'),
+									A2($elm$html$Html$Attributes$style, 'left', '310px'),
+									A2($elm$html$Html$Attributes$style, 'top', '218px')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('21')
+								])),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('score-label phase-v3'),
+									A2($elm$html$Html$Attributes$style, 'animation-delay', '10.5s'),
+									A2($elm$html$Html$Attributes$style, 'left', '166px'),
+									A2($elm$html$Html$Attributes$style, 'top', '305px')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('24')
+								]))
+						]))),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('welcome-score'),
+						A2($elm$html$Html$Attributes$style, 'animation-delay', '13.0s')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Score : 105 pts')
+					]))
+			]));
+}();
 var $author$project$Main$viewWelcome = function (_v0) {
 	return A2(
 		$elm$html$Html$div,
@@ -7809,6 +8531,7 @@ var $author$project$Main$viewWelcome = function (_v0) {
 			]),
 		_List_fromArray(
 			[
+				$author$project$Main$viewWelcomeBoard,
 				A2(
 				$elm$html$Html$p,
 				_List_fromArray(
@@ -8116,95 +8839,13 @@ var $elm$core$List$drop = F2(
 			}
 		}
 	});
-var $elm$core$String$fromFloat = _String_fromNumber;
 var $elm$html$Html$img = _VirtualDom_node('img');
-var $author$project$TileSvg$Tile = F3(
-	function (v1, v2, v3) {
-		return {v1: v1, v2: v2, v3: v3};
-	});
-var $elm$core$String$cons = _String_cons;
-var $elm$core$String$fromChar = function (_char) {
-	return A2($elm$core$String$cons, _char, '');
-};
-var $elm$core$Maybe$map3 = F4(
-	function (func, ma, mb, mc) {
-		if (ma.$ === 'Nothing') {
-			return $elm$core$Maybe$Nothing;
-		} else {
-			var a = ma.a;
-			if (mb.$ === 'Nothing') {
-				return $elm$core$Maybe$Nothing;
-			} else {
-				var b = mb.a;
-				if (mc.$ === 'Nothing') {
-					return $elm$core$Maybe$Nothing;
-				} else {
-					var c = mc.a;
-					return $elm$core$Maybe$Just(
-						A3(func, a, b, c));
-				}
-			}
-		}
-	});
-var $elm$core$String$foldr = _String_foldr;
-var $elm$core$String$toList = function (string) {
-	return A3($elm$core$String$foldr, $elm$core$List$cons, _List_Nil, string);
-};
-var $author$project$TileSvg$parseTileFromPath = function (imagePath) {
-	var filename = A3(
-		$elm$core$String$replace,
-		'.png',
-		'',
-		A3(
-			$elm$core$String$replace,
-			'image/',
-			'',
-			A3($elm$core$String$replace, '../', '', imagePath)));
-	var _v0 = $elm$core$String$toList(filename);
-	if (((_v0.b && _v0.b.b) && _v0.b.b.b) && (!_v0.b.b.b.b)) {
-		var c1 = _v0.a;
-		var _v1 = _v0.b;
-		var c2 = _v1.a;
-		var _v2 = _v1.b;
-		var c3 = _v2.a;
-		return A4(
-			$elm$core$Maybe$map3,
-			$author$project$TileSvg$Tile,
-			$elm$core$String$toInt(
-				$elm$core$String$fromChar(c1)),
-			$elm$core$String$toInt(
-				$elm$core$String$fromChar(c2)),
-			$elm$core$String$toInt(
-				$elm$core$String$fromChar(c3)));
-	} else {
-		return $elm$core$Maybe$Nothing;
-	}
-};
 var $elm$html$Html$Attributes$src = function (url) {
 	return A2(
 		$elm$html$Html$Attributes$stringProperty,
 		'src',
 		_VirtualDom_noJavaScriptOrHtmlUri(url));
 };
-var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
-var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
-var $elm$svg$Svg$Attributes$dominantBaseline = _VirtualDom_attribute('dominant-baseline');
-var $elm$svg$Svg$Attributes$fill = _VirtualDom_attribute('fill');
-var $elm$svg$Svg$Attributes$fontSize = _VirtualDom_attribute('font-size');
-var $elm$svg$Svg$Attributes$height = _VirtualDom_attribute('height');
-var $elm$svg$Svg$Attributes$points = _VirtualDom_attribute('points');
-var $elm$svg$Svg$trustedNode = _VirtualDom_nodeNS('http://www.w3.org/2000/svg');
-var $elm$svg$Svg$polygon = $elm$svg$Svg$trustedNode('polygon');
-var $elm$svg$Svg$Attributes$stroke = _VirtualDom_attribute('stroke');
-var $elm$svg$Svg$Attributes$strokeWidth = _VirtualDom_attribute('stroke-width');
-var $elm$svg$Svg$svg = $elm$svg$Svg$trustedNode('svg');
-var $elm$svg$Svg$text = $elm$virtual_dom$VirtualDom$text;
-var $elm$svg$Svg$Attributes$textAnchor = _VirtualDom_attribute('text-anchor');
-var $elm$svg$Svg$text_ = $elm$svg$Svg$trustedNode('text');
-var $elm$svg$Svg$Attributes$viewBox = _VirtualDom_attribute('viewBox');
-var $elm$svg$Svg$Attributes$width = _VirtualDom_attribute('width');
-var $elm$svg$Svg$Attributes$x = _VirtualDom_attribute('x');
-var $elm$svg$Svg$Attributes$y = _VirtualDom_attribute('y');
 var $author$project$TileSvg$viewEmptyHexSvg = F2(
 	function (isAvailable, index) {
 		var strokeColor = isAvailable ? '#4ecdc4' : '#444';
@@ -8248,238 +8889,6 @@ var $author$project$TileSvg$viewEmptyHexSvg = F2(
 						]))
 				]));
 	});
-var $elm$svg$Svg$clipPath = $elm$svg$Svg$trustedNode('clipPath');
-var $elm$svg$Svg$Attributes$clipPath = _VirtualDom_attribute('clip-path');
-var $author$project$TileSvg$colorForValue = function (value) {
-	switch (value) {
-		case 1:
-			return '#a0a0a0';
-		case 2:
-			return '#ffb6c1';
-		case 3:
-			return '#ff69b4';
-		case 4:
-			return '#00a0ff';
-		case 5:
-			return '#00b4a0';
-		case 6:
-			return '#ff3030';
-		case 7:
-			return '#a0d800';
-		case 8:
-			return '#ff8c00';
-		case 9:
-			return '#f0d000';
-		default:
-			return '#666666';
-	}
-};
-var $elm$svg$Svg$defs = $elm$svg$Svg$trustedNode('defs');
-var $elm$svg$Svg$g = $elm$svg$Svg$trustedNode('g');
-var $elm$svg$Svg$Attributes$id = _VirtualDom_attribute('id');
-var $elm$svg$Svg$rect = $elm$svg$Svg$trustedNode('rect');
-var $elm$svg$Svg$Attributes$transform = _VirtualDom_attribute('transform');
-var $author$project$TileSvg$viewDiagonalBandLeft = F2(
-	function (value, bandWidth) {
-		return A2(
-			$elm$svg$Svg$g,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$transform('rotate(-60, 50, 43.3)')
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$svg$Svg$rect,
-					_List_fromArray(
-						[
-							$elm$svg$Svg$Attributes$x(
-							$elm$core$String$fromFloat(50 - (bandWidth / 2))),
-							$elm$svg$Svg$Attributes$y('-20'),
-							$elm$svg$Svg$Attributes$width(
-							$elm$core$String$fromFloat(bandWidth)),
-							$elm$svg$Svg$Attributes$height('130'),
-							$elm$svg$Svg$Attributes$fill(
-							$author$project$TileSvg$colorForValue(value))
-						]),
-					_List_Nil)
-				]));
-	});
-var $author$project$TileSvg$viewDiagonalBandRight = F2(
-	function (value, bandWidth) {
-		return A2(
-			$elm$svg$Svg$g,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$transform('rotate(60, 50, 43.3)')
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$svg$Svg$rect,
-					_List_fromArray(
-						[
-							$elm$svg$Svg$Attributes$x(
-							$elm$core$String$fromFloat(50 - (bandWidth / 2))),
-							$elm$svg$Svg$Attributes$y('-20'),
-							$elm$svg$Svg$Attributes$width(
-							$elm$core$String$fromFloat(bandWidth)),
-							$elm$svg$Svg$Attributes$height('130'),
-							$elm$svg$Svg$Attributes$fill(
-							$author$project$TileSvg$colorForValue(value))
-						]),
-					_List_Nil)
-				]));
-	});
-var $elm$svg$Svg$Attributes$fontFamily = _VirtualDom_attribute('font-family');
-var $elm$svg$Svg$Attributes$fontWeight = _VirtualDom_attribute('font-weight');
-var $author$project$TileSvg$viewNumber = F4(
-	function (value, xPos, yPos, bgColor) {
-		return A2(
-			$elm$svg$Svg$g,
-			_List_Nil,
-			_List_fromArray(
-				[
-					A2(
-					$elm$svg$Svg$text_,
-					_List_fromArray(
-						[
-							$elm$svg$Svg$Attributes$x(
-							$elm$core$String$fromFloat(xPos)),
-							$elm$svg$Svg$Attributes$y(
-							$elm$core$String$fromFloat(yPos)),
-							$elm$svg$Svg$Attributes$textAnchor('middle'),
-							$elm$svg$Svg$Attributes$dominantBaseline('middle'),
-							$elm$svg$Svg$Attributes$fontSize('16'),
-							$elm$svg$Svg$Attributes$fontWeight('bold'),
-							$elm$svg$Svg$Attributes$fontFamily('Arial, sans-serif'),
-							$elm$svg$Svg$Attributes$stroke('#000'),
-							$elm$svg$Svg$Attributes$strokeWidth('3'),
-							$elm$svg$Svg$Attributes$fill('#000')
-						]),
-					_List_fromArray(
-						[
-							$elm$svg$Svg$text(
-							$elm$core$String$fromInt(value))
-						])),
-					A2(
-					$elm$svg$Svg$text_,
-					_List_fromArray(
-						[
-							$elm$svg$Svg$Attributes$x(
-							$elm$core$String$fromFloat(xPos)),
-							$elm$svg$Svg$Attributes$y(
-							$elm$core$String$fromFloat(yPos)),
-							$elm$svg$Svg$Attributes$textAnchor('middle'),
-							$elm$svg$Svg$Attributes$dominantBaseline('middle'),
-							$elm$svg$Svg$Attributes$fontSize('16'),
-							$elm$svg$Svg$Attributes$fontWeight('bold'),
-							$elm$svg$Svg$Attributes$fontFamily('Arial, sans-serif'),
-							$elm$svg$Svg$Attributes$fill('#fff')
-						]),
-					_List_fromArray(
-						[
-							$elm$svg$Svg$text(
-							$elm$core$String$fromInt(value))
-						]))
-				]));
-	});
-var $author$project$TileSvg$viewVerticalBand = F2(
-	function (value, bandWidth) {
-		return A2(
-			$elm$svg$Svg$rect,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$x(
-					$elm$core$String$fromFloat(50 - (bandWidth / 2))),
-					$elm$svg$Svg$Attributes$y('-5'),
-					$elm$svg$Svg$Attributes$width(
-					$elm$core$String$fromFloat(bandWidth)),
-					$elm$svg$Svg$Attributes$height('100'),
-					$elm$svg$Svg$Attributes$fill(
-					$author$project$TileSvg$colorForValue(value))
-				]),
-			_List_Nil);
-	});
-var $author$project$TileSvg$viewTileSvg = function (tile) {
-	var width = 100;
-	var hexPoints = '25,0 75,0 100,43.3 75,86.6 25,86.6 0,43.3';
-	var height = 86.6;
-	var bandWidth = 14;
-	return A2(
-		$elm$svg$Svg$svg,
-		_List_fromArray(
-			[
-				$elm$svg$Svg$Attributes$viewBox('0 0 100 86.6'),
-				$elm$svg$Svg$Attributes$width('100%'),
-				$elm$svg$Svg$Attributes$height('100%')
-			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$svg$Svg$defs,
-				_List_Nil,
-				_List_fromArray(
-					[
-						A2(
-						$elm$svg$Svg$clipPath,
-						_List_fromArray(
-							[
-								$elm$svg$Svg$Attributes$id('hexClip')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$svg$Svg$polygon,
-								_List_fromArray(
-									[
-										$elm$svg$Svg$Attributes$points(hexPoints)
-									]),
-								_List_Nil)
-							]))
-					])),
-				A2(
-				$elm$svg$Svg$polygon,
-				_List_fromArray(
-					[
-						$elm$svg$Svg$Attributes$points(hexPoints),
-						$elm$svg$Svg$Attributes$fill('#1a1a2e'),
-						$elm$svg$Svg$Attributes$stroke('#333'),
-						$elm$svg$Svg$Attributes$strokeWidth('1')
-					]),
-				_List_Nil),
-				A2(
-				$elm$svg$Svg$g,
-				_List_fromArray(
-					[
-						$elm$svg$Svg$Attributes$clipPath('url(#hexClip)')
-					]),
-				_List_fromArray(
-					[
-						A2($author$project$TileSvg$viewDiagonalBandRight, tile.v2, bandWidth),
-						A2($author$project$TileSvg$viewDiagonalBandLeft, tile.v3, bandWidth),
-						A2($author$project$TileSvg$viewVerticalBand, tile.v1, bandWidth)
-					])),
-				A4(
-				$author$project$TileSvg$viewNumber,
-				tile.v1,
-				50,
-				18,
-				$author$project$TileSvg$colorForValue(tile.v1)),
-				A4(
-				$author$project$TileSvg$viewNumber,
-				tile.v2,
-				22,
-				62,
-				$author$project$TileSvg$colorForValue(tile.v2)),
-				A4(
-				$author$project$TileSvg$viewNumber,
-				tile.v3,
-				78,
-				62,
-				$author$project$TileSvg$colorForValue(tile.v3))
-			]));
-};
 var $author$project$Main$viewFinalHexBoard = function (tiles) {
 	var hexRadius = 36;
 	var hexWidth = 2 * hexRadius;
@@ -10379,6 +10788,7 @@ var $author$project$Main$viewModeCard = F2(
 						]))
 				]));
 	});
+var $author$project$Main$GoToLogin = {$: 'GoToLogin'};
 var $author$project$Main$Logout = {$: 'Logout'};
 var $elm$html$Html$strong = _VirtualDom_node('strong');
 var $author$project$Main$viewUserHeader = function (model) {
@@ -10456,8 +10866,7 @@ var $author$project$Main$viewUserHeader = function (model) {
 								_List_fromArray(
 									[
 										$elm$html$Html$Attributes$class('login-link'),
-										$elm$html$Html$Events$onClick(
-										$author$project$Main$SwitchAuthView($author$project$Main$Login))
+										$elm$html$Html$Events$onClick($author$project$Main$GoToLogin)
 									]),
 								_List_fromArray(
 									[

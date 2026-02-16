@@ -268,6 +268,7 @@ type Msg
     | SetConfirmPasswordInput String
     | SwitchAuthView AuthView
     | SkipAuth
+    | GoToLogin
       -- Auth Actions
     | SubmitLogin
     | SubmitRegister
@@ -375,6 +376,17 @@ update msg model =
 
         SkipAuth ->
             ( { model | currentView = ModeSelectionView, isAuthenticated = False }
+            , Cmd.none
+            )
+
+        GoToLogin ->
+            ( { model
+                | currentView = LoginView
+                , authView = Login
+                , authError = ""
+                , emailInput = ""
+                , passwordInput = ""
+              }
             , Cmd.none
             )
 
@@ -1560,7 +1572,8 @@ authSubtitle authView =
 viewWelcome : Model -> Html Msg
 viewWelcome _ =
     div [ class "welcome-content" ]
-        [ p [ class "welcome-pitch" ]
+        [ viewWelcomeBoard
+        , p [ class "welcome-pitch" ]
             [ text "Placez vos tuiles, marquez des points et défiez l'IA ou vos amis !" ]
         , button
             [ class "welcome-play-button"
@@ -1583,6 +1596,212 @@ viewWelcome _ =
                 ]
                 [ text "Créer un compte" ]
             ]
+        ]
+
+
+{-| Animated hex board for the welcome page — mini-tutorial showing scoring
+-}
+viewWelcomeBoard : Html Msg
+viewWelcomeBoard =
+    let
+        hexRadius =
+            36
+
+        hexWidth =
+            2 * hexRadius
+
+        hexHeight =
+            1.732 * hexRadius
+
+        spacingX =
+            0.75 * hexWidth
+
+        spacingY =
+            hexHeight
+
+        hexPositions =
+            [ ( 0, 1 ), ( 0, 2 ), ( 0, 3 )
+            , ( 1, 0.5 ), ( 1, 1.5 ), ( 1, 2.5 ), ( 1, 3.5 )
+            , ( 2, 0 ), ( 2, 1 ), ( 2, 2 ), ( 2, 3 ), ( 2, 4 )
+            , ( 3, 0.5 ), ( 3, 1.5 ), ( 3, 2.5 ), ( 3, 3.5 )
+            , ( 4, 1 ), ( 4, 2 ), ( 4, 3 )
+            ]
+
+        gridOriginX =
+            16
+
+        gridOriginY =
+            20
+
+        -- All 19 tiles for the tutorial board
+        allTiles =
+            [ ( 0, "963" ), ( 1, "974" ), ( 2, "928" )
+            , ( 3, "164" ), ( 4, "123" ), ( 5, "524" ), ( 6, "568" )
+            , ( 7, "563" ), ( 8, "173" ), ( 9, "924" ), ( 10, "168" ), ( 11, "178" )
+            , ( 12, "964" ), ( 13, "573" ), ( 14, "124" ), ( 15, "973" )
+            , ( 16, "523" ), ( 17, "528" ), ( 18, "574" )
+            ]
+
+        getTileCode idx =
+            List.filter (\( i, _ ) -> i == idx) allTiles
+                |> List.head
+                |> Maybe.map Tuple.second
+
+        -- Scoring overlays: for each position, list of (phase CSS class, animation delay)
+        getScoringOverlays idx =
+            (if List.member idx [ 0, 1, 2 ] then [ ( "phase-v1", 5.5 ) ] else [])
+                ++ (if List.member idx [ 16, 17, 18 ] then [ ( "phase-v1", 5.5 ) ] else [])
+                ++ (if List.member idx [ 0, 3, 7 ] then [ ( "phase-v2", 8.0 ) ] else [])
+                ++ (if List.member idx [ 11, 15, 18 ] then [ ( "phase-v2", 8.0 ) ] else [])
+                ++ (if List.member idx [ 2, 6, 11 ] then [ ( "phase-v3", 10.5 ) ] else [])
+
+        viewScoringOverlay ( phaseClass, delay ) =
+            div
+                [ class ("scoring-overlay " ++ phaseClass)
+                , style "animation-delay" (String.fromFloat delay ++ "s")
+                ]
+                []
+    in
+    div [ class "welcome-board-wrapper" ]
+        [ -- Tile preview above the board (visible during placement phase, fades before scoring)
+          div [ class "welcome-tile-preview" ]
+            [ div [ class "preview-label" ] [ text "Tuile a placer" ]
+            , div [ class "preview-tile-area" ]
+                (List.indexedMap
+                    (\i ( _, tileCode ) ->
+                        case parseTileFromPath tileCode of
+                            Just tileData ->
+                                div
+                                    [ class
+                                        (if i == 18 then
+                                            "preview-tile preview-last"
+
+                                         else
+                                            "preview-tile"
+                                        )
+                                    , style "animation-delay"
+                                        (String.fromFloat (toFloat i * 0.25) ++ "s")
+                                    ]
+                                    [ div [ class "hex-tile-svg" ] [ viewTileSvg tileData ] ]
+
+                            Nothing ->
+                                text ""
+                    )
+                    allTiles
+                )
+            , div [ class "preview-arrow" ] [ text "\u{2193}" ]
+            ]
+
+        , -- Direction labels above the board
+          div [ class "welcome-direction-labels" ]
+            [ div
+                [ class "direction-label phase-v1"
+                , style "animation-delay" "5.5s"
+                ]
+                [ text "Colonnes ↕" ]
+            , div
+                [ class "direction-label phase-v2"
+                , style "animation-delay" "8.0s"
+                ]
+                [ text "Diagonales ↗" ]
+            , div
+                [ class "direction-label phase-v3"
+                , style "animation-delay" "10.5s"
+                ]
+                [ text "Diagonales ↘" ]
+            ]
+
+        , -- The hex board with tiles, overlays, and score labels
+          div
+            [ class "hex-board welcome-hex-board"
+            , style "position" "relative"
+            , style "width" "320px"
+            , style "height" "360px"
+            ]
+            (List.indexedMap
+                (\index ( col, row ) ->
+                    let
+                        x =
+                            gridOriginX + col * spacingX
+
+                        y =
+                            gridOriginY + row * spacingY
+
+                        tileDelay =
+                            toFloat index * 0.25
+
+                        overlays =
+                            getScoringOverlays index
+                    in
+                    case getTileCode index of
+                        Just tileCode ->
+                            case parseTileFromPath tileCode of
+                                Just tileData ->
+                                    div
+                                        [ class "hex-cell filled welcome-tile"
+                                        , style "left" (String.fromFloat x ++ "px")
+                                        , style "top" (String.fromFloat y ++ "px")
+                                        , style "width" (String.fromFloat hexWidth ++ "px")
+                                        , style "height" (String.fromFloat hexHeight ++ "px")
+                                        , style "animation-delay" (String.fromFloat tileDelay ++ "s")
+                                        ]
+                                        (div [ class "hex-tile-svg" ]
+                                            [ viewTileSvg tileData ]
+                                            :: List.map viewScoringOverlay overlays
+                                        )
+
+                                Nothing ->
+                                    text ""
+
+                        Nothing ->
+                            text ""
+                )
+                hexPositions
+                ++ -- Score labels positioned at edges of scoring lines
+                   [ div
+                        [ class "score-label phase-v1"
+                        , style "animation-delay" "5.5s"
+                        , style "left" "-22px"
+                        , style "top" "158px"
+                        ]
+                        [ text "27" ]
+                   , div
+                        [ class "score-label phase-v1"
+                        , style "animation-delay" "5.5s"
+                        , style "left" "310px"
+                        , style "top" "158px"
+                        ]
+                        [ text "15" ]
+                   , div
+                        [ class "score-label phase-v2"
+                        , style "animation-delay" "8.0s"
+                        , style "left" "166px"
+                        , style "top" "8px"
+                        ]
+                        [ text "18" ]
+                   , div
+                        [ class "score-label phase-v2"
+                        , style "animation-delay" "8.0s"
+                        , style "left" "310px"
+                        , style "top" "218px"
+                        ]
+                        [ text "21" ]
+                   , div
+                        [ class "score-label phase-v3"
+                        , style "animation-delay" "10.5s"
+                        , style "left" "166px"
+                        , style "top" "305px"
+                        ]
+                        [ text "24" ]
+                   ]
+            )
+
+        , -- Total score
+          div
+            [ class "welcome-score"
+            , style "animation-delay" "13.0s"
+            ]
+            [ text "Score : 105 pts" ]
         ]
 
 
@@ -1882,7 +2101,7 @@ viewUserHeader model =
           else
             div [ class "guest-info" ]
                 [ span [] [ text "Mode invité" ]
-                , button [ class "login-link", onClick (SwitchAuthView Login) ] [ text "Se connecter" ]
+                , button [ class "login-link", onClick GoToLogin ] [ text "Se connecter" ]
                 ]
         ]
 

@@ -261,6 +261,194 @@ body {
     font-size: 0.9rem;
 }
 
+/* Welcome Tile Preview (above board during placement phase) */
+.welcome-tile-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    opacity: 1;
+    animation: previewFadeOut 0.5s ease-out forwards;
+    animation-delay: 5.0s;
+}
+
+.preview-label {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.05em;
+}
+
+.preview-tile-area {
+    position: relative;
+    width: 72px;
+    height: 63px;
+}
+
+.preview-tile {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    animation: previewShow 0.25s step-end none;
+}
+
+.preview-tile.preview-last {
+    animation-duration: 1.0s;
+}
+
+.preview-arrow {
+    font-size: 1.2rem;
+    color: rgba(255, 255, 255, 0.4);
+    line-height: 1;
+}
+
+@keyframes previewShow {
+    from { opacity: 1; }
+    to { opacity: 1; }
+}
+
+@keyframes previewFadeOut {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* Welcome Hero Board Animation */
+.welcome-board-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.welcome-hex-board {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    margin: 0 auto;
+    overflow: visible;
+}
+
+.welcome-tile {
+    opacity: 0;
+    transform: scale(0);
+    animation: tileAppear 0.5s ease-out forwards;
+}
+
+@keyframes tileAppear {
+    0% {
+        opacity: 0;
+        transform: scale(0) rotate(-10deg);
+    }
+    70% {
+        opacity: 1;
+        transform: scale(1.1) rotate(2deg);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+/* Direction labels above the board */
+.welcome-direction-labels {
+    height: 28px;
+    position: relative;
+    width: 320px;
+    margin-bottom: 0.25rem;
+}
+
+.direction-label {
+    position: absolute;
+    width: 100%;
+    opacity: 0;
+    animation: scoringGlow 2s ease-in-out forwards;
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: center;
+    letter-spacing: 0.05em;
+}
+
+.direction-label.phase-v1 { color: #f0d000; }
+.direction-label.phase-v2 { color: #4ecdc4; }
+.direction-label.phase-v3 { color: #ff69b4; }
+
+/* Scoring overlay on hex cells */
+.scoring-overlay {
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    border-radius: 8px;
+    pointer-events: none;
+    opacity: 0;
+    animation: scoringGlow 2s ease-in-out forwards;
+    z-index: 10;
+}
+
+.scoring-overlay.phase-v1 {
+    background: rgba(240, 208, 0, 0.12);
+    box-shadow: 0 0 14px rgba(240, 208, 0, 0.6);
+    border: 2px solid rgba(240, 208, 0, 0.7);
+}
+
+.scoring-overlay.phase-v2 {
+    background: rgba(78, 205, 196, 0.12);
+    box-shadow: 0 0 14px rgba(78, 205, 196, 0.6);
+    border: 2px solid rgba(78, 205, 196, 0.7);
+}
+
+.scoring-overlay.phase-v3 {
+    background: rgba(255, 105, 180, 0.12);
+    box-shadow: 0 0 14px rgba(255, 105, 180, 0.6);
+    border: 2px solid rgba(255, 105, 180, 0.7);
+}
+
+@keyframes scoringGlow {
+    0% { opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* Score labels near scoring lines */
+.score-label {
+    position: absolute;
+    opacity: 0;
+    animation: scoringGlow 2s ease-in-out forwards;
+    font-size: 0.9rem;
+    font-weight: 700;
+    pointer-events: none;
+    z-index: 15;
+}
+
+.score-label.phase-v1 { color: #f0d000; }
+.score-label.phase-v2 { color: #4ecdc4; }
+.score-label.phase-v3 { color: #ff69b4; }
+
+/* Total score */
+.welcome-score {
+    opacity: 0;
+    animation: scoreAppear 0.8s ease-out forwards;
+    margin-top: 0.75rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #4ecdc4;
+    text-align: center;
+}
+
+@keyframes scoreAppear {
+    0% {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .loading-spinner {
     display: inline-block;
     width: 20px;
@@ -1177,5 +1365,10 @@ body {
     .real-game-info {
         flex-direction: column;
         text-align: center;
+    }
+
+    .welcome-hex-board {
+        transform: scale(0.8);
+        transform-origin: top center;
     }
 }

@@ -1,0 +1,11 @@
+/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/target2/release/deps/tonic_web-4a40cfff5004430c.d: /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/lib.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/call.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/client.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/layer.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/service.rs
+
+/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/target2/release/deps/libtonic_web-4a40cfff5004430c.rlib: /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/lib.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/call.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/client.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/layer.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/service.rs
+
+/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/target2/release/deps/libtonic_web-4a40cfff5004430c.rmeta: /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/lib.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/call.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/client.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/layer.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/service.rs
+
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/lib.rs:
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/call.rs:
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/client.rs:
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/layer.rs:
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tonic-web-0.14.2/src/service.rs:

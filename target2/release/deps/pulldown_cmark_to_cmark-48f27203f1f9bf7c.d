@@ -1,0 +1,9 @@
+/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/target2/release/deps/pulldown_cmark_to_cmark-48f27203f1f9bf7c.d: /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/lib.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/source_range.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/text_modifications.rs
+
+/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/target2/release/deps/libpulldown_cmark_to_cmark-48f27203f1f9bf7c.rlib: /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/lib.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/source_range.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/text_modifications.rs
+
+/home/jcgouleau/IdeaProjects/RustProject/take_it_easy/target2/release/deps/libpulldown_cmark_to_cmark-48f27203f1f9bf7c.rmeta: /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/lib.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/source_range.rs /home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/text_modifications.rs
+
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/lib.rs:
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/source_range.rs:
+/home/jcgouleau/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pulldown-cmark-to-cmark-21.1.0/src/text_modifications.rs:
