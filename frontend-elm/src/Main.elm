@@ -624,6 +624,26 @@ update msg model =
                 , error = ""
                 , statusMessage = ""
                 , allPlayerPlateaus = []
+
+                -- Reset gameplay state
+                , plateauTiles = List.repeat 19 ""
+                , aiPlateauTiles = List.repeat 19 ""
+                , availablePositions = List.range 0 18
+                , currentTile = Nothing
+                , currentTileImage = Nothing
+                , currentTurnNumber = 0
+                , myTurn = False
+                , waitingForPlayers = []
+                , aiScore = 0
+                , showAiBoard = False
+                , loading = False
+
+                -- Reset real game state
+                , isRealGameMode = False
+                , showTilePicker = False
+                , usedTiles = []
+                , realGameScore = 0
+                , pendingAiPosition = Nothing
               }
             , Cmd.none
             )
@@ -779,6 +799,19 @@ update msg model =
                 , gameState = Nothing
                 , loading = False
                 , currentView = ModeSelectionView
+
+                -- Reset gameplay state
+                , plateauTiles = List.repeat 19 ""
+                , aiPlateauTiles = List.repeat 19 ""
+                , availablePositions = List.range 0 18
+                , currentTile = Nothing
+                , currentTileImage = Nothing
+                , currentTurnNumber = 0
+                , myTurn = False
+                , waitingForPlayers = []
+                , aiScore = 0
+                , showAiBoard = False
+                , allPlayerPlateaus = []
               }
             , Cmd.none
             )

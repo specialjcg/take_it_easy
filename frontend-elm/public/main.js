@@ -2727,7 +2727,7 @@ var _VirtualDom_mapEventTuple = F2(function(func, tuple)
 var _VirtualDom_mapEventRecord = F2(function(func, record)
 {
 	return {
-		Y: func(record.Y),
+		Z: func(record.Z),
 		be: record.be,
 		ba: record.ba
 	}
@@ -2997,7 +2997,7 @@ function _VirtualDom_makeCallback(eventNode, initialHandler)
 		// 3 = Custom
 
 		var value = result.a;
-		var message = !tag ? value : tag < 3 ? value.a : value.Y;
+		var message = !tag ? value : tag < 3 ? value.a : value.Z;
 		var stopPropagation = tag == 1 ? value.b : tag == 3 && value.be;
 		var currentEventNode = (
 			stopPropagation && event.stopPropagation(),
@@ -5215,9 +5215,9 @@ var $author$project$Main$LoginView = 0;
 var $author$project$Main$Welcome = 0;
 var $author$project$Main$defaultGameModes = _List_fromArray(
 	[
-		{as: 'Affrontez l\'IA Graph Transformer (149 pts)', aF: $elm$core$Maybe$Nothing, ah: '🤖', cH: 'single-player', cS: 'Solo', aY: $elm$core$Maybe$Nothing},
-		{as: 'Jouez avec le vrai jeu - sélectionnez les tuiles tirées', aF: $elm$core$Maybe$Nothing, ah: '🎲', cH: 'real-game', cS: 'Jeu Réel', aY: $elm$core$Maybe$Nothing},
-		{as: 'Jouez contre d\'autres joueurs en ligne', aF: $elm$core$Maybe$Nothing, ah: '👥', cH: 'multiplayer', cS: 'Multijoueur', aY: $elm$core$Maybe$Nothing}
+		{as: 'Affrontez l\'IA Graph Transformer (149 pts)', aF: $elm$core$Maybe$Nothing, ai: '🤖', cH: 'single-player', cS: 'Solo', aY: $elm$core$Maybe$Nothing},
+		{as: 'Jouez avec le vrai jeu - sélectionnez les tuiles tirées', aF: $elm$core$Maybe$Nothing, ai: '🎲', cH: 'real-game', cS: 'Jeu Réel', aY: $elm$core$Maybe$Nothing},
+		{as: 'Jouez contre d\'autres joueurs en ligne', aF: $elm$core$Maybe$Nothing, ai: '👥', cH: 'multiplayer', cS: 'Multijoueur', aY: $elm$core$Maybe$Nothing}
 	]);
 var $elm$core$List$repeatHelp = F3(
 	function (result, n, value) {
@@ -5253,7 +5253,7 @@ var $author$project$Main$initialModel = F2(
 			R: '',
 			A: $elm$core$Maybe$Nothing,
 			E: $elm$core$Maybe$Nothing,
-			ae: 0,
+			af: 0,
 			t: 0,
 			L: '',
 			F: '',
@@ -5266,24 +5266,24 @@ var $author$project$Main$initialModel = F2(
 			aJ: false,
 			H: false,
 			w: '',
-			Z: $elm$core$Maybe$Nothing,
+			_: $elm$core$Maybe$Nothing,
 			U: A2($elm$core$List$repeat, 19, ''),
 			x: '',
-			aU: 0,
-			ak: '',
-			aL: '',
+			aL: 0,
+			al: '',
+			aM: '',
 			J: $elm$core$Maybe$Nothing,
 			g: $elm$core$Maybe$Nothing,
 			K: '',
-			al: false,
+			V: false,
 			am: false,
 			Q: '',
 			ao: $elm$core$Maybe$Nothing,
 			bh: url,
 			a$: _List_Nil,
-			ac: $elm$core$Maybe$Nothing,
+			ad: $elm$core$Maybe$Nothing,
 			ax: '',
-			aR: _List_Nil
+			aS: _List_Nil
 		};
 	});
 var $elm$json$Json$Encode$object = function (pairs) {
@@ -5313,7 +5313,7 @@ var $author$project$Main$init = F3(
 					var token = _v2.a;
 					return _Utils_update(
 						baseModel,
-						{j: 4, aL: token});
+						{j: 4, aM: token});
 				} else {
 					return baseModel;
 				}
@@ -5436,9 +5436,9 @@ var $elm$core$Basics$neq = _Utils_notEqual;
 var $author$project$GameLogic$handleAiMoveResultPure = F2(
 	function (position, errorMsg) {
 		return ((position >= 0) && (position < 19)) ? {
-			Z: $elm$core$Maybe$Just(position),
+			_: $elm$core$Maybe$Just(position),
 			Q: (errorMsg !== '') ? ('IA: ' + errorMsg) : ''
-		} : {Z: $elm$core$Maybe$Nothing, Q: 'IA: position invalide'};
+		} : {_: $elm$core$Maybe$Nothing, Q: 'IA: position invalide'};
 	});
 var $elm$core$Maybe$map = F2(
 	function (f, maybe) {
@@ -5483,7 +5483,7 @@ var $author$project$GameLogic$handleGameFinishedPure = function (input) {
 			return _Utils_Tuple3(id, name, tiles);
 		},
 		input.bl);
-	return {z: input.aB, bm: resolvedPlateaus, aG: true, H: false, U: input.bS, Q: 'Partie terminée!', aR: _List_Nil};
+	return {z: input.aB, bm: resolvedPlateaus, aG: true, H: false, U: input.bS, Q: 'Partie terminée!', aS: _List_Nil};
 };
 var $author$project$GameLogic$BatchCmds = function (a) {
 	return {$: 4, a: a};
@@ -5565,7 +5565,7 @@ var $elm$core$Basics$not = _Basics_not;
 var $author$project$GameLogic$handlePlaceRealTilePure = F2(
 	function (model, position) {
 		var tileImage = A2($elm$core$Maybe$withDefault, '', model.E);
-		var newTurnNumber = model.ae + 1;
+		var newTurnNumber = model.af + 1;
 		var newPlateauTiles = A2(
 			$elm$core$List$indexedMap,
 			F2(
@@ -5580,7 +5580,7 @@ var $author$project$GameLogic$handlePlaceRealTilePure = F2(
 			},
 			model.D);
 		var newAiPlateauTiles = function () {
-			var _v1 = model.Z;
+			var _v1 = model._;
 			if (!_v1.$) {
 				var aiPos = _v1.a;
 				return A2(
@@ -5596,7 +5596,7 @@ var $author$project$GameLogic$handlePlaceRealTilePure = F2(
 		}();
 		var isGameOver = newTurnNumber >= 19;
 		var aiMessage = function () {
-			var _v0 = model.Z;
+			var _v0 = model._;
 			if (!_v0.$) {
 				var aiPos = _v0.a;
 				return 'IA joue en position ' + $elm$core$String$fromInt(aiPos);
@@ -5609,8 +5609,8 @@ var $author$project$GameLogic$handlePlaceRealTilePure = F2(
 			D: newAvailablePositions,
 			A: $elm$core$Maybe$Nothing,
 			E: $elm$core$Maybe$Nothing,
-			ae: newTurnNumber,
-			Z: $elm$core$Maybe$Nothing,
+			af: newTurnNumber,
+			_: $elm$core$Maybe$Nothing,
 			U: newPlateauTiles,
 			am: !isGameOver,
 			Q: isGameOver ? 'Partie terminée! Calculez votre score.' : aiMessage
@@ -5648,7 +5648,7 @@ var $author$project$GameLogic$handleSelectRealTilePure = F2(
 						}),
 					model.z)));
 		return {
-			ar: A4($author$project$GameLogic$SendGetAiMove, tileCode, model.z, aiAvailablePositions, model.ae),
+			ar: A4($author$project$GameLogic$SendGetAiMove, tileCode, model.z, aiAvailablePositions, model.af),
 			A: $elm$core$Maybe$Just(tileCode),
 			E: $elm$core$Maybe$Just('image/' + (tileCode + '.png')),
 			am: false,
@@ -5695,10 +5695,10 @@ var $author$project$GameLogic$handleTurnStartedPure = F2(
 			ar: pollCmd,
 			A: isMyTurn ? $elm$core$Maybe$Just(input.b9) : $elm$core$Maybe$Nothing,
 			E: isMyTurn ? $elm$core$Maybe$Just(input.ca) : $elm$core$Maybe$Nothing,
-			ae: input.cc,
+			af: input.cc,
 			aJ: false,
 			H: isMyTurn,
-			aR: input.bi
+			aS: input.bi
 		};
 	});
 var $elm$json$Json$Encode$int = _Json_wrap;
@@ -5798,7 +5798,7 @@ var $elm$json$Json$Decode$maybe = function (decoder) {
 };
 var $author$project$Main$Player = F5(
 	function (id, name, score, isReady, isConnected) {
-		return {cH: id, cL: isConnected, a4: isReady, cS: name, aa: score};
+		return {cH: id, cL: isConnected, a4: isReady, cS: name, ab: score};
 	});
 var $elm$json$Json$Decode$int = _Json_decodeInt;
 var $elm$json$Json$Decode$map5 = _Json_map5;
@@ -5860,7 +5860,7 @@ var $author$project$Main$sessionDecoder = A4(
 	A2($elm$json$Json$Decode$field, 'sessionCode', $elm$json$Json$Decode$string));
 var $author$project$Main$User = F4(
 	function (id, email, username, emailVerified) {
-		return {cz: email, cA: emailVerified, cH: id, aQ: username};
+		return {cz: email, cA: emailVerified, cH: id, aR: username};
 	});
 var $author$project$Main$userDecoder = A5(
 	$elm$json$Json$Decode$map4,
@@ -6177,7 +6177,7 @@ var $author$project$Main$toGameModel = function (model) {
 		D: model.D,
 		A: model.A,
 		E: model.E,
-		ae: model.ae,
+		af: model.af,
 		aG: A2(
 			$elm$core$Maybe$withDefault,
 			false,
@@ -6193,7 +6193,7 @@ var $author$project$Main$toGameModel = function (model) {
 		cM: model.cM,
 		aJ: model.aJ,
 		H: model.H,
-		Z: model.Z,
+		_: model._,
 		U: model.U,
 		bR: A2(
 			$elm$core$Maybe$map,
@@ -6210,7 +6210,7 @@ var $author$project$Main$toGameModel = function (model) {
 		am: model.am,
 		Q: model.Q,
 		a$: model.a$,
-		aR: model.aR
+		aS: model.aS
 	};
 };
 var $elm$url$Url$addPort = F2(
@@ -6532,7 +6532,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{f: '', c: true, ak: ''}),
+						{f: '', c: true, al: ''}),
 					$author$project$Main$sendToJs(
 						$elm$json$Json$Encode$object(
 							_List_fromArray(
@@ -6562,7 +6562,7 @@ var $author$project$Main$update = F2(
 									$elm$json$Json$Encode$string('resetPassword')),
 									_Utils_Tuple2(
 									'token',
-									$elm$json$Json$Encode$string(model.aL)),
+									$elm$json$Json$Encode$string(model.aM)),
 									_Utils_Tuple2(
 									'newPassword',
 									$elm$json$Json$Encode$string(model.w))
@@ -6571,7 +6571,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{j: 0, t: 0, S: false, ao: $elm$core$Maybe$Nothing, ac: $elm$core$Maybe$Nothing}),
+						{j: 0, t: 0, S: false, ao: $elm$core$Maybe$Nothing, ad: $elm$core$Maybe$Nothing}),
 					$author$project$Main$sendToJs(
 						$elm$json$Json$Encode$object(
 							_List_fromArray(
@@ -6602,9 +6602,9 @@ var $author$project$Main$update = F2(
 							c: false,
 							t: 1,
 							S: true,
-							x: user.aQ,
+							x: user.aR,
 							ao: $elm$core$Maybe$Just(token),
-							ac: $elm$core$Maybe$Just(user)
+							ad: $elm$core$Maybe$Just(user)
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 16:
@@ -6625,9 +6625,9 @@ var $author$project$Main$update = F2(
 							c: false,
 							t: 1,
 							S: true,
-							x: user.aQ,
+							x: user.aR,
 							ao: $elm$core$Maybe$Just(token),
-							ac: $elm$core$Maybe$Just(user)
+							ad: $elm$core$Maybe$Just(user)
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 18:
@@ -6642,7 +6642,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{f: '', c: false, ak: message}),
+						{f: '', c: false, al: message}),
 					$elm$core$Platform$Cmd$none);
 			case 20:
 				var error = msg.a;
@@ -6656,7 +6656,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{f: '', c: false, j: 1, R: '', w: '', ak: message, aL: ''}),
+						{f: '', c: false, j: 1, R: '', w: '', al: message, aM: ''}),
 					$elm$core$Platform$Cmd$none);
 			case 22:
 				var error = msg.a;
@@ -6674,16 +6674,16 @@ var $author$project$Main$update = F2(
 						{
 							t: 1,
 							S: true,
-							x: user.aQ,
+							x: user.aR,
 							ao: $elm$core$Maybe$Just(token),
-							ac: $elm$core$Maybe$Just(user)
+							ad: $elm$core$Maybe$Just(user)
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 24:
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{S: false, ao: $elm$core$Maybe$Nothing, ac: $elm$core$Maybe$Nothing}),
+						{S: false, ao: $elm$core$Maybe$Nothing, ad: $elm$core$Maybe$Nothing}),
 					$elm$core$Platform$Cmd$none);
 			case 25:
 				var mode = msg.a;
@@ -6705,12 +6705,12 @@ var $author$project$Main$update = F2(
 								D: A2($elm$core$List$range, 0, 18),
 								A: $elm$core$Maybe$Nothing,
 								E: $elm$core$Maybe$Nothing,
-								ae: 0,
+								af: 0,
 								t: 2,
 								bG: true,
 								H: true,
 								U: A2($elm$core$List$repeat, 19, ''),
-								aU: 0,
+								aL: 0,
 								am: true,
 								a$: _List_Nil
 							}),
@@ -6726,13 +6726,37 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{bm: _List_Nil, t: 1, F: '', k: $elm$core$Maybe$Nothing, J: $elm$core$Maybe$Nothing, g: $elm$core$Maybe$Nothing, Q: ''}),
+						{
+							z: A2($elm$core$List$repeat, 19, ''),
+							ck: 0,
+							bm: _List_Nil,
+							D: A2($elm$core$List$range, 0, 18),
+							A: $elm$core$Maybe$Nothing,
+							E: $elm$core$Maybe$Nothing,
+							af: 0,
+							t: 1,
+							F: '',
+							k: $elm$core$Maybe$Nothing,
+							bG: false,
+							aJ: false,
+							H: false,
+							_: $elm$core$Maybe$Nothing,
+							U: A2($elm$core$List$repeat, 19, ''),
+							aL: 0,
+							J: $elm$core$Maybe$Nothing,
+							g: $elm$core$Maybe$Nothing,
+							V: false,
+							am: false,
+							Q: '',
+							a$: _List_Nil,
+							aS: _List_Nil
+						}),
 					$elm$core$Platform$Cmd$none);
 			case 28:
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{al: !model.al}),
+						{V: !model.V}),
 					$elm$core$Platform$Cmd$none);
 			case 29:
 				var gameMode = A2(
@@ -6754,13 +6778,13 @@ var $author$project$Main$update = F2(
 							D: A2($elm$core$List$range, 0, 18),
 							A: $elm$core$Maybe$Nothing,
 							E: $elm$core$Maybe$Nothing,
-							ae: 0,
+							af: 0,
 							F: '',
 							k: $elm$core$Maybe$Nothing,
 							aJ: true,
 							U: A2($elm$core$List$repeat, 19, ''),
 							g: $elm$core$Maybe$Nothing,
-							al: false,
+							V: false,
 							Q: ''
 						}),
 					$author$project$Main$sendToJs(
@@ -6962,7 +6986,23 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{t: 1, k: $elm$core$Maybe$Nothing, aJ: false, g: $elm$core$Maybe$Nothing}),
+						{
+							z: A2($elm$core$List$repeat, 19, ''),
+							ck: 0,
+							bm: _List_Nil,
+							D: A2($elm$core$List$range, 0, 18),
+							A: $elm$core$Maybe$Nothing,
+							E: $elm$core$Maybe$Nothing,
+							af: 0,
+							t: 1,
+							k: $elm$core$Maybe$Nothing,
+							aJ: false,
+							H: false,
+							U: A2($elm$core$List$repeat, 19, ''),
+							g: $elm$core$Maybe$Nothing,
+							V: false,
+							aS: _List_Nil
+						}),
 					$elm$core$Platform$Cmd$none);
 			case 39:
 				var gameStarted = msg.a;
@@ -7155,7 +7195,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{z: result.z, D: result.D, A: result.A, E: result.E, ae: result.ae, Z: result.Z, U: result.U, am: result.am, Q: result.Q}),
+						{z: result.z, D: result.D, A: result.A, E: result.E, af: result.af, _: result._, U: result.U, am: result.am, Q: result.Q}),
 					$elm$core$Platform$Cmd$none);
 			case 48:
 				return _Utils_Tuple2(
@@ -7166,10 +7206,10 @@ var $author$project$Main$update = F2(
 							D: A2($elm$core$List$range, 0, 18),
 							A: $elm$core$Maybe$Nothing,
 							E: $elm$core$Maybe$Nothing,
-							ae: 0,
-							Z: $elm$core$Maybe$Nothing,
+							af: 0,
+							_: $elm$core$Maybe$Nothing,
 							U: A2($elm$core$List$repeat, 19, ''),
-							aU: 0,
+							aL: 0,
 							am: true,
 							Q: '',
 							a$: _List_Nil
@@ -7182,7 +7222,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{Z: result.Z, Q: result.Q}),
+						{_: result._, Q: result.Q}),
 					$elm$core$Platform$Cmd$none);
 			case 50:
 				var tile = msg.a;
@@ -7209,7 +7249,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{D: result.D, A: result.A, E: result.E, ae: result.ae, k: updatedGameState, aJ: result.aJ, H: result.H, aR: result.aR}),
+						{D: result.D, A: result.A, E: result.E, af: result.af, k: updatedGameState, aJ: result.aJ, H: result.H, aS: result.aS}),
 					$author$project$Main$resolveCmdIntent(result.ar));
 			case 51:
 				var position = msg.a;
@@ -7286,7 +7326,7 @@ var $author$project$Main$update = F2(
 				var simplePlayers = A2(
 					$elm$core$List$map,
 					function (p) {
-						return {cH: p.cH, cS: p.cS, aa: p.aa};
+						return {cH: p.cH, cS: p.cS, ab: p.ab};
 					},
 					mergedPlayers);
 				var result = $author$project$GameLogic$handleGameFinishedPure(
@@ -7294,7 +7334,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{z: result.z, bm: result.bm, F: '', k: newGameState, H: result.H, U: result.U, Q: result.Q, aR: result.aR}),
+						{z: result.z, bm: result.bm, F: '', k: newGameState, H: result.H, U: result.U, Q: result.Q, aS: result.aS}),
 					$elm$core$Platform$Cmd$none);
 			case 55:
 				var error = msg.a;
@@ -8824,7 +8864,7 @@ var $author$project$Main$viewAuth = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(model.f)
-							])) : ((model.ak !== '') ? A2(
+							])) : ((model.al !== '') ? A2(
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
@@ -8832,7 +8872,7 @@ var $author$project$Main$viewAuth = function (model) {
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text(model.ak)
+								$elm$html$Html$text(model.al)
 							])) : $elm$html$Html$text('')),
 						function () {
 						var _v0 = model.j;
@@ -9175,7 +9215,7 @@ var $author$project$Main$viewFinishedState = F2(
 		var sortedPlayers = A2(
 			$elm$core$List$sortBy,
 			function (p) {
-				return -p.aa;
+				return -p.ab;
 			},
 			gameState.bT);
 		var winner = $elm$core$List$head(sortedPlayers);
@@ -9214,7 +9254,7 @@ var $author$project$Main$viewFinishedState = F2(
 									_List_fromArray(
 										[
 											$elm$html$Html$text(
-											'🏆 Gagnant: ' + (w.cS + (' avec ' + ($elm$core$String$fromInt(w.aa) + ' points!'))))
+											'🏆 Gagnant: ' + (w.cS + (' avec ' + ($elm$core$String$fromInt(w.ab) + ' points!'))))
 										]));
 							} else {
 								return $elm$html$Html$text('');
@@ -9290,7 +9330,7 @@ var $author$project$Main$viewFinishedState = F2(
 															_List_fromArray(
 																[
 																	$elm$html$Html$text(
-																	$elm$core$String$fromInt(p.aa) + ' pts')
+																	$elm$core$String$fromInt(p.ab) + ' pts')
 																]))
 														]));
 											}),
@@ -9667,7 +9707,7 @@ var $author$project$Main$viewInProgressState = F2(
 							_List_fromArray(
 								[
 									$elm$html$Html$text(
-									'Tour ' + ($elm$core$String$fromInt(model.ae) + '/19'))
+									'Tour ' + ($elm$core$String$fromInt(model.af) + '/19'))
 								])),
 							function () {
 							var _v0 = model.A;
@@ -9713,7 +9753,7 @@ var $author$project$Main$viewInProgressState = F2(
 										}()
 										]));
 							} else {
-								return ((!model.H) && (!$elm$core$List$isEmpty(model.aR))) ? A2(
+								return ((!model.H) && (!$elm$core$List$isEmpty(model.aS))) ? A2(
 									$elm$html$Html$div,
 									_List_fromArray(
 										[
@@ -9731,7 +9771,7 @@ var $author$project$Main$viewInProgressState = F2(
 												[
 													$elm$html$Html$text(
 													'En attente de ' + ($elm$core$String$fromInt(
-														$elm$core$List$length(model.aR)) + ' joueur(s)...'))
+														$elm$core$List$length(model.aS)) + ' joueur(s)...'))
 												]))
 										])) : A2(
 									$elm$html$Html$button,
@@ -9788,11 +9828,11 @@ var $author$project$Main$viewInProgressState = F2(
 									_List_fromArray(
 										[
 											$elm$html$Html$text(
-											model.al ? '🤖 Masquer plateau IA' : '🤖 Voir plateau IA')
+											model.V ? '🤖 Masquer plateau IA' : '🤖 Voir plateau IA')
 										]))
 								])) : $elm$html$Html$text('')
 						])),
-					(model.cM && model.al) ? A2(
+					(model.cM && model.V) ? A2(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
@@ -9844,7 +9884,7 @@ var $author$project$Main$viewPlayer = F2(
 					_List_fromArray(
 						[
 							$elm$html$Html$text(
-							$elm$core$String$fromInt(player.aa) + ' pts')
+							$elm$core$String$fromInt(player.ab) + ' pts')
 						])),
 					player.a4 ? A2(
 					$elm$html$Html$span,
@@ -10600,7 +10640,7 @@ var $author$project$Main$viewRealGame = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								'Tour ' + ($elm$core$String$fromInt(model.ae + 1) + '/19'))
+								'Tour ' + ($elm$core$String$fromInt(model.af + 1) + '/19'))
 							])),
 						A2(
 						$elm$html$Html$p,
@@ -10715,7 +10755,7 @@ var $author$project$Main$viewRealGame = function (model) {
 								$author$project$Main$viewAiRealGameBoard(model)
 							]))
 					])),
-				(model.ae >= 19) ? A2(
+				(model.af >= 19) ? A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
@@ -10843,7 +10883,7 @@ var $author$project$Main$viewGame = function (model) {
 											var _v0 = model.J;
 											if (!_v0.$) {
 												var mode = _v0.a;
-												return mode.ah + (' ' + mode.cS);
+												return mode.ai + (' ' + mode.cS);
 											} else {
 												return 'Take It Easy';
 											}
@@ -10937,7 +10977,7 @@ var $author$project$Main$viewModeCard = F2(
 						]),
 					_List_fromArray(
 						[
-							$elm$html$Html$text(mode.ah)
+							$elm$html$Html$text(mode.ai)
 						])),
 					A2(
 					$elm$html$Html$h3,
@@ -10972,7 +11012,7 @@ var $author$project$Main$viewUserHeader = function (model) {
 			[
 				function () {
 				if (model.S) {
-					var _v0 = model.ac;
+					var _v0 = model.ad;
 					if (!_v0.$) {
 						var user = _v0.a;
 						return A2(
@@ -10997,7 +11037,7 @@ var $author$project$Main$viewUserHeader = function (model) {
 											_List_Nil,
 											_List_fromArray(
 												[
-													$elm$html$Html$text(user.aQ)
+													$elm$html$Html$text(user.aR)
 												]))
 										])),
 									A2(
@@ -11115,7 +11155,7 @@ var $author$project$Main$viewModeSelection = function (model) {
 										_List_Nil,
 										_List_fromArray(
 											[
-												$elm$html$Html$text(mode.ah + (' ' + mode.cS))
+												$elm$html$Html$text(mode.ai + (' ' + mode.cS))
 											])),
 										A2(
 										$elm$html$Html$p,
