@@ -725,6 +725,13 @@ pub async fn process_player_move_with_direct_inference(
     player_move: PlayerMove,
     policy_net: &Mutex<PolicyNet>,
 ) -> Result<MoveResult, String> {
+    // Save initial score BEFORE applying move (for points_earned delta)
+    let initial_score = game_state
+        .scores
+        .get(&player_move.player_id)
+        .copied()
+        .unwrap_or(0);
+
     // 1. Apply player move
     let mut new_state = apply_player_move(game_state, player_move.clone())?;
 
@@ -748,22 +755,16 @@ pub async fn process_player_move_with_direct_inference(
         None
     };
 
-    // 3. Check turn completion
+    // 3. Check turn completion (also calculates scores and handles finalization)
     new_state = check_turn_completion(new_state)?;
 
-    // 4. Calculate and update scores
-    for (player_id, plateau) in &new_state.player_plateaus {
-        let current_score = result(plateau);
-        new_state.scores.insert(player_id.clone(), current_score);
-    }
-
-    let initial_score = *new_state.scores.get(&player_move.player_id).unwrap_or(&0);
-    let points_earned = if let Some(plateau) = new_state.player_plateaus.get(&player_move.player_id)
-    {
-        result(plateau) - initial_score
-    } else {
-        0
-    };
+    // 4. Calculate points earned as delta from initial score
+    let current_score = new_state
+        .scores
+        .get(&player_move.player_id)
+        .copied()
+        .unwrap_or(0);
+    let points_earned = current_score - initial_score;
 
     Ok(MoveResult {
         new_game_state: new_state.clone(),
@@ -785,6 +786,13 @@ pub async fn process_player_move_with_hybrid_mcts(
     num_simulations: usize,
     top_k: usize,
 ) -> Result<MoveResult, String> {
+    // Save initial score BEFORE applying move (for points_earned delta)
+    let initial_score = game_state
+        .scores
+        .get(&player_move.player_id)
+        .copied()
+        .unwrap_or(0);
+
     // 1. Appliquer le mouvement du joueur
     let mut new_state = apply_player_move(game_state, player_move.clone())?;
 
@@ -817,22 +825,16 @@ pub async fn process_player_move_with_hybrid_mcts(
         None
     };
 
-    // 3. Vérifier la fin du tour
+    // 3. Vérifier la fin du tour (also calculates scores and handles finalization)
     new_state = check_turn_completion(new_state)?;
 
-    // 4. Calculer et mettre à jour les scores
-    for (player_id, plateau) in &new_state.player_plateaus {
-        let current_score = result(plateau);
-        new_state.scores.insert(player_id.clone(), current_score);
-    }
-
-    let initial_score = *new_state.scores.get(&player_move.player_id).unwrap_or(&0);
-    let points_earned = if let Some(plateau) = new_state.player_plateaus.get(&player_move.player_id)
-    {
-        result(plateau) - initial_score
-    } else {
-        0
-    };
+    // 4. Calculate points earned as delta from initial score
+    let current_score = new_state
+        .scores
+        .get(&player_move.player_id)
+        .copied()
+        .unwrap_or(0);
+    let points_earned = current_score - initial_score;
 
     Ok(MoveResult {
         new_game_state: new_state.clone(),

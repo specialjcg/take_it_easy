@@ -222,6 +222,16 @@ async fn process_mcts_and_respond(
                 if is_game_finished(&final_state) {
                     session.state = 2; // SessionState::FINISHED
                     log::info!("🏁 Session {} marquée comme FINISHED", session_id);
+
+                    // Safety net: finalize game recording if not already done
+                    if let Some(recorder) = crate::recording::game_recorder::get_recorder() {
+                        if let Err(e) = recorder.finalize_game(
+                            &session_id,
+                            final_state.scores.clone(),
+                        ) {
+                            log::error!("❌ Failed to finalize game recording: {}", e);
+                        }
+                    }
                 }
 
                 // Synchroniser les scores

@@ -610,7 +610,21 @@ update msg model =
                         )
 
                     else
-                        ( { model | currentView = GameView, isRealGameMode = False }, Cmd.none )
+                        ( { model
+                            | currentView = GameView
+                            , isRealGameMode = False
+                            , plateauTiles = List.repeat 19 ""
+                            , aiPlateauTiles = List.repeat 19 ""
+                            , availablePositions = List.range 0 18
+                            , currentTile = Nothing
+                            , currentTileImage = Nothing
+                            , currentTurnNumber = 0
+                            , allPlayerPlateaus = []
+                            , aiScore = 0
+                            , showAiBoard = False
+                          }
+                        , Cmd.none
+                        )
 
                 Nothing ->
                     ( model, Cmd.none )

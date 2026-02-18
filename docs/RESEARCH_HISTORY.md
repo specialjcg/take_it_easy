@@ -1,8 +1,8 @@
 # Take It Easy AI - Historique Complet des Recherches
 
 **Projet**: IA pour le jeu de plateau "Take It Easy"
-**Période**: Novembre 2025 - Janvier 2026
-**Technologie**: Rust + PyTorch (tch-rs) + gRPC + SolidJS
+**Période**: Novembre 2025 - Février 2026
+**Technologie**: Rust + PyTorch (tch-rs) + gRPC + Elm (MVU)
 
 ---
 
@@ -24,18 +24,22 @@
 
 ### Meilleur Résultat Actuel
 
-| Approche | Score Moyen | Win Rate | Status |
-|----------|-------------|----------|--------|
-| **Hybrid MCTS (Q-net + CNN)** | **125.14 pts** | **74%** | **PRODUCTION** |
-| Pattern Rollouts V2 | 139.40 pts | 72% | Alternative stable |
-| Pure MCTS (100 sims) | 104.80 pts | - | Baseline |
-| Random | ~50 pts | - | Minimum |
+| Approche | Score Moyen | Status |
+|----------|-------------|--------|
+| **Graph Transformer (Direct)** | **149.38 pts** | **PRODUCTION** |
+| GT + Lines + Row bonus | 149.99 pts | Gain négligeable |
+| GT + V1Beam (v=1.0) | 151.73 pts | +2.3 pts, haute variance |
+| Hybrid MCTS (Q-net + CNN) | 125.14 pts | Ancien production |
+| Pattern Rollouts V2 | 139.40 pts | Alternative MCTS |
+| Pure MCTS (100 sims) | 104.80 pts | Baseline |
+| Random | ~50 pts | Minimum |
 
-### Contribution des Composants
+### Conclusion Clé
 
-- **Q-Value Network**: +20.34 pts (pruning adaptatif early-game)
-- **CNN Policy/Value**: -3.43 pts seul, mais utile en late-game
-- **MCTS Rollouts**: Base solide (+55 pts vs random)
+Le Graph Transformer (+24 pts vs Hybrid MCTS) a rendu obsolètes toutes les approches
+MCTS précédentes. Les tentatives d'amélioration par stratégies humaines (complétion de
+lignes, beam search) n'apportent pas de gain significatif : le modèle a déjà internalisé
+la stratégie optimale.
 
 ---
 
@@ -90,6 +94,62 @@
 - Top-K=6, turns 0-9 seulement
 - **+20.34 pts** vs Pure MCTS
 
+### Phase 6: Graph Transformer (Février 2026)
+
+**Percée architecturale** — abandon du MCTS au profit d'un réseau direct :
+
+- **Architecture**: Graph Transformer (multi-head attention sur graphe hexagonal)
+  - 4 couches, 4 têtes d'attention, dim=128
+  - Entrée: features par noeud (tuile posée, valeurs, voisinage)
+  - Sortie: policy (19 positions) — évaluation directe, sans rollouts
+- **Entraînement**: Supervisé sur ~45k parties MCTS haute qualité
+- **Score**: **149.38 pts** (+24 pts vs Hybrid MCTS)
+- Résout le problème fondamental de géométrie hexagonale (attention = topologie native)
+- Inférence ~100× plus rapide que MCTS (pas de simulations)
+
+**Pistes d'amélioration testées (sans succès significatif)** :
+1. **Plus de données** (45k → 100k parties) — gains marginaux, le modèle saturait déjà
+2. **Architecture plus large** (dim=256, 6 couches) — overfitting, pas de gain
+3. **Value head** (prédire le score final) — n'améliore pas la policy
+
+### Phase 7: Benchmarks Stratégies Humaines (Février 2026)
+
+Tentative de booster le GT Direct avec des heuristiques humaines :
+
+| Stratégie | Score Moyen | Min | Max | Delta vs GT Direct |
+|-----------|-------------|-----|-----|-------------------|
+| GT Direct | 149.38 | 56 | 243 | baseline |
+| GT + Lines | 149.68 | 50 | 259 | +0.30 (bruit) |
+| GT + Lines + Row | 149.99 | 48 | 247 | +0.61 (bruit) |
+| V1Beam (v=1.0) | 151.73 | 40 | 263 | +2.35 (haute var.) |
+| V1Beam (v=3.0) | 149.77 | 60 | 249 | +0.39 (bruit) |
+
+**Heuristiques testées** :
+- **GT + Lines** : bonus pour complétion de lignes (3 directions hexagonales)
+- **GT + Lines + Row** : bonus lignes + bonus rangée (valeurs identiques par rangée)
+- **V1Beam** : beam search en profondeur avec value estimée par GT
+
+**Conclusion** : Les stratégies humaines n'améliorent pas significativement le GT Direct.
+Le modèle a déjà appris la stratégie optimale (complétion de lignes, gestion des conflits).
+Les heuristiques explicites ajoutent du bruit plutôt que de l'information.
+
+### Phase 8: Tests Frontend & Stabilisation (Février 2026)
+
+**Migration frontend** : SolidJS → Elm (MVU) pour fiabilité.
+
+**Infrastructure de tests** :
+- elm-test avec extraction de logique pure (GameLogic.elm)
+- Pattern CmdIntent pour tester les effets de bord
+- 66 tests couvrant 8 dead states identifiés (DS1-DS8)
+
+**Bugs de production corrigés** :
+1. **DS8 — Freeze au démarrage** : `startTurn` initial sans safety poll → le client
+   reste bloqué sur "La partie commence!" si la réponse gRPC se perd.
+   Fix : `SchedulePollTurn 3000` après ReadySet/SessionPolled.
+2. **State stale après "Retour"** : `BackToModeSelection` ne réinitialisait pas les
+   tuiles du plateau → nouvelle partie affiche les tuiles de la précédente.
+   Fix : reset complet de l'état gameplay.
+
 ---
 
 ## Architectures Neuronales Testées
@@ -132,6 +192,22 @@ Loss: Cross-Entropy (pas MSE!)
 **Résultats**:
 - Pruning top-6: +20.34 pts
 - **Succès**: Ranking relatif préservé
+
+### 4. Graph Transformer (Meilleur)
+
+```
+Architecture: 4 couches Transformer sur graphe hexagonal
+Têtes d'attention: 4
+Dimension: 128
+Entrée: Features par noeud (tuile posée, valeurs, masque voisinage)
+Sortie: Policy (19 positions)
+Loss: Cross-Entropy supervisée
+```
+
+**Résultats**:
+- Score direct (sans MCTS): **149.38 pts**
+- Inférence: ~1ms par coup (vs ~100ms MCTS 100 sims)
+- **Succès**: L'attention capture nativement la topologie hexagonale
 
 ---
 
@@ -240,16 +316,18 @@ Dir3 (diagonale): 5/5 lignes en zigzag ✗
 
 ## Résultats Comparatifs
 
-### Tableau Final (Janvier 2026)
+### Tableau Final (Février 2026)
 
-| Approche | Score | Delta vs Pure | Status |
-|----------|-------|---------------|--------|
-| **Hybrid MCTS (Q-net)** | **125.14** | **+20.34** | **PRODUCTION** |
-| Pattern Rollouts V2 | 139.40 | +34.60 | Alternative |
-| GNN Bronze | 144 | +39.20 | Instable |
+| Approche | Score | Delta vs Pure MCTS | Status |
+|----------|-------|-------------------|--------|
+| **Graph Transformer** | **149.38** | **+44.58** | **PRODUCTION** |
+| GT + V1Beam (v=1.0) | 151.73 | +46.93 | Gain marginal |
+| GT + Lines + Row | 149.99 | +45.19 | Bruit statistique |
+| Pattern Rollouts V2 | 139.40 | +34.60 | Obsolète |
+| Hybrid MCTS (Q-net) | 125.14 | +20.34 | Obsolète |
 | Pure MCTS (150 sims) | ~105 | - | Baseline |
-| CNN MCTS (seul) | 101.37 | -3.43 | Dégradé |
 | Pure MCTS (100 sims) | 104.80 | - | Baseline |
+| CNN MCTS (seul) | 101.37 | -3.43 | Dégradé |
 | GNN Supervisé | 60.97 | -43.83 | Échec |
 | Random | ~50 | -54.80 | Minimum |
 | CNN (avant fix) | 12 | -92.80 | Catastrophe |
@@ -266,6 +344,9 @@ Déc 2025: 139 pts (Pattern Rollouts V2)
 
 Jan 2026: 99 pts (CNN contourné)
         → 125 pts (Hybrid Q-net)
+
+Fév 2026: 149 pts (Graph Transformer — nouvelle architecture)
+        → 150-152 pts (stratégies humaines — gain négligeable)
 ```
 
 ---
@@ -274,27 +355,29 @@ Jan 2026: 99 pts (CNN contourné)
 
 ### Ce Qui Fonctionne
 
-1. **MCTS + Heuristiques** > Réseaux seuls
-2. **Pruning adaptatif** via Q-net efficace
-3. **Cross-Entropy** pour tâches de ranking
-4. **Séparation des rôles**: Q-net pruning, CNN late-game
-5. **Early game focus**: Pruning utile turns 0-9 seulement
+1. **Graph Transformer** > toutes les autres approches (+24 pts vs Hybrid MCTS)
+2. **Attention sur graphe** respecte nativement la topologie hexagonale
+3. **Entraînement supervisé sur données MCTS de qualité** — le modèle distille et dépasse
+4. **Cross-Entropy** pour tâches de ranking
+5. **Inférence directe** (sans MCTS) — plus rapide et plus forte
 
 ### Ce Qui Ne Fonctionne Pas
 
-1. **CNN pour géométrie hexagonale** - Architecture inadaptée
-2. **GNN** - Gains marginaux, instabilité
-3. **Apprentissage circulaire** - Plafond de qualité
-4. **Expectimax** - Modèle d'information erroné
-5. **MSE pour ranking** - Détruit l'ordre relatif
-6. **Copy-on-Write** - Overhead > économies pour petits structs
+1. **CNN pour géométrie hexagonale** — Architecture inadaptée
+2. **GNN** — Gains marginaux, instabilité
+3. **Apprentissage circulaire** — Plafond de qualité
+4. **Expectimax** — Modèle d'information erroné
+5. **MSE pour ranking** — Détruit l'ordre relatif
+6. **Heuristiques humaines sur GT** — Le modèle a déjà internalisé la stratégie
+7. **Plus de données / architecture plus large / value head** — Rendements décroissants
 
 ### Insights Stratégiques
 
-1. **Simplicité > Élégance**: Pattern Rollouts (139 pts) > GNN complexe (60 pts)
-2. **Profilage avant optimisation**: CoW a causé régression
-3. **Valider les baselines**: 159 pts était aspirationnel, pas réel
-4. **Tester les composants isolément**: CNN seul = -3 pts
+1. **Architecture > Heuristiques** : GT Direct (149 pts) > MCTS + patterns (139 pts)
+2. **Le modèle sait mieux** : Les stratégies humaines (lignes, beam search) n'aident pas un GT bien entraîné
+3. **Profilage avant optimisation** : CoW a causé régression
+4. **Valider les baselines** : 159 pts était aspirationnel, pas réel
+5. **Scaling laws limitées** : Plus de données et plus de paramètres ne garantissent pas de gain
 
 ---
 
@@ -303,62 +386,69 @@ Jan 2026: 99 pts (CNN contourné)
 ### Configuration Production
 
 ```bash
-# Lancer le meilleur AI
+# Lancer le serveur avec Graph Transformer (défaut)
 RUST_LOG=info ./target/release/take_it_easy \
   --mode multiplayer \
-  --single-player \
-  --hybrid-mcts \
-  --top-k 6
+  --single-player
 
-# Benchmark
-cargo run --release --bin compare_mcts_hybrid -- \
-  --games 100 --simulations 100 --top-k 6
+# Benchmark stratégies
+cargo run --release --bin benchmark_strategies -- \
+  --games 500 --strategies gt-direct,gt-lines,v1-beam
 ```
 
 ### Fichiers Clés
 
 | Fichier | Rôle |
 |---------|------|
-| `src/mcts/algorithm.rs` | MCTS + Hybrid |
-| `src/neural/qvalue_net.rs` | Q-Value Network |
-| `src/neural/tensor_conversion.rs` | Encodage 47 canaux |
-| `model_weights/qvalue_net.params` | Poids Q-net |
+| `src/neural/graph_transformer.rs` | Graph Transformer (production) |
+| `src/neural/policy_value_net.rs` | Wrapper PolicyNet |
+| `src/neural/manager.rs` | Gestion des architectures |
+| `src/mcts/algorithm.rs` | MCTS (legacy) |
+| `src/strategy/mod.rs` | Stratégies (GT Direct, GT+Lines, V1Beam) |
+| `frontend-elm/src/GameLogic.elm` | Logique de jeu pure (testable) |
+| `frontend-elm/tests/GameLogicTest.elm` | 66 tests dead states |
+| `model_weights/graph_transformer_policy.safetensors` | Poids GT (VPS) |
 
-### Améliorations Futures (si ressources)
+### Améliorations Testées (rendements décroissants)
 
-| Priorité | Option | Gain Attendu | Effort |
-|----------|--------|--------------|--------|
-| 1 | Plus de données Q-net (50k+) | +5-10 pts | Faible |
-| 2 | Architecture Attention/Transformer | +20-40 pts | Élevé |
-| 3 | MCTS parallèle | 6-8× speedup | Moyen |
-| 4 | Données humaines expertes | +30-50 pts | Très élevé |
+Les 3 pistes d'amélioration évidentes ont été tentées :
+
+| Option | Résultat | Conclusion |
+|--------|----------|------------|
+| Plus de données (45k → 100k) | Gains marginaux | Le modèle sature |
+| Architecture plus large (dim=256) | Overfitting | Pas assez de diversité |
+| Value head (prédire score) | Pas de gain policy | Policy et value découplés |
+| Heuristiques humaines (lignes, beam) | +0 à +2 pts | Le GT sait déjà |
 
 ### Ne Pas Poursuivre
 
 - GNN (gains marginaux, instabilité)
 - Expectimax MCTS (structurellement inadapté)
 - CNN standard pour hexagonal (géométrie cassée)
-- Optimisations mémoire prématurées
+- Boosting par heuristiques humaines (le GT a déjà internalisé la stratégie)
+- Scaling naïf (plus de données / paramètres sans changement qualitatif)
 
 ---
 
 ## Conclusion
 
-Après 3 mois de recherche intensive:
+Après 4 mois de recherche (novembre 2025 — février 2026) :
 
-1. **Le Q-net Hybrid MCTS** est l'approche la plus performante (+20 pts)
-2. **Le CNN/GNN n'apporte pas de valeur** significative seul
-3. **Le problème de géométrie hexagonale** est fondamental
-4. **L'apprentissage circulaire** limite le self-play pur
+1. **Le Graph Transformer** est l'approche définitive : **149 pts**, +24 pts vs Hybrid MCTS
+2. **L'attention sur graphe** résout le problème fondamental de géométrie hexagonale
+3. **Les heuristiques humaines sont inutiles** sur un GT bien entraîné — le modèle a déjà
+   appris la stratégie optimale (complétion de lignes, gestion des conflits)
+4. **Les pistes classiques d'amélioration** (plus de données, plus de paramètres, value head)
+   sont en rendements décroissants
 
-Pour progresser au-delà de 125-140 pts:
-- Architecture respectant la topologie hexagonale (Transformer?)
-- Données externes de qualité (parties humaines)
-- Algorithme d'apprentissage différent
+Pour progresser significativement au-delà de 150 pts, il faudrait :
+- Un changement qualitatif dans les données d'entraînement (parties humaines expertes)
+- Une approche d'apprentissage fondamentalement différente (RL avec exploration ciblée)
+- Ou accepter que ~150 pts est proche du plafond pour cette taille de modèle
 
-**Score actuel stable**: 125 pts (Hybrid) / 139 pts (Pattern Rollouts)
+**Score production stable** : **149.38 pts** (Graph Transformer Direct)
 
 ---
 
-*Document consolidé le 25 janvier 2026*
-*Auteur: Claude Opus 4.5 + équipe de développement*
+*Document mis à jour le 18 février 2026*
+*Auteurs: Claude Opus 4.5/4.6 + équipe de développement*
