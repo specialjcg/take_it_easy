@@ -1,10 +1,13 @@
 //! AlphaZero Self-Play Training Loop for Take It Easy
 //!
 //! Subcommands:
-//!   generate  - Self-play with current policy, save to CSV
-//!   train     - Train policy + value net on self-play data
-//!   benchmark - Compare two policies head-to-head
-//!   loop      - Full iterative pipeline (generate → train → benchmark → repeat)
+//!   generate   - Self-play with current policy, save to CSV
+//!   train      - Train policy + value net on self-play data (supports --min-score filtering)
+//!   benchmark  - Compare two policies head-to-head
+//!   ensemble   - Compare individual models and their weighted logit ensemble
+//!   loop       - Full iterative pipeline (generate → train → benchmark → repeat)
+//!   gridsearch - Grid search over strategy parameters
+//!   expectimax - Compare policy-only vs value-guided vs expectimax search
 //!
 //! Usage:
 //!   CARGO_TARGET_DIR=target2 cargo build --release --bin selfplay_train
@@ -63,6 +66,10 @@ enum Commands {
         generation: usize,
         #[arg(long)]
         seed: Option<u64>,
+        #[arg(long, default_value_t = 0.0)]
+        line_boost: f64,
+        #[arg(long, default_value_t = 0.0)]
+        row_boost: f64,
     },
     /// Train policy and value networks on self-play data
     Train {
@@ -92,6 +99,14 @@ enum Commands {
         skip_value: bool,
         #[arg(long)]
         skip_policy: bool,
+        #[arg(long)]
+        min_score: Option<i32>,
+        #[arg(long, default_value_t = 128)]
+        embed_dim: i64,
+        #[arg(long, default_value_t = 2)]
+        num_layers: usize,
+        #[arg(long, default_value_t = 4)]
+        num_heads: i64,
     },
     /// Compare two policies head-to-head on identical tile sequences
     Benchmark {
@@ -103,6 +118,26 @@ enum Commands {
         num_games: usize,
         #[arg(long)]
         seed: Option<u64>,
+        #[arg(long, default_value_t = 0.0)]
+        line_boost_a: f64,
+        #[arg(long, default_value_t = 0.0)]
+        row_boost_a: f64,
+        #[arg(long, default_value_t = 0.0)]
+        line_boost_b: f64,
+        #[arg(long, default_value_t = 0.0)]
+        row_boost_b: f64,
+        #[arg(long, default_value_t = 128)]
+        embed_dim_a: i64,
+        #[arg(long, default_value_t = 2)]
+        num_layers_a: usize,
+        #[arg(long, default_value_t = 4)]
+        num_heads_a: i64,
+        #[arg(long, default_value_t = 128)]
+        embed_dim_b: i64,
+        #[arg(long, default_value_t = 2)]
+        num_layers_b: usize,
+        #[arg(long, default_value_t = 4)]
+        num_heads_b: i64,
     },
     /// Full iterative self-play loop (generate + train + benchmark, repeat)
     Loop {
@@ -136,6 +171,63 @@ enum Commands {
         output_dir: String,
         #[arg(long)]
         seed: Option<u64>,
+        #[arg(long, default_value_t = 0.0)]
+        line_boost: f64,
+        #[arg(long, default_value_t = 0.0)]
+        row_boost: f64,
+    },
+    /// Ensemble benchmark: compare individual models and their ensemble
+    Ensemble {
+        #[arg(long)]
+        model_a: String,
+        #[arg(long)]
+        model_b: String,
+        #[arg(long, default_value_t = 1000)]
+        num_games: usize,
+        #[arg(long, default_value_t = 1.0)]
+        weight_b: f64,
+        #[arg(long, default_value_t = 0.0)]
+        line_boost: f64,
+        #[arg(long, default_value_t = 0.0)]
+        row_boost: f64,
+        #[arg(long)]
+        seed: Option<u64>,
+    },
+    /// Grid search over strategy parameters to find optimal line_boost/row_boost
+    Gridsearch {
+        #[arg(long, default_value = "model_weights/graph_transformer_policy.safetensors")]
+        model_path: String,
+        #[arg(long, default_value_t = 500)]
+        num_games: usize,
+        #[arg(long, default_value = "0.0,0.5,1.0,1.5,2.0,2.5,3.0,4.0,5.0")]
+        line_boosts: String,
+        #[arg(long, default_value = "0.0,0.5,1.0,1.5,2.0,3.0")]
+        row_boosts: String,
+        #[arg(long, default_value = "gridsearch_results.csv")]
+        output: String,
+        #[arg(long)]
+        seed: Option<u64>,
+    },
+    /// Expectimax search: compare policy-only vs value-guided vs expectimax
+    Expectimax {
+        #[arg(long)]
+        model_policy: String,
+        #[arg(long)]
+        model_value: String,
+        #[arg(long, default_value_t = 200)]
+        num_games: usize,
+        #[arg(long, default_value_t = 1)]
+        depth: usize,
+        #[arg(long, default_value_t = 0.0)]
+        line_boost: f64,
+        #[arg(long)]
+        seed: Option<u64>,
+        #[arg(long, default_value_t = 128)]
+        embed_dim: i64,
+        #[arg(long, default_value_t = 2)]
+        num_layers: usize,
+        #[arg(long, default_value_t = 4)]
+        num_heads: i64,
     },
 }
 
@@ -211,9 +303,30 @@ fn compute_masked_logits(
     logits + Tensor::from_slice(&mask)
 }
 
-fn load_policy(path: &str) -> Result<(nn::VarStore, GraphTransformerPolicyNet), Box<dyn Error>> {
+fn load_policy_sized(
+    path: &str,
+    embed_dim: i64,
+    num_layers: usize,
+    num_heads: i64,
+) -> Result<(nn::VarStore, GraphTransformerPolicyNet), Box<dyn Error>> {
     let mut vs = nn::VarStore::new(Device::Cpu);
-    let net = GraphTransformerPolicyNet::new(&vs, 47, 128, 2, 4, 0.1);
+    let net = GraphTransformerPolicyNet::new(&vs, 47, embed_dim, num_layers, num_heads, 0.1);
+    load_varstore(&mut vs, path)?;
+    Ok((vs, net))
+}
+
+fn load_policy(path: &str) -> Result<(nn::VarStore, GraphTransformerPolicyNet), Box<dyn Error>> {
+    load_policy_sized(path, 128, 2, 4)
+}
+
+fn load_value_sized(
+    path: &str,
+    embed_dim: i64,
+    num_layers: usize,
+    num_heads: i64,
+) -> Result<(nn::VarStore, GraphTransformerValueNet), Box<dyn Error>> {
+    let mut vs = nn::VarStore::new(Device::Cpu);
+    let net = GraphTransformerValueNet::new(&vs, 47, embed_dim, num_layers, num_heads, 0.1);
     load_varstore(&mut vs, path)?;
     Ok((vs, net))
 }
@@ -252,6 +365,294 @@ fn score_stats(scores: &[i32]) -> (f64, i32, i32, i32) {
     let min = sorted[0];
     let max = sorted[sorted.len() - 1];
     (avg, median, min, max)
+}
+
+// ============================================================
+// Heuristic boosting (ported from benchmark_strategies.rs)
+// ============================================================
+
+/// Line definitions: (positions, direction_index)
+/// direction 0 = tile.0 (horizontal), 1 = tile.1 (diag1), 2 = tile.2 (diag2)
+const LINES: [(&[usize], usize); 15] = [
+    (&[0, 1, 2], 0),
+    (&[3, 4, 5, 6], 0),
+    (&[7, 8, 9, 10, 11], 0),
+    (&[12, 13, 14, 15], 0),
+    (&[16, 17, 18], 0),
+    (&[0, 3, 7], 1),
+    (&[1, 4, 8, 12], 1),
+    (&[2, 5, 9, 13, 16], 1),
+    (&[6, 10, 14, 17], 1),
+    (&[11, 15, 18], 1),
+    (&[7, 12, 16], 2),
+    (&[3, 8, 13, 17], 2),
+    (&[0, 4, 9, 14, 18], 2),
+    (&[1, 5, 10, 15], 2),
+    (&[2, 6, 11], 2),
+];
+
+const ROWS: [&[usize]; 5] = [
+    &[0, 1, 2],
+    &[3, 4, 5, 6],
+    &[7, 8, 9, 10, 11],
+    &[12, 13, 14, 15],
+    &[16, 17, 18],
+];
+
+fn pos_to_row(pos: usize) -> usize {
+    match pos {
+        0..=2 => 0,
+        3..=6 => 1,
+        7..=11 => 2,
+        12..=15 => 3,
+        16..=18 => 4,
+        _ => unreachable!(),
+    }
+}
+
+fn line_boost_heuristic(plateau: &Plateau, tile: &Tile, position: usize, boost: f64) -> f64 {
+    let mut total = 0.0;
+
+    for &(line_positions, direction) in &LINES {
+        if !line_positions.contains(&position) {
+            continue;
+        }
+
+        let tile_val = match direction {
+            0 => tile.0,
+            1 => tile.1,
+            _ => tile.2,
+        };
+
+        let line_len = line_positions.len();
+
+        let mut same = 0;
+        let mut diff = 0;
+        let mut empty = 0;
+        let mut diff_val = 0;
+        let mut diff_homogeneous = true;
+
+        for &pos in line_positions {
+            if pos == position {
+                continue;
+            }
+            let t = &plateau.tiles[pos];
+            if *t == Tile(0, 0, 0) {
+                empty += 1;
+            } else {
+                let v = match direction {
+                    0 => t.0,
+                    1 => t.1,
+                    _ => t.2,
+                };
+                if v == tile_val {
+                    same += 1;
+                } else {
+                    if diff_val == 0 {
+                        diff_val = v;
+                    } else if v != diff_val {
+                        diff_homogeneous = false;
+                    }
+                    diff += 1;
+                }
+            }
+        }
+
+        let norm = 45.0;
+
+        if diff == 0 {
+            if empty == 0 {
+                total += boost * tile_val as f64 * line_len as f64 / norm;
+            } else if empty == 1 && same >= 1 {
+                total += boost * 0.4 * tile_val as f64 * line_len as f64 / norm;
+            } else if empty == 2 && same >= 1 {
+                total += boost * 0.15 * tile_val as f64 * line_len as f64 / norm;
+            }
+        } else if diff_homogeneous && same == 0 && diff_val != 0 {
+            let progress = diff as f64 / (line_len - 1) as f64;
+            total -= boost * 0.3 * progress * diff_val as f64 * line_len as f64 / norm;
+        }
+    }
+
+    total
+}
+
+fn row_affinity_boost(plateau: &Plateau, tile: &Tile, position: usize, boost: f64) -> f64 {
+    let row_idx = pos_to_row(position);
+    let row = ROWS[row_idx];
+    let row_len = row.len();
+    let v1 = tile.0;
+
+    let mut same = 0usize;
+    let mut diff = 0usize;
+    let mut existing_v1 = 0i32;
+    let mut homogeneous = true;
+
+    for &pos in row {
+        if pos == position {
+            continue;
+        }
+        let t = &plateau.tiles[pos];
+        if *t == Tile(0, 0, 0) {
+            continue;
+        }
+        if existing_v1 == 0 {
+            existing_v1 = t.0;
+        } else if t.0 != existing_v1 {
+            homogeneous = false;
+        }
+        if t.0 == v1 {
+            same += 1;
+        } else {
+            diff += 1;
+        }
+    }
+
+    let filled = same + diff;
+    let norm = 45.0;
+
+    if homogeneous && filled >= 1 && diff == 0 && same == 0 {
+        let existing_potential = existing_v1 as f64 * row_len as f64 / norm;
+        let progress = filled as f64 / (row_len - 1) as f64;
+        return -boost * 0.6 * progress * existing_potential;
+    }
+
+    if diff == 0 && same >= 2 {
+        let potential = v1 as f64 * row_len as f64 / norm;
+        let progress = same as f64 / (row_len - 1) as f64;
+        return boost * 0.3 * progress * potential;
+    }
+
+    0.0
+}
+
+#[derive(Debug, Default)]
+struct LineCompletions {
+    v1_cols: usize,
+    v2_diags: usize,
+    v3_diags: usize,
+}
+
+impl LineCompletions {
+    fn total(&self) -> usize {
+        self.v1_cols + self.v2_diags + self.v3_diags
+    }
+}
+
+fn count_line_completions(plateau: &Plateau) -> LineCompletions {
+    let mut lc = LineCompletions::default();
+
+    for &(positions, direction) in &LINES {
+        let get_value = |tile: &Tile| match direction {
+            0 => tile.0,
+            1 => tile.1,
+            _ => tile.2,
+        };
+
+        let first = &plateau.tiles[positions[0]];
+        if *first == Tile(0, 0, 0) {
+            continue;
+        }
+        let target = get_value(first);
+        if target == 0 {
+            continue;
+        }
+
+        let all_match = positions.iter().all(|&i| {
+            let t = &plateau.tiles[i];
+            *t != Tile(0, 0, 0) && get_value(t) == target
+        });
+
+        if all_match {
+            match direction {
+                0 => lc.v1_cols += 1,
+                1 => lc.v2_diags += 1,
+                _ => lc.v3_diags += 1,
+            }
+        }
+    }
+
+    lc
+}
+
+#[derive(Clone, Copy, Debug)]
+struct StrategyParams {
+    line_boost: f64,
+    row_boost: f64,
+}
+
+impl StrategyParams {
+    #[allow(dead_code)]
+    fn none() -> Self {
+        Self { line_boost: 0.0, row_boost: 0.0 }
+    }
+    fn is_active(&self) -> bool {
+        self.line_boost.abs() > 1e-9 || self.row_boost.abs() > 1e-9
+    }
+}
+
+fn compute_boosted_logits(
+    plateau: &Plateau,
+    tile: &Tile,
+    deck: &Deck,
+    turn: usize,
+    policy_net: &GraphTransformerPolicyNet,
+    strategy: StrategyParams,
+) -> Vec<f64> {
+    let ml = compute_masked_logits(plateau, tile, deck, turn, policy_net);
+    let logits: Vec<f64> = Vec::<f64>::try_from(&ml).unwrap();
+
+    if !strategy.is_active() {
+        return logits;
+    }
+
+    logits
+        .iter()
+        .enumerate()
+        .map(|(pos, &l)| {
+            if l.is_finite() {
+                l + line_boost_heuristic(plateau, tile, pos, strategy.line_boost)
+                    + row_affinity_boost(plateau, tile, pos, strategy.row_boost)
+            } else {
+                l
+            }
+        })
+        .collect()
+}
+
+fn play_game_with_strategy_stats(
+    tiles: &[Tile],
+    policy_net: &GraphTransformerPolicyNet,
+    strategy: StrategyParams,
+) -> (i32, LineCompletions) {
+    let mut plateau = create_plateau_empty();
+    let mut deck = create_deck();
+
+    for (turn, tile) in tiles.iter().enumerate() {
+        let legal = get_legal_moves(&plateau);
+        if legal.is_empty() {
+            break;
+        }
+
+        let pos = if strategy.is_active() {
+            let boosted =
+                compute_boosted_logits(&plateau, tile, &deck, turn, policy_net, strategy);
+            *legal
+                .iter()
+                .max_by(|&&a, &&b| boosted[a].partial_cmp(&boosted[b]).unwrap())
+                .unwrap()
+        } else {
+            let ml = compute_masked_logits(&plateau, tile, &deck, turn, policy_net);
+            ml.argmax(-1, false).int64_value(&[]) as usize
+        };
+
+        plateau.tiles[pos] = *tile;
+        deck = replace_tile_in_deck(&deck, tile);
+    }
+
+    let score = result(&plateau);
+    let completions = count_line_completions(&plateau);
+    (score, completions)
 }
 
 // ============================================================
@@ -323,9 +724,13 @@ fn run_generate(
     explore_turns: usize,
     save_path: &str,
     seed: u64,
+    strategy: StrategyParams,
 ) -> Result<Vec<i32>, Box<dyn Error>> {
     println!("Generating {} self-play games (temp={}, explore_turns={})", num_games, temperature, explore_turns);
     println!("Policy: {}", model_path);
+    if strategy.is_active() {
+        println!("Strategy: line_boost={:.1}, row_boost={:.1}", strategy.line_boost, strategy.row_boost);
+    }
 
     let (_vs, policy_net) = load_policy(model_path)?;
     let _guard = tch::no_grad_guard();
@@ -347,13 +752,30 @@ fn run_generate(
                 break;
             }
 
-            let ml = compute_masked_logits(&plateau, tile, &deck, turn, &policy_net);
-
-            let pos = if turn < explore_turns && temperature > 1e-6 {
-                let probs = (&ml / temperature).softmax(-1, Kind::Float);
-                probs.multinomial(1, true).int64_value(&[0]) as usize
+            let pos = if strategy.is_active() {
+                let boosted = compute_boosted_logits(
+                    &plateau, tile, &deck, turn, &policy_net, strategy,
+                );
+                if turn < explore_turns && temperature > 1e-6 {
+                    let boosted_t = Tensor::from_slice(
+                        &boosted.iter().map(|&x| x as f32).collect::<Vec<f32>>(),
+                    );
+                    let probs = (&boosted_t / temperature).softmax(-1, Kind::Float);
+                    probs.multinomial(1, true).int64_value(&[0]) as usize
+                } else {
+                    *legal
+                        .iter()
+                        .max_by(|&&a, &&b| boosted[a].partial_cmp(&boosted[b]).unwrap())
+                        .unwrap()
+                }
             } else {
-                ml.argmax(-1, false).int64_value(&[]) as usize
+                let ml = compute_masked_logits(&plateau, tile, &deck, turn, &policy_net);
+                if turn < explore_turns && temperature > 1e-6 {
+                    let probs = (&ml / temperature).softmax(-1, Kind::Float);
+                    probs.multinomial(1, true).int64_value(&[0]) as usize
+                } else {
+                    ml.argmax(-1, false).int64_value(&[]) as usize
+                }
             };
 
             // Record state BEFORE placing tile
@@ -458,11 +880,15 @@ fn train_policy(
     batch_size: usize,
     lr: f64,
     weight_decay: f64,
+    embed_dim: i64,
+    num_layers: usize,
+    num_heads: i64,
 ) -> Result<f64, Box<dyn Error>> {
-    println!("\n=== Training Policy ({} samples) ===", samples.len());
+    println!("\n=== Training Policy ({} samples, embed={}, layers={}, heads={}) ===",
+        samples.len(), embed_dim, num_layers, num_heads);
 
     let mut vs = nn::VarStore::new(Device::Cpu);
-    let policy_net = GraphTransformerPolicyNet::new(&vs, 47, 128, 2, 4, 0.1);
+    let policy_net = GraphTransformerPolicyNet::new(&vs, 47, embed_dim, num_layers, num_heads, 0.1);
 
     if let Some(path) = init_path {
         println!("Init weights: {}", path);
@@ -596,11 +1022,15 @@ fn train_value(
     batch_size: usize,
     lr: f64,
     weight_decay: f64,
+    embed_dim: i64,
+    num_layers: usize,
+    num_heads: i64,
 ) -> Result<f64, Box<dyn Error>> {
-    println!("\n=== Training Value ({} samples) ===", samples.len());
+    println!("\n=== Training Value ({} samples, embed={}, layers={}, heads={}) ===",
+        samples.len(), embed_dim, num_layers, num_heads);
 
     let mut vs = nn::VarStore::new(Device::Cpu);
-    let value_net = GraphTransformerValueNet::new(&vs, 47, 128, 2, 4, 0.1);
+    let value_net = GraphTransformerValueNet::new(&vs, 47, embed_dim, num_layers, num_heads, 0.1);
 
     if let Some(path) = init_path {
         println!("Init weights: {}", path);
@@ -708,7 +1138,11 @@ fn train_value(
 // Benchmark
 // ============================================================
 
-fn play_game_with_policy(tiles: &[Tile], policy_net: &GraphTransformerPolicyNet) -> i32 {
+fn play_game_with_policy(
+    tiles: &[Tile],
+    policy_net: &GraphTransformerPolicyNet,
+    strategy: StrategyParams,
+) -> i32 {
     let mut plateau = create_plateau_empty();
     let mut deck = create_deck();
 
@@ -717,8 +1151,19 @@ fn play_game_with_policy(tiles: &[Tile], policy_net: &GraphTransformerPolicyNet)
         if legal.is_empty() {
             break;
         }
-        let ml = compute_masked_logits(&plateau, tile, &deck, turn, policy_net);
-        let pos = ml.argmax(-1, false).int64_value(&[]) as usize;
+
+        let pos = if strategy.is_active() {
+            let boosted =
+                compute_boosted_logits(&plateau, tile, &deck, turn, policy_net, strategy);
+            *legal
+                .iter()
+                .max_by(|&&a, &&b| boosted[a].partial_cmp(&boosted[b]).unwrap())
+                .unwrap()
+        } else {
+            let ml = compute_masked_logits(&plateau, tile, &deck, turn, policy_net);
+            ml.argmax(-1, false).int64_value(&[]) as usize
+        };
+
         plateau.tiles[pos] = *tile;
         deck = replace_tile_in_deck(&deck, tile);
     }
@@ -730,13 +1175,23 @@ fn run_benchmark(
     model_b_path: &str,
     num_games: usize,
     seed: u64,
+    strategy_a: StrategyParams,
+    strategy_b: StrategyParams,
+    size_a: (i64, usize, i64),
+    size_b: (i64, usize, i64),
 ) -> Result<(f64, f64), Box<dyn Error>> {
     println!("\n=== Benchmark ({} games) ===", num_games);
-    println!("  A: {}", model_a_path);
-    println!("  B: {}", model_b_path);
+    println!("  A: {} (embed={}, layers={}, heads={})", model_a_path, size_a.0, size_a.1, size_a.2);
+    if strategy_a.is_active() {
+        println!("    strategy: line={:.1}, row={:.1}", strategy_a.line_boost, strategy_a.row_boost);
+    }
+    println!("  B: {} (embed={}, layers={}, heads={})", model_b_path, size_b.0, size_b.1, size_b.2);
+    if strategy_b.is_active() {
+        println!("    strategy: line={:.1}, row={:.1}", strategy_b.line_boost, strategy_b.row_boost);
+    }
 
-    let (_vs_a, policy_a) = load_policy(model_a_path)?;
-    let (_vs_b, policy_b) = load_policy(model_b_path)?;
+    let (_vs_a, policy_a) = load_policy_sized(model_a_path, size_a.0, size_a.1, size_a.2)?;
+    let (_vs_b, policy_b) = load_policy_sized(model_b_path, size_b.0, size_b.1, size_b.2)?;
     let _guard = tch::no_grad_guard();
 
     let mut rng = StdRng::seed_from_u64(seed);
@@ -746,8 +1201,8 @@ fn run_benchmark(
 
     for i in 0..num_games {
         let tiles = generate_tile_sequence(&mut rng);
-        let sa = play_game_with_policy(&tiles, &policy_a);
-        let sb = play_game_with_policy(&tiles, &policy_b);
+        let sa = play_game_with_policy(&tiles, &policy_a, strategy_a);
+        let sb = play_game_with_policy(&tiles, &policy_b, strategy_b);
         scores_a.push(sa);
         scores_b.push(sb);
 
@@ -800,6 +1255,7 @@ fn run_loop(
     data_dir: &str,
     output_dir: &str,
     seed: u64,
+    strategy: StrategyParams,
 ) -> Result<(), Box<dyn Error>> {
     println!("{}", "=".repeat(60));
     println!("AlphaZero Self-Play Loop");
@@ -808,6 +1264,9 @@ fn run_loop(
     println!("Temperature: {}, Explore turns: {}", temperature, explore_turns);
     println!("Epochs: {}, Batch size: {}, LR: {}", epochs, batch_size, lr);
     println!("Benchmark games: {}, Accept threshold: {}", benchmark_games, accept_threshold);
+    if strategy.is_active() {
+        println!("Strategy: line_boost={:.1}, row_boost={:.1}", strategy.line_boost, strategy.row_boost);
+    }
 
     fs::create_dir_all(data_dir)?;
     fs::create_dir_all(output_dir)?;
@@ -847,6 +1306,7 @@ fn run_loop(
             explore_turns,
             &data_path,
             gen_seed,
+            strategy,
         )?;
         let avg_score: f64 = scores.iter().map(|&s| s as f64).sum::<f64>() / scores.len() as f64;
 
@@ -887,6 +1347,7 @@ fn run_loop(
             batch_size,
             lr,
             weight_decay,
+            128, 2, 4,
         )?;
 
         // 4. Train value
@@ -903,12 +1364,13 @@ fn run_loop(
             batch_size,
             lr,
             weight_decay,
+            128, 2, 4,
         )?;
 
         // 5. Benchmark new vs current
         let bench_seed = seed.wrapping_add(999_999 + gen as u64 * 1_000);
         let (avg_old, avg_new) =
-            run_benchmark(&current_policy, &new_policy_path, benchmark_games, bench_seed)?;
+            run_benchmark(&current_policy, &new_policy_path, benchmark_games, bench_seed, strategy, strategy, (128, 2, 4), (128, 2, 4))?;
 
         // 6. Accept/reject
         let accepted = avg_new > avg_old + accept_threshold;
@@ -973,6 +1435,578 @@ fn run_loop(
 }
 
 // ============================================================
+// Ensemble
+// ============================================================
+
+fn play_game_ensemble(
+    tiles: &[Tile],
+    policy_a: &GraphTransformerPolicyNet,
+    policy_b: &GraphTransformerPolicyNet,
+    weight_b: f64,
+    strategy: StrategyParams,
+) -> i32 {
+    let mut plateau = create_plateau_empty();
+    let mut deck = create_deck();
+
+    for (turn, tile) in tiles.iter().enumerate() {
+        let legal = get_legal_moves(&plateau);
+        if legal.is_empty() {
+            break;
+        }
+
+        // Get logits from both models
+        let logits_a = compute_masked_logits(&plateau, tile, &deck, turn, policy_a);
+        let logits_b = compute_masked_logits(&plateau, tile, &deck, turn, policy_b);
+
+        // Combined: logits_a + weight_b * logits_b
+        let combined = &logits_a + &logits_b * weight_b;
+        let combined_vec: Vec<f64> = Vec::<f64>::try_from(&combined).unwrap();
+
+        let pos = if strategy.is_active() {
+            // Add heuristic boosts
+            let boosted: Vec<f64> = combined_vec
+                .iter()
+                .enumerate()
+                .map(|(pos, &l)| {
+                    if l.is_finite() {
+                        l + line_boost_heuristic(&plateau, tile, pos, strategy.line_boost)
+                            + row_affinity_boost(&plateau, tile, pos, strategy.row_boost)
+                    } else {
+                        l
+                    }
+                })
+                .collect();
+            *legal
+                .iter()
+                .max_by(|&&a, &&b| boosted[a].partial_cmp(&boosted[b]).unwrap())
+                .unwrap()
+        } else {
+            combined.argmax(-1, false).int64_value(&[]) as usize
+        };
+
+        plateau.tiles[pos] = *tile;
+        deck = replace_tile_in_deck(&deck, tile);
+    }
+    result(&plateau)
+}
+
+fn run_ensemble(
+    model_a_path: &str,
+    model_b_path: &str,
+    num_games: usize,
+    weight_b: f64,
+    line_boost: f64,
+    row_boost: f64,
+    seed: u64,
+) -> Result<(), Box<dyn Error>> {
+    println!("{}", "=".repeat(60));
+    println!("Ensemble Benchmark ({} games)", num_games);
+    println!("{}", "=".repeat(60));
+    println!("  Model A: {}", model_a_path);
+    println!("  Model B: {}", model_b_path);
+    println!("  weight_b: {:.2}", weight_b);
+    if line_boost.abs() > 1e-9 || row_boost.abs() > 1e-9 {
+        println!("  line_boost: {:.1}, row_boost: {:.1}", line_boost, row_boost);
+    }
+    println!();
+
+    let (_vs_a, policy_a) = load_policy(model_a_path)?;
+    let (_vs_b, policy_b) = load_policy(model_b_path)?;
+    let _guard = tch::no_grad_guard();
+
+    // Pre-generate tile sequences
+    let mut rng = StdRng::seed_from_u64(seed);
+    let tile_sequences: Vec<Vec<Tile>> = (0..num_games)
+        .map(|_| generate_tile_sequence(&mut rng))
+        .collect();
+
+    let no_strategy = StrategyParams { line_boost: 0.0, row_boost: 0.0 };
+    let boost_strategy = StrategyParams { line_boost, row_boost };
+
+    let mut scores_a = Vec::with_capacity(num_games);
+    let mut scores_b = Vec::with_capacity(num_games);
+    let mut scores_ensemble = Vec::with_capacity(num_games);
+    let mut scores_ensemble_boost = Vec::with_capacity(num_games);
+
+    let start = Instant::now();
+
+    for (i, tiles) in tile_sequences.iter().enumerate() {
+        // Model A alone (no boost)
+        let sa = play_game_with_policy(tiles, &policy_a, no_strategy);
+        scores_a.push(sa);
+
+        // Model B alone (no boost)
+        let sb = play_game_with_policy(tiles, &policy_b, no_strategy);
+        scores_b.push(sb);
+
+        // Ensemble (no boost)
+        let se = play_game_ensemble(tiles, &policy_a, &policy_b, weight_b, no_strategy);
+        scores_ensemble.push(se);
+
+        // Ensemble + boost
+        let seb = if boost_strategy.is_active() {
+            play_game_ensemble(tiles, &policy_a, &policy_b, weight_b, boost_strategy)
+        } else {
+            se // same as ensemble when no boost
+        };
+        scores_ensemble_boost.push(seb);
+
+        if (i + 1) % 100 == 0 {
+            let avg_a: f64 = scores_a.iter().map(|&s| s as f64).sum::<f64>() / scores_a.len() as f64;
+            let avg_e: f64 = scores_ensemble.iter().map(|&s| s as f64).sum::<f64>() / scores_ensemble.len() as f64;
+            let avg_eb: f64 = scores_ensemble_boost.iter().map(|&s| s as f64).sum::<f64>() / scores_ensemble_boost.len() as f64;
+            println!(
+                "  {} games ({:.1}s): A={:.1}, Ens={:.1}, Ens+boost={:.1}",
+                i + 1,
+                start.elapsed().as_secs_f64(),
+                avg_a, avg_e, avg_eb
+            );
+        }
+    }
+
+    // Compute stats
+    let (avg_a, median_a, min_a, max_a) = score_stats(&scores_a);
+    let (avg_b, median_b, min_b, max_b) = score_stats(&scores_b);
+    let (avg_e, median_e, min_e, max_e) = score_stats(&scores_ensemble);
+    let (avg_eb, median_eb, min_eb, max_eb) = score_stats(&scores_ensemble_boost);
+
+    // Wins vs model A
+    let wins_e_vs_a = scores_ensemble.iter().zip(&scores_a).filter(|(&e, &a)| e > a).count();
+    let wins_eb_vs_a = scores_ensemble_boost.iter().zip(&scores_a).filter(|(&e, &a)| e > a).count();
+
+    println!("\n{}", "=".repeat(70));
+    println!("Results ({} games, {:.1}s):", num_games, start.elapsed().as_secs_f64());
+    println!("{}", "=".repeat(70));
+    println!(
+        "{:<25} {:>8} {:>8} {:>6} {:>6} {:>10}",
+        "Strategy", "Avg", "Median", "Min", "Max", "Wins vs A"
+    );
+    println!("{}", "-".repeat(70));
+    println!(
+        "{:<25} {:>8.1} {:>8} {:>6} {:>6} {:>10}",
+        "Model A (pure)", avg_a, median_a, min_a, max_a, "-"
+    );
+    println!(
+        "{:<25} {:>8.1} {:>8} {:>6} {:>6} {:>10}",
+        "Model B (pure)", avg_b, median_b, min_b, max_b, "-"
+    );
+    println!(
+        "{:<25} {:>8.1} {:>8} {:>6} {:>6} {:>8} ({:.1}%)",
+        format!("Ensemble (wb={:.1})", weight_b),
+        avg_e, median_e, min_e, max_e,
+        wins_e_vs_a,
+        wins_e_vs_a as f64 / num_games as f64 * 100.0
+    );
+    if boost_strategy.is_active() {
+        println!(
+            "{:<25} {:>8.1} {:>8} {:>6} {:>6} {:>8} ({:.1}%)",
+            format!("Ens+lb={:.0},rb={:.0}", line_boost, row_boost),
+            avg_eb, median_eb, min_eb, max_eb,
+            wins_eb_vs_a,
+            wins_eb_vs_a as f64 / num_games as f64 * 100.0
+        );
+    }
+
+    // Also show Model A + boost for reference
+    if boost_strategy.is_active() {
+        let mut scores_a_boost = Vec::with_capacity(num_games);
+        for tiles in &tile_sequences {
+            scores_a_boost.push(play_game_with_policy(tiles, &policy_a, boost_strategy));
+        }
+        let (avg_ab, median_ab, min_ab, max_ab) = score_stats(&scores_a_boost);
+        println!(
+            "{:<25} {:>8.1} {:>8} {:>6} {:>6} {:>10}",
+            format!("A+lb={:.0},rb={:.0}", line_boost, row_boost),
+            avg_ab, median_ab, min_ab, max_ab, "-"
+        );
+    }
+
+    println!("{}", "=".repeat(70));
+
+    Ok(())
+}
+
+// ============================================================
+// Grid Search
+// ============================================================
+
+fn run_gridsearch(
+    model_path: &str,
+    num_games: usize,
+    line_boosts: &[f64],
+    row_boosts: &[f64],
+    output_path: &str,
+    seed: u64,
+) -> Result<(), Box<dyn Error>> {
+    let total_combos = line_boosts.len() * row_boosts.len();
+    println!("=== Grid Search ({} combos x {} games) ===", total_combos, num_games);
+    println!("Policy: {}", model_path);
+    println!("Line boosts: {:?}", line_boosts);
+    println!("Row boosts:  {:?}", row_boosts);
+    println!();
+
+    let (_vs, policy_net) = load_policy(model_path)?;
+    let _guard = tch::no_grad_guard();
+
+    // Pre-generate all tile sequences for fair comparison
+    let mut rng = StdRng::seed_from_u64(seed);
+    let tile_sequences: Vec<Vec<Tile>> = (0..num_games)
+        .map(|_| generate_tile_sequence(&mut rng))
+        .collect();
+
+    struct GridResult {
+        line_b: f64,
+        row_b: f64,
+        avg: f64,
+        median: i32,
+        std: f64,
+        min: i32,
+        max: i32,
+        avg_completions: f64,
+    }
+
+    let mut results: Vec<GridResult> = Vec::with_capacity(total_combos);
+    let start = Instant::now();
+
+    for (combo_idx, &lb) in line_boosts.iter().enumerate() {
+        for &rb in row_boosts.iter() {
+            let strategy = StrategyParams {
+                line_boost: lb,
+                row_boost: rb,
+            };
+
+            let mut scores = Vec::with_capacity(num_games);
+            let mut total_completions = 0usize;
+
+            for tiles in &tile_sequences {
+                let (score, lc) = play_game_with_strategy_stats(tiles, &policy_net, strategy);
+                scores.push(score);
+                total_completions += lc.total();
+            }
+
+            let (avg, median, min, max) = score_stats(&scores);
+            let mean = avg;
+            let variance = scores.iter().map(|&s| (s as f64 - mean).powi(2)).sum::<f64>()
+                / scores.len() as f64;
+            let std = variance.sqrt();
+            let avg_completions = total_completions as f64 / num_games as f64;
+
+            let combo_num = combo_idx * row_boosts.len()
+                + row_boosts.iter().position(|&r| (r - rb).abs() < 1e-9).unwrap()
+                + 1;
+            println!(
+                "  [{:>3}/{}] line={:.1} row={:.1} => avg={:.1} med={} std={:.1} min={} max={} lines={:.1} ({:.1}s)",
+                combo_num, total_combos, lb, rb, avg, median, std, min, max, avg_completions,
+                start.elapsed().as_secs_f64()
+            );
+
+            results.push(GridResult {
+                line_b: lb,
+                row_b: rb,
+                avg,
+                median,
+                std,
+                min,
+                max,
+                avg_completions,
+            });
+        }
+    }
+
+    // Sort by avg score descending
+    results.sort_by(|a, b| b.avg.partial_cmp(&a.avg).unwrap());
+
+    // Print top results
+    println!("\n{}", "=".repeat(80));
+    println!("Top 10 configurations (sorted by avg score):");
+    println!("{}", "=".repeat(80));
+    println!(
+        "{:>6} {:>6} | {:>9} {:>6} {:>6} {:>5} {:>5} | {:>5}",
+        "line_b", "row_b", "avg", "median", "std", "min", "max", "lines"
+    );
+    println!(
+        "{:-<6} {:-<6}-+-{:-<9}-{:-<6}-{:-<6}-{:-<5}-{:-<5}-+-{:-<5}",
+        "", "", "", "", "", "", "", ""
+    );
+    for (i, r) in results.iter().enumerate().take(10) {
+        println!(
+            "{:>6.1} {:>6.1} | {:>9.2} {:>6} {:>6.1} {:>5} {:>5} | {:>5.1}{}",
+            r.line_b, r.row_b, r.avg, r.median, r.std, r.min, r.max, r.avg_completions,
+            if i == 0 { "  <-- BEST" } else { "" }
+        );
+    }
+
+    // Save CSV
+    {
+        let mut f = fs::File::create(output_path)?;
+        writeln!(f, "line_boost,row_boost,avg,median,std,min,max,avg_completions")?;
+        for r in &results {
+            writeln!(
+                f,
+                "{:.1},{:.1},{:.2},{},{:.1},{},{},{:.2}",
+                r.line_b, r.row_b, r.avg, r.median, r.std, r.min, r.max, r.avg_completions
+            )?;
+        }
+    }
+    println!("\nResults saved to {}", output_path);
+    println!(
+        "Total time: {:.1}s ({:.1}s per combo)",
+        start.elapsed().as_secs_f64(),
+        start.elapsed().as_secs_f64() / total_combos as f64
+    );
+
+    // Print recommendation
+    let best = &results[0];
+    println!(
+        "\nRecommended: --line-boost {:.1} --row-boost {:.1} (avg={:.2})",
+        best.line_b, best.row_b, best.avg
+    );
+
+    Ok(())
+}
+
+// ============================================================
+// Expectimax
+// ============================================================
+
+/// Evaluate a board state using the value net.
+/// Averages value_net over all remaining tiles in the deck as "current tile"
+/// to stay in-distribution (the value net was trained with real tiles).
+fn evaluate_board(
+    plateau: &Plateau,
+    deck: &Deck,
+    turn: usize,
+    value_net: &GraphTransformerValueNet,
+) -> f64 {
+    let remaining = get_available_tiles(deck);
+    if remaining.is_empty() {
+        // Terminal state: return normalized actual score
+        let score = result(plateau) as f64;
+        return ((score - 140.0) / 40.0).clamp(-1.0, 1.0);
+    }
+
+    // Batch all remaining tiles into one forward pass
+    let features: Vec<Tensor> = remaining.iter()
+        .map(|tile| convert_plateau_for_gat_47ch(plateau, tile, deck, turn, 19))
+        .collect();
+    let batch = Tensor::stack(&features, 0); // [N, 19, 47]
+    let values = value_net.forward(&batch, false); // [N, 1]
+    f64::try_from(&values.mean(Kind::Float)).unwrap()
+}
+
+/// Play a game using expectimax search.
+/// depth=0: value-guided (evaluate each legal placement with value_net)
+/// depth=1: for each legal placement, average value over all possible next tiles
+///          (using policy to choose placement for each next tile)
+fn play_game_expectimax(
+    tiles: &[Tile],
+    policy_net: &GraphTransformerPolicyNet,
+    value_net: &GraphTransformerValueNet,
+    depth: usize,
+    line_boost: f64,
+) -> i32 {
+    let mut plateau = create_plateau_empty();
+    let mut deck = create_deck();
+
+    for (turn, tile) in tiles.iter().enumerate() {
+        let legal = get_legal_moves(&plateau);
+        if legal.is_empty() {
+            break;
+        }
+
+        let best_pos = if legal.len() == 1 {
+            legal[0]
+        } else {
+            let mut best_eval = f64::NEG_INFINITY;
+            let mut best = legal[0];
+
+            for &pos in &legal {
+                // Temporarily place tile
+                plateau.tiles[pos] = *tile;
+                let new_deck = replace_tile_in_deck(&deck, tile);
+
+                let eval = if depth == 0 {
+                    // 0-ply: just evaluate the board after placement
+                    evaluate_board(&plateau, &new_deck, turn + 1, value_net)
+                } else {
+                    // 1-ply: average over all remaining tiles
+                    let remaining = get_available_tiles(&new_deck);
+                    if remaining.is_empty() {
+                        // No tiles left, this is the final state
+                        result(&plateau) as f64
+                    } else {
+                        let mut sum_eval = 0.0;
+                        for next_tile in &remaining {
+                            let next_legal = get_legal_moves(&plateau);
+                            if next_legal.is_empty() {
+                                sum_eval += result(&plateau) as f64;
+                                continue;
+                            }
+
+                            // Find best position for next_tile using policy
+                            let next_pos = if line_boost > 0.0 {
+                                let strategy = StrategyParams { line_boost, row_boost: 0.0 };
+                                let boosted = compute_boosted_logits(
+                                    &plateau, next_tile, &new_deck, turn + 1,
+                                    policy_net, strategy,
+                                );
+                                *next_legal.iter()
+                                    .max_by(|&&a, &&b| boosted[a].partial_cmp(&boosted[b]).unwrap())
+                                    .unwrap()
+                            } else {
+                                let ml = compute_masked_logits(
+                                    &plateau, next_tile, &new_deck, turn + 1, policy_net,
+                                );
+                                ml.argmax(-1, false).int64_value(&[]) as usize
+                            };
+
+                            // Place next tile, evaluate, unplace
+                            plateau.tiles[next_pos] = *next_tile;
+                            let deck2 = replace_tile_in_deck(&new_deck, next_tile);
+                            let v = evaluate_board(&plateau, &deck2, turn + 2, value_net);
+                            sum_eval += v;
+                            plateau.tiles[next_pos] = Tile(0, 0, 0);
+                        }
+                        sum_eval / remaining.len() as f64
+                    }
+                };
+
+                // Unplace tile
+                plateau.tiles[pos] = Tile(0, 0, 0);
+
+                if eval > best_eval {
+                    best_eval = eval;
+                    best = pos;
+                }
+            }
+            best
+        };
+
+        plateau.tiles[best_pos] = *tile;
+        deck = replace_tile_in_deck(&deck, tile);
+    }
+
+    result(&plateau)
+}
+
+fn run_expectimax(
+    model_policy_path: &str,
+    model_value_path: &str,
+    num_games: usize,
+    depth: usize,
+    line_boost: f64,
+    seed: u64,
+    embed_dim: i64,
+    num_layers: usize,
+    num_heads: i64,
+) -> Result<(), Box<dyn Error>> {
+    println!("{}", "=".repeat(60));
+    println!("Expectimax Benchmark ({} games, depth={})", num_games, depth);
+    println!("{}", "=".repeat(60));
+    println!("Policy: {}", model_policy_path);
+    println!("Value:  {}", model_value_path);
+    if line_boost > 0.0 {
+        println!("Line boost: {:.1}", line_boost);
+    }
+    println!("Architecture: embed={}, layers={}, heads={}", embed_dim, num_layers, num_heads);
+    println!();
+
+    let (_vs_p, policy_net) = load_policy_sized(model_policy_path, embed_dim, num_layers, num_heads)?;
+    let (_vs_v, value_net) = load_value_sized(model_value_path, embed_dim, num_layers, num_heads)?;
+    let _guard = tch::no_grad_guard();
+
+    let mut rng = StdRng::seed_from_u64(seed);
+    let tile_sequences: Vec<Vec<Tile>> = (0..num_games)
+        .map(|_| generate_tile_sequence(&mut rng))
+        .collect();
+
+    let no_strategy = StrategyParams { line_boost: 0.0, row_boost: 0.0 };
+    let boost_strategy = StrategyParams { line_boost, row_boost: 0.0 };
+
+    let mut scores_pure = Vec::with_capacity(num_games);
+    let mut scores_boost = Vec::with_capacity(num_games);
+    let mut scores_value = Vec::with_capacity(num_games);
+    let mut scores_expectimax = Vec::with_capacity(num_games);
+
+    let start = Instant::now();
+
+    for (i, tiles) in tile_sequences.iter().enumerate() {
+        // 1. Policy pure
+        scores_pure.push(play_game_with_policy(tiles, &policy_net, no_strategy));
+
+        // 2. Policy + line_boost
+        if line_boost > 0.0 {
+            scores_boost.push(play_game_with_policy(tiles, &policy_net, boost_strategy));
+        }
+
+        // 3. Value-guided (0-ply)
+        scores_value.push(play_game_expectimax(tiles, &policy_net, &value_net, 0, line_boost));
+
+        // 4. Expectimax (requested depth) - only if depth >= 1
+        if depth >= 1 {
+            scores_expectimax.push(play_game_expectimax(
+                tiles, &policy_net, &value_net, depth, line_boost,
+            ));
+        }
+
+        if (i + 1) % 10 == 0 {
+            let avg_p = scores_pure.iter().map(|&s| s as f64).sum::<f64>() / scores_pure.len() as f64;
+            let avg_v = scores_value.iter().map(|&s| s as f64).sum::<f64>() / scores_value.len() as f64;
+            print!(
+                "  {} games ({:.1}s): pure={:.1}, value-0ply={:.1}",
+                i + 1, start.elapsed().as_secs_f64(), avg_p, avg_v,
+            );
+            if depth >= 1 && !scores_expectimax.is_empty() {
+                let avg_e = scores_expectimax.iter().map(|&s| s as f64).sum::<f64>()
+                    / scores_expectimax.len() as f64;
+                print!(", expect-{}ply={:.1}", depth, avg_e);
+            }
+            println!();
+        }
+    }
+
+    // Print results table
+    println!("\n{}", "=".repeat(70));
+    println!(
+        "Results ({} games, {:.1}s):",
+        num_games,
+        start.elapsed().as_secs_f64()
+    );
+    println!("{}", "=".repeat(70));
+    println!(
+        "{:<30} {:>8} {:>8} {:>6} {:>6}",
+        "Strategy", "Avg", "Median", "Min", "Max"
+    );
+    println!("{}", "-".repeat(70));
+
+    let (avg, med, min, max) = score_stats(&scores_pure);
+    println!("{:<30} {:>8.1} {:>8} {:>6} {:>6}", "Policy pure", avg, med, min, max);
+
+    if line_boost > 0.0 {
+        let (avg, med, min, max) = score_stats(&scores_boost);
+        println!(
+            "{:<30} {:>8.1} {:>8} {:>6} {:>6}",
+            format!("Policy + lb={:.0}", line_boost), avg, med, min, max
+        );
+    }
+
+    let (avg, med, min, max) = score_stats(&scores_value);
+    println!("{:<30} {:>8.1} {:>8} {:>6} {:>6}", "Value-guided (0-ply)", avg, med, min, max);
+
+    if depth >= 1 {
+        let (avg, med, min, max) = score_stats(&scores_expectimax);
+        println!(
+            "{:<30} {:>8.1} {:>8} {:>6} {:>6}",
+            format!("Expectimax ({}-ply)", depth), avg, med, min, max
+        );
+    }
+
+    println!("{}", "=".repeat(70));
+
+    Ok(())
+}
+
+// ============================================================
 // Main
 // ============================================================
 
@@ -988,8 +2022,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             data_dir,
             generation,
             seed,
+            line_boost,
+            row_boost,
         } => {
             let save_path = format!("{}/gen{}.csv", data_dir, generation);
+            let strategy = StrategyParams { line_boost, row_boost };
             run_generate(
                 &model_path,
                 num_games,
@@ -997,6 +2034,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 explore_turns,
                 &save_path,
                 seed.unwrap_or(42),
+                strategy,
             )?;
         }
 
@@ -1014,6 +2052,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             output_gen,
             skip_value,
             skip_policy,
+            min_score,
+            embed_dim,
+            num_layers,
+            num_heads,
         } => {
             let output_gen = output_gen.unwrap_or_else(|| generations.iter().max().unwrap() + 1);
             let gw = gen_weights.unwrap_or_else(|| vec![1.0; generations.len()]);
@@ -1036,6 +2078,20 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             println!("Total samples: {}", all_samples.len());
 
+            if let Some(ms) = min_score {
+                let before = all_samples.len();
+                all_samples.retain(|s| s.final_score >= ms);
+                // Recompute weights based on filtered set
+                all_weights = compute_sample_weights(&all_samples, 1.0);
+                println!(
+                    "Filtered by min_score >= {}: {} -> {} samples ({} games removed)",
+                    ms,
+                    before,
+                    all_samples.len(),
+                    (before - all_samples.len()) / 19
+                );
+            }
+
             fs::create_dir_all(&output_dir)?;
 
             if !skip_policy {
@@ -1052,6 +2108,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     batch_size,
                     lr,
                     weight_decay,
+                    embed_dim,
+                    num_layers,
+                    num_heads,
                 )?;
             }
 
@@ -1068,6 +2127,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     batch_size,
                     lr,
                     weight_decay,
+                    embed_dim,
+                    num_layers,
+                    num_heads,
                 )?;
             }
         }
@@ -1077,8 +2139,25 @@ fn main() -> Result<(), Box<dyn Error>> {
             model_b,
             num_games,
             seed,
+            line_boost_a,
+            row_boost_a,
+            line_boost_b,
+            row_boost_b,
+            embed_dim_a,
+            num_layers_a,
+            num_heads_a,
+            embed_dim_b,
+            num_layers_b,
+            num_heads_b,
         } => {
-            run_benchmark(&model_a, &model_b, num_games, seed.unwrap_or(42))?;
+            let strategy_a = StrategyParams { line_boost: line_boost_a, row_boost: row_boost_a };
+            let strategy_b = StrategyParams { line_boost: line_boost_b, row_boost: row_boost_b };
+            run_benchmark(
+                &model_a, &model_b, num_games, seed.unwrap_or(42),
+                strategy_a, strategy_b,
+                (embed_dim_a, num_layers_a, num_heads_a),
+                (embed_dim_b, num_layers_b, num_heads_b),
+            )?;
         }
 
         Commands::Loop {
@@ -1097,7 +2176,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             data_dir,
             output_dir,
             seed,
+            line_boost,
+            row_boost,
         } => {
+            let strategy = StrategyParams { line_boost, row_boost };
             run_loop(
                 &init_policy,
                 init_value.as_deref(),
@@ -1114,6 +2196,70 @@ fn main() -> Result<(), Box<dyn Error>> {
                 &data_dir,
                 &output_dir,
                 seed.unwrap_or(42),
+                strategy,
+            )?;
+        }
+
+        Commands::Ensemble {
+            model_a,
+            model_b,
+            num_games,
+            weight_b,
+            line_boost,
+            row_boost,
+            seed,
+        } => {
+            run_ensemble(
+                &model_a,
+                &model_b,
+                num_games,
+                weight_b,
+                line_boost,
+                row_boost,
+                seed.unwrap_or(42),
+            )?;
+        }
+
+        Commands::Gridsearch {
+            model_path,
+            num_games,
+            line_boosts,
+            row_boosts,
+            output,
+            seed,
+        } => {
+            let lb: Vec<f64> = line_boosts
+                .split(',')
+                .map(|s| s.trim().parse::<f64>().expect("Invalid line_boost value"))
+                .collect();
+            let rb: Vec<f64> = row_boosts
+                .split(',')
+                .map(|s| s.trim().parse::<f64>().expect("Invalid row_boost value"))
+                .collect();
+            run_gridsearch(&model_path, num_games, &lb, &rb, &output, seed.unwrap_or(42))?;
+        }
+
+        Commands::Expectimax {
+            model_policy,
+            model_value,
+            num_games,
+            depth,
+            line_boost,
+            seed,
+            embed_dim,
+            num_layers,
+            num_heads,
+        } => {
+            run_expectimax(
+                &model_policy,
+                &model_value,
+                num_games,
+                depth,
+                line_boost,
+                seed.unwrap_or(42),
+                embed_dim,
+                num_layers,
+                num_heads,
             )?;
         }
     }

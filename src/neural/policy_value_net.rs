@@ -1,5 +1,5 @@
 use crate::neural::gnn::{GraphPolicyNet, GraphValueNet};
-use crate::neural::graph_transformer::GraphTransformerPolicyNet;
+use crate::neural::graph_transformer::{GraphTransformerPolicyNet, GraphTransformerValueNet};
 use crate::neural::manager::NNArchitecture;
 use tch::{nn, Tensor};
 
@@ -309,6 +309,7 @@ pub struct ValueNet {
 pub enum ValueNetImpl {
     Cnn(Box<ValueNetCNN>),
     Gnn(GraphValueNet),
+    GraphTransformer(GraphTransformerValueNet),
 }
 
 impl ValueNet {
@@ -324,9 +325,10 @@ impl ValueNet {
                 net: ValueNetImpl::Gnn(GraphValueNet::new(vs, 8, &[64, 64, 64], 0.1)), // 8 features per node for GNN (matches training data)
             },
             NNArchitecture::GraphTransformer => Self {
-                // Graph Transformer uses GAT-style value network with 47 features
                 arch,
-                net: ValueNetImpl::Gnn(GraphValueNet::new(vs, 47, &[64, 64, 64], 0.1)),
+                net: ValueNetImpl::GraphTransformer(GraphTransformerValueNet::new(
+                    vs, 47, 128, 2, 4, 0.1,
+                )),
             },
         }
     }
@@ -335,9 +337,7 @@ impl ValueNet {
         match &self.net {
             ValueNetImpl::Cnn(net) => net.forward(input, train),
             ValueNetImpl::Gnn(net) => {
-                // Handle input shapes based on architecture:
-                // - GNN: [batch, 19, 8] or [batch, 8, 5, 5]
-                // - Graph Transformer: [batch, 19, 47]
+                // Handle input shapes for GNN: [batch, 19, 8] or [batch, 8, 5, 5]
                 let input_shape = input.size();
                 let reshaped = if input_shape.len() == 4 {
                     // CNN format [batch, C, 5, 5] -> [batch, 19, C]
@@ -350,16 +350,20 @@ impl ValueNet {
                 } else if input_shape.len() == 3 {
                     // Already 3D: [batch, 19, features] or [batch, features, 19]
                     if input_shape[1] == 19 {
-                        input.shallow_clone() // Already [batch, 19, features]
+                        input.shallow_clone()
                     } else if input_shape[2] == 19 {
-                        input.permute([0, 2, 1]) // [batch, features, 19] -> [batch, 19, features]
+                        input.permute([0, 2, 1])
                     } else {
-                        input.shallow_clone() // Unknown format, pass through
+                        input.shallow_clone()
                     }
                 } else {
                     input.shallow_clone()
                 };
                 net.forward(&reshaped, train)
+            }
+            ValueNetImpl::GraphTransformer(net) => {
+                // Graph Transformer expects [batch, 19, 47]
+                net.forward(input, train)
             }
         }
     }

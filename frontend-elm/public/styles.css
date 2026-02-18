@@ -269,7 +269,7 @@ body {
     gap: 2px;
     opacity: 1;
     animation: previewFadeOut 0.5s ease-out forwards;
-    animation-delay: 5.0s;
+    animation-delay: 7.8s;
 }
 
 .preview-label {
@@ -291,11 +291,11 @@ body {
     width: 100%;
     height: 100%;
     opacity: 0;
-    animation: previewShow 0.25s step-end none;
+    animation: previewShow 0.4s step-end none;
 }
 
 .preview-tile.preview-last {
-    animation-duration: 1.0s;
+    animation-duration: 0.8s;
 }
 
 .preview-arrow {
@@ -331,22 +331,26 @@ body {
 
 .welcome-tile {
     opacity: 0;
-    transform: scale(0);
-    animation: tileAppear 0.5s ease-out forwards;
+    transform: translateY(-80px) scale(0.6);
+    animation: tileAppear 0.6s ease-out forwards;
 }
 
 @keyframes tileAppear {
     0% {
         opacity: 0;
-        transform: scale(0) rotate(-10deg);
+        transform: translateY(-80px) scale(0.6);
+    }
+    40% {
+        opacity: 1;
+        transform: translateY(-10px) scale(0.98);
     }
     70% {
         opacity: 1;
-        transform: scale(1.1) rotate(2deg);
+        transform: translateY(4px) scale(1.01);
     }
     100% {
         opacity: 1;
-        transform: scale(1) rotate(0deg);
+        transform: translateY(0) scale(1);
     }
 }
 

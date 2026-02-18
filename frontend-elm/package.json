@@ -8,7 +8,8 @@
     "build": "npm run build:grpc && npm run build:elm",
     "dev:elm": "elm make src/Main.elm --output=public/elm.js",
     "dev": "npm run build:grpc && npm run dev:elm && npm run serve",
-    "serve": "python3 -m http.server 4000 -d public"
+    "serve": "python3 -m http.server 4000 -d public",
+    "test": "elm-test"
   },
   "dependencies": {
     "@protobuf-ts/grpcweb-transport": "^2.9.4",

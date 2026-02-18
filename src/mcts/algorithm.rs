@@ -267,7 +267,7 @@ pub fn mcts_find_best_position_for_tile_gumbel(
     total_turns: usize,
     _hyperparams: Option<&MCTSHyperparameters>,
 ) -> MCTSResult {
-    // Note: Gumbel variant doesn't use hyperparams yet
+    // Note: Ga régler le pb de cross pourquoi il marchait avant et plus maintenant  umbel variant doesn't use hyperparams yet
     mcts_core_gumbel(
         plateau,
         deck,

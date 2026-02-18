@@ -180,7 +180,7 @@ impl NeuralManager {
                 NNArchitecture::Cnn => format!("{}/cnn/value/value.params", config.model_path),
                 NNArchitecture::Gnn => format!("{}/gnn/value/value.params", config.model_path),
                 NNArchitecture::CnnOnehot => format!("{}/cnn-onehot/value/value.params", config.model_path),
-                NNArchitecture::GraphTransformer => format!("{}/gat_value_value.safetensors", config.model_path),
+                NNArchitecture::GraphTransformer => format!("{}/graph_transformer_value.safetensors", config.model_path),
             };
             if let Err(e) = value_net.load_model(&mut vs_value, &value_path) {
                 log::warn!("⚠️ Failed to load ValueNet from {}: {:?}", value_path, e);

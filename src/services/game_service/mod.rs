@@ -240,12 +240,17 @@ impl GameService for GameServiceImpl {
             buf
         };
 
-        // Trouver la meilleure position parmi les disponibles
+        // Trouver la meilleure position: GT logits + line completion boost
+        use crate::strategy::gt_boost::line_boost;
+        const LINE_BOOST_STRENGTH: f64 = 3.0;
+
         let best_position: usize = available.iter()
             .filter(|&&pos| pos < policy_vec.len())
             .max_by(|&a, &b| {
-                let val_a: f32 = policy_vec[*a];
-                let val_b: f32 = policy_vec[*b];
+                let val_a = policy_vec[*a] as f64
+                    + line_boost(&plateau, &_tile, *a, LINE_BOOST_STRENGTH);
+                let val_b = policy_vec[*b] as f64
+                    + line_boost(&plateau, &_tile, *b, LINE_BOOST_STRENGTH);
                 val_a.partial_cmp(&val_b).unwrap_or(std::cmp::Ordering::Equal)
             })
             .copied()

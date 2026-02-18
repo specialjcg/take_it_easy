@@ -319,6 +319,63 @@ impl GraphTransformerPolicyNet {
     }
 }
 
+/// Graph Transformer Value Network
+///
+/// Shares the same backbone as GraphTransformerPolicyNet but uses mean pooling
+/// over nodes followed by an MLP to produce a single scalar value in [-1, 1].
+pub struct GraphTransformerValueNet {
+    transformer: GraphTransformer,
+    value_head: nn::Sequential,
+}
+
+impl GraphTransformerValueNet {
+    pub fn new(
+        vs: &nn::VarStore,
+        input_dim: i64,
+        embed_dim: i64,
+        num_layers: usize,
+        num_heads: i64,
+        dropout: f64,
+    ) -> Self {
+        let ff_dim = embed_dim * 4;
+
+        let transformer = GraphTransformer::new(
+            vs,
+            input_dim,
+            embed_dim,
+            num_layers,
+            num_heads,
+            ff_dim,
+            dropout,
+        );
+
+        let p = vs.root();
+        let value_head = nn::seq()
+            .add(nn::linear(&p / "value_fc1", embed_dim, 64, Default::default()))
+            .add_fn(|x| x.relu())
+            .add(nn::linear(&p / "value_fc2", 64, 1, Default::default()));
+
+        Self {
+            transformer,
+            value_head,
+        }
+    }
+
+    /// Forward pass
+    /// node_features: [batch, 19, input_dim]
+    /// Returns: [batch, 1] value in [-1, 1]
+    pub fn forward(&self, node_features: &Tensor, train: bool) -> Tensor {
+        // Backbone: [batch, 19, embed_dim]
+        let h = self.transformer.forward(node_features, train);
+
+        // Mean pool over nodes: [batch, embed_dim]
+        let pooled = h.mean_dim(1, false, Kind::Float);
+
+        // Value head: [batch, 1]
+        pooled.apply(&self.value_head).tanh()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,6 +411,20 @@ mod tests {
         let out = pos_enc.forward(&x);
 
         assert_eq!(out.size(), vec![2, 19, 128]);
+    }
+
+    #[test]
+    fn test_graph_transformer_value_net() {
+        let vs = nn::VarStore::new(tch::Device::Cpu);
+        let value = GraphTransformerValueNet::new(&vs, 47, 128, 2, 4, 0.1);
+
+        let x = Tensor::randn([4, 19, 47], (Kind::Float, tch::Device::Cpu));
+        let out = value.forward(&x, false);
+
+        assert_eq!(out.size(), vec![4, 1]);
+        // Output should be in [-1, 1] due to tanh
+        let max_val: f64 = out.abs().max().double_value(&[]);
+        assert!(max_val <= 1.0, "Value output should be in [-1, 1], got max abs {}", max_val);
     }
 
     #[test]

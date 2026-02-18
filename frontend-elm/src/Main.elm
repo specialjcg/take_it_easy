@@ -12,6 +12,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Process
 import Task
+import GameLogic
 import TileSvg exposing (parseTileFromPath, viewEmptyHexSvg, viewTileSvg)
 import Url
 
@@ -332,6 +333,65 @@ type Msg
 -- ============================================================================
 -- UPDATE
 -- ============================================================================
+
+
+toGameModel : Model -> GameLogic.GameModel
+toGameModel model =
+    { sessionId = model.session |> Maybe.map .sessionId
+    , playerId = model.session |> Maybe.map .playerId
+    , currentTile = model.currentTile
+    , currentTileImage = model.currentTileImage
+    , plateauTiles = model.plateauTiles
+    , aiPlateauTiles = model.aiPlateauTiles
+    , availablePositions = model.availablePositions
+    , myTurn = model.myTurn
+    , currentTurnNumber = model.currentTurnNumber
+    , waitingForPlayers = model.waitingForPlayers
+    , isRealGameMode = model.isRealGameMode
+    , showTilePicker = model.showTilePicker
+    , usedTiles = model.usedTiles
+    , pendingAiPosition = model.pendingAiPosition
+    , isSoloMode = model.isSoloMode
+    , loading = model.loading
+    , statusMessage = model.statusMessage
+    , hasSession = model.session /= Nothing
+    , hasGameState = model.gameState /= Nothing
+    , gameStateIsFinished =
+        model.gameState
+            |> Maybe.map (\gs -> gs.state == Finished)
+            |> Maybe.withDefault False
+    }
+
+
+resolveCmdIntent : GameLogic.CmdIntent -> Cmd Msg
+resolveCmdIntent intent =
+    case intent of
+        GameLogic.NoCmd ->
+            Cmd.none
+
+        GameLogic.SendStartTurn sessionId ->
+            sendToJs <|
+                Encode.object
+                    [ ( "type", Encode.string "startTurn" )
+                    , ( "sessionId", Encode.string sessionId )
+                    ]
+
+        GameLogic.SchedulePollTurn delay ->
+            Process.sleep delay
+                |> Task.perform (\_ -> PollTurn)
+
+        GameLogic.SendGetAiMove tileCode boardState availPos turnNum ->
+            sendToJs <|
+                Encode.object
+                    [ ( "type", Encode.string "getAiMove" )
+                    , ( "tileCode", Encode.string tileCode )
+                    , ( "boardState", Encode.list Encode.string boardState )
+                    , ( "availablePositions", Encode.list Encode.int availPos )
+                    , ( "turnNumber", Encode.int turnNum )
+                    ]
+
+        GameLogic.BatchCmds cmds ->
+            Cmd.batch (List.map resolveCmdIntent cmds)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -830,98 +890,34 @@ update msg model =
             ( { model | showTilePicker = True }, Cmd.none )
 
         SelectRealTile tileCode ->
-            -- tileCode est comme "168" pour la tuile avec v1=1, v2=6, v3=8
-            -- Calculer les positions disponibles pour l'IA
             let
-                aiAvailablePositions =
-                    List.indexedMap
-                        (\i tile -> ( i, tile ))
-                        model.aiPlateauTiles
-                        |> List.filter (\( _, tile ) -> tile == "")
-                        |> List.map Tuple.first
+                result =
+                    GameLogic.handleSelectRealTilePure (toGameModel model) tileCode
             in
             ( { model
-                | currentTile = Just tileCode
-                , currentTileImage = Just ("image/" ++ tileCode ++ ".png")
-                , showTilePicker = False
-                , usedTiles = tileCode :: model.usedTiles
+                | currentTile = result.currentTile
+                , currentTileImage = result.currentTileImage
+                , showTilePicker = result.showTilePicker
+                , usedTiles = result.usedTiles
               }
-            , sendToJs <|
-                Encode.object
-                    [ ( "type", Encode.string "getAiMove" )
-                    , ( "tileCode", Encode.string tileCode )
-                    , ( "boardState", Encode.list Encode.string model.aiPlateauTiles )
-                    , ( "availablePositions", Encode.list Encode.int aiAvailablePositions )
-                    , ( "turnNumber", Encode.int model.currentTurnNumber )
-                    ]
+            , resolveCmdIntent result.cmdIntent
             )
 
         PlaceRealTile position ->
             let
-                tileImage =
-                    model.currentTileImage |> Maybe.withDefault ""
-
-                -- Placer la tuile du joueur
-                newPlateauTiles =
-                    List.indexedMap
-                        (\i tile ->
-                            if i == position then
-                                tileImage
-
-                            else
-                                tile
-                        )
-                        model.plateauTiles
-
-                -- Placer la tuile de l'IA (même tuile, position différente)
-                newAiPlateauTiles =
-                    case model.pendingAiPosition of
-                        Just aiPos ->
-                            List.indexedMap
-                                (\i tile ->
-                                    if i == aiPos then
-                                        tileImage
-
-                                    else
-                                        tile
-                                )
-                                model.aiPlateauTiles
-
-                        Nothing ->
-                            model.aiPlateauTiles
-
-                newAvailablePositions =
-                    List.filter (\p -> p /= position) model.availablePositions
-
-                newTurnNumber =
-                    model.currentTurnNumber + 1
-
-                isGameOver =
-                    newTurnNumber >= 19
-
-                aiMessage =
-                    case model.pendingAiPosition of
-                        Just aiPos ->
-                            "IA joue en position " ++ String.fromInt aiPos
-
-                        Nothing ->
-                            ""
+                result =
+                    GameLogic.handlePlaceRealTilePure (toGameModel model) position
             in
             ( { model
-                | plateauTiles = newPlateauTiles
-                , aiPlateauTiles = newAiPlateauTiles
-                , availablePositions = newAvailablePositions
-                , currentTurnNumber = newTurnNumber
-                , currentTile = Nothing
-                , currentTileImage = Nothing
-                , pendingAiPosition = Nothing
-                , showTilePicker = not isGameOver
-                , statusMessage =
-                    if isGameOver then
-                        "Partie terminée! Calculez votre score."
-
-                    else
-                        aiMessage
+                | plateauTiles = result.plateauTiles
+                , aiPlateauTiles = result.aiPlateauTiles
+                , availablePositions = result.availablePositions
+                , currentTurnNumber = result.currentTurnNumber
+                , currentTile = result.currentTile
+                , currentTileImage = result.currentTileImage
+                , pendingAiPosition = result.pendingAiPosition
+                , showTilePicker = result.showTilePicker
+                , statusMessage = result.statusMessage
               }
             , Cmd.none
             )
@@ -944,39 +940,29 @@ update msg model =
             )
 
         AiMoveResult position errorMsg ->
-            -- L'IA a choisi une position, on la stocke pour la placer après le joueur
-            if position >= 0 && position < 19 then
-                ( { model
-                    | pendingAiPosition = Just position
-                    , statusMessage =
-                        if errorMsg /= "" then
-                            "IA: " ++ errorMsg
-
-                        else
-                            ""
-                  }
-                , Cmd.none
-                )
-
-            else
-                ( { model
-                    | pendingAiPosition = Nothing
-                    , statusMessage = "IA: position invalide"
-                  }
-                , Cmd.none
-                )
+            let
+                result =
+                    GameLogic.handleAiMoveResultPure position errorMsg
+            in
+            ( { model
+                | pendingAiPosition = result.pendingAiPosition
+                , statusMessage = result.statusMessage
+              }
+            , Cmd.none
+            )
 
         -- Gameplay Responses
         TurnStarted tile tileImage turnNumber positions players waiting ->
             let
-                -- Déterminer si c'est le tour du joueur actuel
-                currentPlayerId =
-                    model.session |> Maybe.map .playerId |> Maybe.withDefault ""
+                result =
+                    GameLogic.handleTurnStartedPure (toGameModel model)
+                        { tile = tile
+                        , tileImage = tileImage
+                        , turnNumber = turnNumber
+                        , positions = positions
+                        , waiting = waiting
+                        }
 
-                isMyTurn =
-                    List.member currentPlayerId waiting
-
-                -- Mettre à jour gameState.state vers InProgress et les joueurs
                 updatedGameState =
                     Maybe.map
                         (\gs ->
@@ -990,93 +976,43 @@ update msg model =
                             }
                         )
                         model.gameState
-
-                -- Si ce n'est pas notre tour, poll après 2 secondes
-                pollCmd =
-                    if not isMyTurn then
-                        Process.sleep 2000
-                            |> Task.perform (\_ -> PollTurn)
-
-                    else
-                        Cmd.none
             in
             ( { model
-                | currentTile =
-                    if isMyTurn then
-                        Just tile
-
-                    else
-                        Nothing
-                , currentTileImage =
-                    if isMyTurn then
-                        Just tileImage
-
-                    else
-                        Nothing
-                , currentTurnNumber = turnNumber
-                , availablePositions = positions
-                , myTurn = isMyTurn
-                , loading = False
+                | currentTile = result.currentTile
+                , currentTileImage = result.currentTileImage
+                , currentTurnNumber = result.currentTurnNumber
+                , availablePositions = result.availablePositions
+                , myTurn = result.myTurn
+                , loading = result.loading
                 , gameState = updatedGameState
-                , waitingForPlayers = waiting
+                , waitingForPlayers = result.waitingForPlayers
               }
-            , pollCmd
+            , resolveCmdIntent result.cmdIntent
             )
 
         MovePlayed position points aiTiles aiScore isGameOver ->
             let
-                -- Place la tuile actuelle sur le plateau
-                newPlateauTiles =
-                    List.indexedMap
-                        (\i tile ->
-                            if i == position then
-                                -- Fix path: ../image/X.png -> image/X.png
-                                model.currentTileImage
-                                    |> Maybe.map (String.replace "../" "")
-                                    |> Maybe.withDefault tile
-
-                            else
-                                tile
-                        )
-                        model.plateauTiles
-
-                -- Retire la position des positions disponibles
-                newAvailablePositions =
-                    List.filter (\p -> p /= position) model.availablePositions
-
-                -- Update AI tiles if provided
-                newAiPlateauTiles =
-                    if List.isEmpty aiTiles then
-                        model.aiPlateauTiles
-                    else
-                        aiTiles
+                result =
+                    GameLogic.handleMovePlayedPure (toGameModel model)
+                        { position = position
+                        , points = points
+                        , aiTiles = aiTiles
+                        , aiScore = aiScore
+                        , isGameOver = isGameOver
+                        }
             in
             ( { model
-                | myTurn = False
-                , loading = False
-                , statusMessage = "+" ++ String.fromInt points ++ " points"
-                , plateauTiles = newPlateauTiles
-                , aiPlateauTiles = newAiPlateauTiles
+                | myTurn = result.myTurn
+                , loading = result.loading
+                , statusMessage = result.statusMessage
+                , plateauTiles = result.plateauTiles
+                , aiPlateauTiles = result.aiPlateauTiles
                 , aiScore = aiScore
-                , availablePositions = newAvailablePositions
-                , currentTile = Nothing
-                , currentTileImage = Nothing
+                , availablePositions = result.availablePositions
+                , currentTile = result.currentTile
+                , currentTileImage = result.currentTileImage
               }
-            , -- Auto-start next turn (sauf si la partie est finie)
-              if isGameOver then
-                Cmd.none
-
-              else
-                case model.session of
-                    Just session ->
-                        sendToJs <|
-                            Encode.object
-                                [ ( "type", Encode.string "startTurn" )
-                                , ( "sessionId", Encode.string session.sessionId )
-                                ]
-
-                    Nothing ->
-                        Cmd.none
+            , resolveCmdIntent result.cmdIntent
             )
 
         GameStateUpdated gameState ->
@@ -1117,36 +1053,26 @@ update msg model =
                         )
                         model.gameState
 
-                -- Resolve player names for all plateaus
-                resolvedPlateaus =
-                    List.map
-                        (\( id, tiles ) ->
-                            let
-                                name =
-                                    List.filter (\p -> p.id == id) mergedPlayers
-                                        |> List.head
-                                        |> Maybe.map .name
-                                        |> Maybe.withDefault
-                                            (if id == "mcts_ai" then
-                                                "IA"
+                simplePlayers =
+                    List.map (\p -> { id = p.id, name = p.name, score = p.score }) mergedPlayers
 
-                                             else
-                                                "Joueur"
-                                            )
-                            in
-                            ( id, name, tiles )
-                        )
-                        allPlateaus
+                result =
+                    GameLogic.handleGameFinishedPure
+                        { players = simplePlayers
+                        , playerTiles = playerTiles
+                        , aiTiles = aiTiles
+                        , allPlateaus = allPlateaus
+                        }
             in
             ( { model
                 | gameState = newGameState
-                , statusMessage = "Partie terminée!"
-                , plateauTiles = playerTiles
-                , aiPlateauTiles = aiTiles
-                , allPlayerPlateaus = resolvedPlateaus
+                , statusMessage = result.statusMessage
+                , plateauTiles = result.plateauTiles
+                , aiPlateauTiles = result.aiPlateauTiles
+                , allPlayerPlateaus = result.allPlayerPlateaus
                 , error = ""
-                , myTurn = False
-                , waitingForPlayers = []
+                , myTurn = result.myTurn
+                , waitingForPlayers = result.waitingForPlayers
               }
             , Cmd.none
             )
@@ -1155,22 +1081,7 @@ update msg model =
             ( { model | loading = False, error = error }, Cmd.none )
 
         PollTurn ->
-            case model.session of
-                Just session ->
-                    if not model.myTurn then
-                        ( model
-                        , sendToJs <|
-                            Encode.object
-                                [ ( "type", Encode.string "startTurn" )
-                                , ( "sessionId", Encode.string session.sessionId )
-                                ]
-                        )
-
-                    else
-                        ( model, Cmd.none )
-
-                Nothing ->
-                    ( model, Cmd.none )
+            ( model, resolveCmdIntent (GameLogic.handlePollTurnPure (toGameModel model)) )
 
         -- JS Interop
         ReceivedFromJs value ->
@@ -1633,6 +1544,9 @@ viewWelcomeBoard =
         gridOriginY =
             20
 
+        tileInterval =
+            0.4
+
         -- All 19 tiles for the tutorial board
         allTiles =
             [ ( 0, "963" ), ( 1, "974" ), ( 2, "928" )
@@ -1642,6 +1556,29 @@ viewWelcomeBoard =
             , ( 16, "523" ), ( 17, "528" ), ( 18, "574" )
             ]
 
+        -- Randomized placement order (board index at each step)
+        placementOrder =
+            [ 7, 14, 2, 11, 5, 17, 0, 9, 15, 3, 12, 18, 6, 1, 10, 16, 8, 4, 13 ]
+
+        -- For a board index, at which step is it placed?
+        placementStep idx =
+            placementOrder
+                |> List.indexedMap (\s bi -> ( s, bi ))
+                |> List.filter (\( _, bi ) -> bi == idx)
+                |> List.head
+                |> Maybe.map Tuple.first
+                |> Maybe.withDefault idx
+
+        -- Tiles reordered for the preview (follows placement order)
+        orderedTilesForPreview =
+            List.filterMap
+                (\boardIdx ->
+                    allTiles
+                        |> List.filter (\( i, _ ) -> i == boardIdx)
+                        |> List.head
+                )
+                placementOrder
+
         getTileCode idx =
             List.filter (\( i, _ ) -> i == idx) allTiles
                 |> List.head
@@ -1649,11 +1586,11 @@ viewWelcomeBoard =
 
         -- Scoring overlays: for each position, list of (phase CSS class, animation delay)
         getScoringOverlays idx =
-            (if List.member idx [ 0, 1, 2 ] then [ ( "phase-v1", 5.5 ) ] else [])
-                ++ (if List.member idx [ 16, 17, 18 ] then [ ( "phase-v1", 5.5 ) ] else [])
-                ++ (if List.member idx [ 0, 3, 7 ] then [ ( "phase-v2", 8.0 ) ] else [])
-                ++ (if List.member idx [ 11, 15, 18 ] then [ ( "phase-v2", 8.0 ) ] else [])
-                ++ (if List.member idx [ 2, 6, 11 ] then [ ( "phase-v3", 10.5 ) ] else [])
+            (if List.member idx [ 0, 1, 2 ] then [ ( "phase-v1", 8.5 ) ] else [])
+                ++ (if List.member idx [ 16, 17, 18 ] then [ ( "phase-v1", 8.5 ) ] else [])
+                ++ (if List.member idx [ 0, 3, 7 ] then [ ( "phase-v2", 11.0 ) ] else [])
+                ++ (if List.member idx [ 11, 15, 18 ] then [ ( "phase-v2", 11.0 ) ] else [])
+                ++ (if List.member idx [ 2, 6, 11 ] then [ ( "phase-v3", 13.5 ) ] else [])
 
         viewScoringOverlay ( phaseClass, delay ) =
             div
@@ -1668,26 +1605,26 @@ viewWelcomeBoard =
             [ div [ class "preview-label" ] [ text "Tuile a placer" ]
             , div [ class "preview-tile-area" ]
                 (List.indexedMap
-                    (\i ( _, tileCode ) ->
+                    (\step ( _, tileCode ) ->
                         case parseTileFromPath tileCode of
                             Just tileData ->
                                 div
                                     [ class
-                                        (if i == 18 then
+                                        (if step == 18 then
                                             "preview-tile preview-last"
 
                                          else
                                             "preview-tile"
                                         )
                                     , style "animation-delay"
-                                        (String.fromFloat (toFloat i * 0.25) ++ "s")
+                                        (String.fromFloat (toFloat step * tileInterval) ++ "s")
                                     ]
                                     [ div [ class "hex-tile-svg" ] [ viewTileSvg tileData ] ]
 
                             Nothing ->
                                 text ""
                     )
-                    allTiles
+                    orderedTilesForPreview
                 )
             , div [ class "preview-arrow" ] [ text "\u{2193}" ]
             ]
@@ -1696,17 +1633,17 @@ viewWelcomeBoard =
           div [ class "welcome-direction-labels" ]
             [ div
                 [ class "direction-label phase-v1"
-                , style "animation-delay" "5.5s"
+                , style "animation-delay" "8.5s"
                 ]
                 [ text "Colonnes ↕" ]
             , div
                 [ class "direction-label phase-v2"
-                , style "animation-delay" "8.0s"
+                , style "animation-delay" "11.0s"
                 ]
                 [ text "Diagonales ↗" ]
             , div
                 [ class "direction-label phase-v3"
-                , style "animation-delay" "10.5s"
+                , style "animation-delay" "13.5s"
                 ]
                 [ text "Diagonales ↘" ]
             ]
@@ -1728,7 +1665,7 @@ viewWelcomeBoard =
                             gridOriginY + row * spacingY
 
                         tileDelay =
-                            toFloat index * 0.25
+                            toFloat (placementStep index) * tileInterval
 
                         overlays =
                             getScoringOverlays index
@@ -1760,35 +1697,35 @@ viewWelcomeBoard =
                 ++ -- Score labels positioned at edges of scoring lines
                    [ div
                         [ class "score-label phase-v1"
-                        , style "animation-delay" "5.5s"
+                        , style "animation-delay" "8.5s"
                         , style "left" "-22px"
                         , style "top" "158px"
                         ]
                         [ text "27" ]
                    , div
                         [ class "score-label phase-v1"
-                        , style "animation-delay" "5.5s"
+                        , style "animation-delay" "8.5s"
                         , style "left" "310px"
                         , style "top" "158px"
                         ]
                         [ text "15" ]
                    , div
                         [ class "score-label phase-v2"
-                        , style "animation-delay" "8.0s"
+                        , style "animation-delay" "11.0s"
                         , style "left" "166px"
                         , style "top" "8px"
                         ]
                         [ text "18" ]
                    , div
                         [ class "score-label phase-v2"
-                        , style "animation-delay" "8.0s"
+                        , style "animation-delay" "11.0s"
                         , style "left" "310px"
                         , style "top" "218px"
                         ]
                         [ text "21" ]
                    , div
                         [ class "score-label phase-v3"
-                        , style "animation-delay" "10.5s"
+                        , style "animation-delay" "13.5s"
                         , style "left" "166px"
                         , style "top" "305px"
                         ]
@@ -1799,7 +1736,7 @@ viewWelcomeBoard =
         , -- Total score
           div
             [ class "welcome-score"
-            , style "animation-delay" "13.0s"
+            , style "animation-delay" "16.0s"
             ]
             [ text "Score : 105 pts" ]
         ]
