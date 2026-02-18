@@ -734,12 +734,17 @@ update msg model =
 
                 cmd =
                     if isSoloMode then
-                        sendToJs <|
-                            Encode.object
-                                [ ( "type", Encode.string "setReady" )
-                                , ( "sessionId", Encode.string session.sessionId )
-                                , ( "playerId", Encode.string session.playerId )
-                                ]
+                        Cmd.batch
+                            [ sendToJs <|
+                                Encode.object
+                                    [ ( "type", Encode.string "setReady" )
+                                    , ( "sessionId", Encode.string session.sessionId )
+                                    , ( "playerId", Encode.string session.playerId )
+                                    ]
+                            , -- Safety: poll after 5s if ReadySet response is lost
+                              Process.sleep 5000
+                                |> Task.perform (\_ -> PollSession)
+                            ]
 
                     else
                         -- Mode multijoueur: démarrer le polling du lobby
@@ -789,16 +794,21 @@ update msg model =
 
                 cmd =
                     if gameStarted then
-                        case model.session of
-                            Just session ->
-                                sendToJs <|
-                                    Encode.object
-                                        [ ( "type", Encode.string "startTurn" )
-                                        , ( "sessionId", Encode.string session.sessionId )
-                                        ]
+                        Cmd.batch
+                            [ case model.session of
+                                Just session ->
+                                    sendToJs <|
+                                        Encode.object
+                                            [ ( "type", Encode.string "startTurn" )
+                                            , ( "sessionId", Encode.string session.sessionId )
+                                            ]
 
-                            Nothing ->
-                                Cmd.none
+                                Nothing ->
+                                    Cmd.none
+                            , -- Safety: poll after 3s if TurnStarted response is lost
+                              Process.sleep 3000
+                                |> Task.perform (\_ -> PollTurn)
+                            ]
 
                     else
                         -- Polling pour détecter quand la partie démarre
@@ -831,16 +841,21 @@ update msg model =
 
                 autoStartCmd =
                     if gameStarted then
-                        case model.session of
-                            Just session ->
-                                sendToJs <|
-                                    Encode.object
-                                        [ ( "type", Encode.string "startTurn" )
-                                        , ( "sessionId", Encode.string session.sessionId )
-                                        ]
+                        Cmd.batch
+                            [ case model.session of
+                                Just session ->
+                                    sendToJs <|
+                                        Encode.object
+                                            [ ( "type", Encode.string "startTurn" )
+                                            , ( "sessionId", Encode.string session.sessionId )
+                                            ]
 
-                            Nothing ->
-                                Cmd.none
+                                Nothing ->
+                                    Cmd.none
+                            , -- Safety: poll after 3s if TurnStarted response is lost
+                              Process.sleep 3000
+                                |> Task.perform (\_ -> PollTurn)
+                            ]
 
                     else
                         -- Continuer le polling si encore en attente

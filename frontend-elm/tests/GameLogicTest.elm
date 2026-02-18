@@ -55,6 +55,7 @@ suite =
         , ds5_gameFinishedNoPlateaus
         , ds6_tilePickerBlocked
         , ds7_aiInvalidPosition
+        , ds8_initialTurnLost
         ]
 
 
@@ -458,6 +459,87 @@ ds7_aiInvalidPosition =
                         handleAiMoveResultPure 18 ""
                 in
                 Expect.equal (Just 18) result.pendingAiPosition
+        ]
+
+
+
+-- ============================================================================
+-- DS8: Initial startTurn lost (ReadySet → TurnStarted never arrives)
+-- ============================================================================
+
+
+ds8_initialTurnLost : Test
+ds8_initialTurnLost =
+    describe "DS8: Initial startTurn response lost after game start"
+        [ test "PollTurn recovers when myTurn=False at turn 0 (initial state)" <|
+            \_ ->
+                let
+                    -- State after ReadySet: game started but TurnStarted never arrived
+                    model =
+                        { defaultModel
+                            | myTurn = False
+                            , currentTile = Nothing
+                            , currentTurnNumber = 0
+                            , loading = True
+                        }
+
+                    cmd =
+                        handlePollTurnPure model
+                in
+                Expect.equal True (isSendStartTurn cmd)
+        , test "isDeadState detects myTurn=False + no tile + game not finished (waiting for TurnStarted)" <|
+            \_ ->
+                let
+                    model =
+                        { defaultModel
+                            | myTurn = False
+                            , currentTile = Nothing
+                            , currentTurnNumber = 0
+                            , hasSession = True
+                            , hasGameState = True
+                            , gameStateIsFinished = False
+                        }
+                in
+                -- Not a dead state per se (PollTurn will recover), but canClickPosition is False
+                Expect.equal False (canClickPosition model)
+        , test "TurnStarted resolves the initial stuck state" <|
+            \_ ->
+                let
+                    model =
+                        { defaultModel
+                            | myTurn = False
+                            , currentTile = Nothing
+                            , currentTurnNumber = 0
+                            , loading = True
+                            , playerId = Just "player-1"
+                        }
+
+                    result =
+                        handleTurnStartedPure model
+                            { tile = "923"
+                            , tileImage = "image/923.png"
+                            , turnNumber = 0
+                            , positions = List.range 0 18
+                            , waiting = [ "player-1" ]
+                            }
+                in
+                Expect.all
+                    [ \r -> Expect.equal True r.myTurn
+                    , \r -> Expect.equal (Just "923") r.currentTile
+                    , \r -> Expect.equal False r.loading
+                    , \r -> Expect.equal 19 (List.length r.availablePositions)
+                    ]
+                    result
+        , test "PollTurn is NoCmd once TurnStarted has been processed (myTurn=True)" <|
+            \_ ->
+                let
+                    model =
+                        { defaultModel
+                            | myTurn = True
+                            , currentTile = Just "923"
+                        }
+                in
+                Expect.equal NoCmd (handlePollTurnPure model)
         ]
 
 

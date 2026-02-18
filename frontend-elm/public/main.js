@@ -5382,6 +5382,7 @@ var $author$project$Main$MovePlayed = F5(
 		return {$: 51, a: a, b: b, c: c, d: d, e: e};
 	});
 var $author$project$Main$PollSession = {$: 41};
+var $author$project$Main$PollTurn = {$: 52};
 var $author$project$Main$ReadySet = function (a) {
 	return {$: 39, a: a};
 };
@@ -5417,6 +5418,7 @@ var $author$project$Main$TurnStarted = F6(
 	function (a, b, c, d, e, f) {
 		return {$: 50, a: a, b: b, c: c, d: d, e: e, f: f};
 	});
+var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$json$Json$Decode$decodeValue = _Json_run;
 var $elm$core$List$filter = F2(
 	function (isGood, list) {
@@ -6101,10 +6103,8 @@ var $author$project$Main$jsMessageDecoder = A2(
 	$author$project$Main$jsMessageDecoderByType,
 	A2($elm$json$Json$Decode$field, 'type', $elm$json$Json$Decode$string));
 var $elm$browser$Browser$Navigation$load = _Browser_load;
-var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $elm$browser$Browser$Navigation$pushUrl = _Browser_pushUrl;
-var $author$project$Main$PollTurn = {$: 52};
 var $elm$json$Json$Encode$list = F2(
 	function (func, entries) {
 		return _Json_wrap(
@@ -6259,9 +6259,9 @@ var $elm$url$Url$toString = function (url) {
 };
 var $author$project$Main$handleJsMessage = F2(
 	function (value, model) {
-		var _v16 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$jsMessageDecoder, value);
-		if (!_v16.$) {
-			var jsMsg = _v16.a;
+		var _v19 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$jsMessageDecoder, value);
+		if (!_v19.$) {
+			var jsMsg = _v19.a;
 			switch (jsMsg.$) {
 				case 0:
 					var user = jsMsg.a;
@@ -6892,30 +6892,40 @@ var $author$project$Main$update = F2(
 				var session = msg.a;
 				var gameState = msg.b;
 				var isSoloMode = function () {
-					var _v6 = model.J;
-					if (!_v6.$) {
-						var mode = _v6.a;
+					var _v7 = model.J;
+					if (!_v7.$) {
+						var mode = _v7.a;
 						return A2($elm$core$String$startsWith, 'single-player', mode.cH);
 					} else {
 						return false;
 					}
 				}();
-				var cmd = isSoloMode ? $author$project$Main$sendToJs(
-					$elm$json$Json$Encode$object(
-						_List_fromArray(
-							[
-								_Utils_Tuple2(
-								'type',
-								$elm$json$Json$Encode$string('setReady')),
-								_Utils_Tuple2(
-								'sessionId',
-								$elm$json$Json$Encode$string(session.bb)),
-								_Utils_Tuple2(
-								'playerId',
-								$elm$json$Json$Encode$string(session.bR))
-							]))) : A2(
+				var cmd = isSoloMode ? $elm$core$Platform$Cmd$batch(
+					_List_fromArray(
+						[
+							$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('setReady')),
+										_Utils_Tuple2(
+										'sessionId',
+										$elm$json$Json$Encode$string(session.bb)),
+										_Utils_Tuple2(
+										'playerId',
+										$elm$json$Json$Encode$string(session.bR))
+									]))),
+							A2(
+							$elm$core$Task$perform,
+							function (_v5) {
+								return $author$project$Main$PollSession;
+							},
+							$elm$core$Process$sleep(5000))
+						])) : A2(
 					$elm$core$Task$perform,
-					function (_v5) {
+					function (_v6) {
 						return $author$project$Main$PollSession;
 					},
 					$elm$core$Process$sleep(2000));
@@ -6944,7 +6954,7 @@ var $author$project$Main$update = F2(
 						}),
 					A2(
 						$elm$core$Task$perform,
-						function (_v7) {
+						function (_v8) {
 							return $author$project$Main$PollSession;
 						},
 						$elm$core$Process$sleep(2000)));
@@ -6957,34 +6967,40 @@ var $author$project$Main$update = F2(
 			case 39:
 				var gameStarted = msg.a;
 				var newStatusMessage = gameStarted ? 'La partie commence!' : 'Prêt! En attente des autres joueurs...';
-				var cmd = function () {
-					if (gameStarted) {
-						var _v8 = model.g;
-						if (!_v8.$) {
-							var session = _v8.a;
-							return $author$project$Main$sendToJs(
-								$elm$json$Json$Encode$object(
-									_List_fromArray(
-										[
-											_Utils_Tuple2(
-											'type',
-											$elm$json$Json$Encode$string('startTurn')),
-											_Utils_Tuple2(
-											'sessionId',
-											$elm$json$Json$Encode$string(session.bb))
-										])));
-						} else {
-							return $elm$core$Platform$Cmd$none;
-						}
-					} else {
-						return A2(
+				var cmd = gameStarted ? $elm$core$Platform$Cmd$batch(
+					_List_fromArray(
+						[
+							function () {
+							var _v9 = model.g;
+							if (!_v9.$) {
+								var session = _v9.a;
+								return $author$project$Main$sendToJs(
+									$elm$json$Json$Encode$object(
+										_List_fromArray(
+											[
+												_Utils_Tuple2(
+												'type',
+												$elm$json$Json$Encode$string('startTurn')),
+												_Utils_Tuple2(
+												'sessionId',
+												$elm$json$Json$Encode$string(session.bb))
+											])));
+							} else {
+								return $elm$core$Platform$Cmd$none;
+							}
+						}(),
+							A2(
 							$elm$core$Task$perform,
-							function (_v9) {
-								return $author$project$Main$PollSession;
+							function (_v10) {
+								return $author$project$Main$PollTurn;
 							},
-							$elm$core$Process$sleep(2000));
-					}
-				}();
+							$elm$core$Process$sleep(3000))
+						])) : A2(
+					$elm$core$Task$perform,
+					function (_v11) {
+						return $author$project$Main$PollSession;
+					},
+					$elm$core$Process$sleep(2000));
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
@@ -6998,9 +7014,9 @@ var $author$project$Main$update = F2(
 						{F: error, aJ: false}),
 					$elm$core$Platform$Cmd$none);
 			case 41:
-				var _v10 = model.g;
-				if (!_v10.$) {
-					var session = _v10.a;
+				var _v12 = model.g;
+				if (!_v12.$) {
+					var session = _v12.a;
 					return _Utils_Tuple2(
 						model,
 						$author$project$Main$sendToJs(
@@ -7020,34 +7036,40 @@ var $author$project$Main$update = F2(
 			case 42:
 				var gameState = msg.a;
 				var gameStarted = gameState.aw === 1;
-				var autoStartCmd = function () {
-					if (gameStarted) {
-						var _v11 = model.g;
-						if (!_v11.$) {
-							var session = _v11.a;
-							return $author$project$Main$sendToJs(
-								$elm$json$Json$Encode$object(
-									_List_fromArray(
-										[
-											_Utils_Tuple2(
-											'type',
-											$elm$json$Json$Encode$string('startTurn')),
-											_Utils_Tuple2(
-											'sessionId',
-											$elm$json$Json$Encode$string(session.bb))
-										])));
-						} else {
-							return $elm$core$Platform$Cmd$none;
-						}
-					} else {
-						return A2(
+				var autoStartCmd = gameStarted ? $elm$core$Platform$Cmd$batch(
+					_List_fromArray(
+						[
+							function () {
+							var _v13 = model.g;
+							if (!_v13.$) {
+								var session = _v13.a;
+								return $author$project$Main$sendToJs(
+									$elm$json$Json$Encode$object(
+										_List_fromArray(
+											[
+												_Utils_Tuple2(
+												'type',
+												$elm$json$Json$Encode$string('startTurn')),
+												_Utils_Tuple2(
+												'sessionId',
+												$elm$json$Json$Encode$string(session.bb))
+											])));
+							} else {
+								return $elm$core$Platform$Cmd$none;
+							}
+						}(),
+							A2(
 							$elm$core$Task$perform,
-							function (_v12) {
-								return $author$project$Main$PollSession;
+							function (_v14) {
+								return $author$project$Main$PollTurn;
 							},
-							$elm$core$Process$sleep(2000));
-					}
-				}();
+							$elm$core$Process$sleep(3000))
+						])) : A2(
+					$elm$core$Task$perform,
+					function (_v15) {
+						return $author$project$Main$PollSession;
+					},
+					$elm$core$Process$sleep(2000));
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
@@ -7057,9 +7079,9 @@ var $author$project$Main$update = F2(
 						}),
 					autoStartCmd);
 			case 43:
-				var _v13 = model.g;
-				if (!_v13.$) {
-					var session = _v13.a;
+				var _v16 = model.g;
+				if (!_v16.$) {
+					var session = _v16.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -7080,9 +7102,9 @@ var $author$project$Main$update = F2(
 				}
 			case 44:
 				var position = msg.a;
-				var _v14 = model.g;
-				if (!_v14.$) {
-					var session = _v14.a;
+				var _v17 = model.g;
+				if (!_v17.$) {
+					var session = _v17.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -7245,9 +7267,9 @@ var $author$project$Main$update = F2(
 							newPlayers);
 					});
 				var mergedPlayers = function () {
-					var _v15 = model.k;
-					if (!_v15.$) {
-						var gs = _v15.a;
+					var _v18 = model.k;
+					if (!_v18.$) {
+						var gs = _v18.a;
 						return A2(mergePlayerScores, gs.bT, players);
 					} else {
 						return players;
