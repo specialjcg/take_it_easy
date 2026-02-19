@@ -17,9 +17,6 @@ pub mod oauth;
 pub mod password;
 pub mod routes;
 
-pub use database::AuthDatabase;
-pub use grpc_middleware::{authenticate_request, try_authenticate_request};
-pub use jwt::{JwtConfig, JwtManager};
-pub use models::*;
-pub use oauth::{OAuthConfig, OAuthManager};
+pub use grpc_middleware::try_authenticate_request;
+pub use jwt::JwtManager;
 pub use routes::{auth_router, AuthState};

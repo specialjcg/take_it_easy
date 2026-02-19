@@ -13,10 +13,5 @@ pub mod csv_writer;
 pub mod game_record;
 pub mod game_recorder;
 
-pub use csv_writer::{load_games_from_csv, CsvWriter, LoadedMoveRecord};
-pub use game_record::{
-    decode_plateau_value, encode_plateau, GameRecord, MoveRecord, PlayerRecord, PlayerType,
-};
-pub use game_recorder::{
-    determine_player_type, get_recorder, init_recorder, GameRecorder,
-};
+pub use game_record::PlayerType;
+pub use game_recorder::{get_recorder, init_recorder};
