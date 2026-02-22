@@ -14,8 +14,13 @@ const AUTH_API_BASE = IS_PRODUCTION
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 
-// Current player ID (set on session create/join)
+// Current player/session ID (set on session create/join)
 let currentPlayerId = null;
+let currentSessionId = null;
+
+// Silent logging in production
+const log = IS_PRODUCTION ? () => {} : console.log.bind(console);
+const warn = IS_PRODUCTION ? () => {} : console.warn.bind(console);
 
 // Cache player names from session events
 let playerNames = {};
@@ -31,7 +36,7 @@ function getPlayerName(id) {
 function initPorts(app) {
     // Listen for messages from Elm
     app.ports.sendToJs.subscribe(async (message) => {
-        console.log('Elm -> JS:', message);
+        log('Elm -> JS:', message);
 
         try {
             switch (message.type) {
@@ -86,7 +91,7 @@ function initPorts(app) {
                     break;
 
                 default:
-                    console.warn('Unknown message type:', message.type);
+                    warn('Unknown message type:', message.type);
             }
         } catch (error) {
             console.error('Error handling message:', error);
@@ -283,10 +288,12 @@ async function handleCreateSession(app, playerName, gameMode) {
 
     try {
         const result = await window.grpcClient.createSession(playerName, gameMode);
-        console.log('createSession result:', result);
+        log('createSession result:', result);
 
         if (result.success) {
             currentPlayerId = result.playerId;
+            currentSessionId = result.sessionId;
+            log('📌 Session created, currentSessionId =', currentSessionId);
             app.ports.receiveFromJs.send({
                 type: 'sessionCreated',
                 session: {
@@ -325,6 +332,8 @@ async function handleJoinSession(app, sessionCode, playerName) {
 
         if (result.success) {
             currentPlayerId = result.playerId;
+            currentSessionId = result.sessionId;
+            log('📌 Session joined, currentSessionId =', currentSessionId);
             app.ports.receiveFromJs.send({
                 type: 'sessionJoined',
                 session: {
@@ -391,25 +400,30 @@ async function handleSetReady(app, sessionId, playerId) {
 // ============================================================================
 
 async function handlePollSession(app, sessionId) {
-    console.log('🔄 Polling session:', sessionId);
+    log('🔄 Polling session:', sessionId);
     if (!window.grpcClient) {
-        console.warn('🔄 Poll: no grpcClient');
+        warn('🔄 Poll: no grpcClient');
         return;
     }
 
     try {
         const result = await window.grpcClient.getSessionState(sessionId);
-        console.log('🔄 Poll result:', result);
+        // Guard: ignore stale responses from old sessions
+        if (sessionId !== currentSessionId) {
+            log('⏭️ Ignoring stale poll response for old session', sessionId);
+            return;
+        }
+        log('🔄 Poll result:', result);
         if (result.success) {
             const gameState = parseGameState(result.sessionState);
-            console.log('🔄 Poll parsed gameState:', gameState);
+            log('🔄 Poll parsed gameState:', gameState);
             app.ports.receiveFromJs.send({
                 type: 'sessionPolled',
                 gameState: gameState
             });
         }
     } catch (e) {
-        console.warn('Poll session error:', e);
+        warn('Poll session error:', e);
     }
 }
 
@@ -428,7 +442,13 @@ async function handleStartTurn(app, sessionId, forcedTile) {
 
     try {
         const result = await window.grpcClient.startTurn(sessionId, forcedTile);
-        console.log('startTurn result:', result);
+        log('startTurn result:', result);
+
+        // Guard: ignore stale responses from old sessions
+        if (sessionId !== currentSessionId) {
+            log('⏭️ Ignoring stale startTurn response for old session', sessionId, '(current:', currentSessionId, ')');
+            return;
+        }
 
         if (result.success) {
             let positions = [];
@@ -465,7 +485,7 @@ async function handleStartTurn(app, sessionId, forcedTile) {
                         });
                     }
                 } catch (e) {
-                    console.warn('Parse gameState error:', e);
+                    warn('Parse gameState error:', e);
                 }
             }
 
@@ -492,6 +512,11 @@ async function handleStartTurn(app, sessionId, forcedTile) {
 }
 
 async function handleStartTurnGameOver(app, sessionId, errorMsg) {
+    // Guard: ignore stale responses from old sessions
+    if (sessionId !== currentSessionId) {
+        log('⏭️ Ignoring stale startTurn error for old session', sessionId, '(current:', currentSessionId, ')');
+        return;
+    }
     try {
         const stateResult = await window.grpcClient.getGameState(sessionId);
         if (stateResult.success && stateResult.isGameFinished) {
@@ -548,7 +573,7 @@ function sendGameFinishedFromState(app, rawGameState) {
         });
     }
 
-    console.log('🏁 Game finished detected from startTurn:', { players, plateaus });
+    log('🏁 Game finished detected from startTurn:', { players, plateaus });
     app.ports.receiveFromJs.send({
         type: 'gameFinished',
         players: players,
@@ -567,7 +592,13 @@ async function handlePlayMove(app, sessionId, playerId, position) {
 
     try {
         const result = await window.grpcClient.makeMove(sessionId, playerId, position);
-        console.log('makeMove result:', result);
+        log('makeMove result:', result);
+
+        // Guard: ignore stale responses from old sessions
+        if (sessionId !== currentSessionId) {
+            log('⏭️ Ignoring stale makeMove response for old session', sessionId);
+            return;
+        }
 
         if (result.success) {
             // Parse game state to extract AI data
@@ -650,8 +681,8 @@ async function handlePlayMove(app, sessionId, playerId, position) {
                 }
 
                 const scores = boardData?.scores || {};
-                console.log('gameFinished boardData:', boardData);
-                console.log('gameFinished scores:', scores);
+                log('gameFinished boardData:', boardData);
+                log('gameFinished scores:', scores);
 
                 if (boardData && boardData.player_plateaus) {
                     Object.entries(boardData.player_plateaus).forEach(([id, plateau]) => {
@@ -680,8 +711,8 @@ async function handlePlayMove(app, sessionId, playerId, position) {
                         plateaus[id] = tileImages;
                     });
                 }
-                console.log('gameFinished plateaus:', plateaus);
-                console.log('gameFinished players:', players);
+                log('gameFinished plateaus:', plateaus);
+                log('gameFinished players:', players);
                 app.ports.receiveFromJs.send({
                     type: 'gameFinished',
                     players: players,
@@ -719,9 +750,9 @@ async function handleGetAiMove(app, tileCode, boardState, availablePositions, tu
     }
 
     try {
-        console.log('🤖 Calling getAiMove:', { tileCode, boardState, availablePositions, turnNumber });
+        log('🤖 Calling getAiMove:', { tileCode, boardState, availablePositions, turnNumber });
         const result = await window.grpcClient.getAiMove(tileCode, boardState, availablePositions, turnNumber);
-        console.log('🤖 getAiMove result:', result);
+        log('🤖 getAiMove result:', result);
 
         if (result.success) {
             const msg = {
@@ -729,20 +760,20 @@ async function handleGetAiMove(app, tileCode, boardState, availablePositions, tu
                 position: result.recommendedPosition,
                 error: ''
             };
-            console.log('🤖 Sending to Elm:', msg);
+            log('🤖 Sending to Elm:', msg);
             app.ports.receiveFromJs.send(msg);
         } else {
             // Fallback: position aléatoire parmi les disponibles
             const fallbackPosition = availablePositions.length > 0
                 ? availablePositions[Math.floor(Math.random() * availablePositions.length)]
                 : 0;
-            console.warn('AI move failed, using fallback:', result.error);
+            warn('AI move failed, using fallback:', result.error);
             const fallbackMsg = {
                 type: 'aiMoveResult',
                 position: fallbackPosition,
                 error: 'Fallback: ' + (result.error || 'AI non disponible')
             };
-            console.log('🤖 Sending fallback to Elm:', fallbackMsg);
+            log('🤖 Sending fallback to Elm:', fallbackMsg);
             app.ports.receiveFromJs.send(fallbackMsg);
         }
     } catch (e) {
@@ -756,7 +787,7 @@ async function handleGetAiMove(app, tileCode, boardState, availablePositions, tu
             position: fallbackPosition,
             error: 'Fallback: erreur réseau'
         };
-        console.log('🤖 Sending error fallback to Elm:', errorMsg);
+        log('🤖 Sending error fallback to Elm:', errorMsg);
         app.ports.receiveFromJs.send(errorMsg);
     }
 }

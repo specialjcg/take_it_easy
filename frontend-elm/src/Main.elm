@@ -140,7 +140,7 @@ type alias Model =
     , currentTurnNumber : Int
     , waitingForPlayers : List String
 
-    -- Real Game Mode (Jeu Réel)
+    -- Companion Mode (Compagnon)
     , isRealGameMode : Bool
     , showTilePicker : Bool
     , usedTiles : List String
@@ -204,7 +204,7 @@ initialModel key url =
     , currentTurnNumber = 0
     , waitingForPlayers = []
 
-    -- Real Game Mode (Jeu Réel)
+    -- Companion Mode (Compagnon)
     , isRealGameMode = False
     , showTilePicker = False
     , usedTiles = []
@@ -236,8 +236,8 @@ defaultGameModes =
       , difficulty = Nothing
       }
     , { id = "real-game"
-      , name = "Jeu Réel"
-      , description = "Jouez avec le vrai jeu - sélectionnez les tuiles tirées"
+      , name = "Compagnon"
+      , description = "Accompagnez votre partie physique — comparez-vous à l'IA"
       , icon = "🎲"
       , simulations = Nothing
       , difficulty = Nothing
@@ -586,13 +586,18 @@ update msg model =
 
         -- Game Mode
         SelectGameMode mode ->
-            ( { model | selectedGameMode = Just mode }, Cmd.none )
+            if String.startsWith "single-player" mode.id then
+                -- Solo: launch immediately
+                update StartGame { model | selectedGameMode = Just mode }
+
+            else
+                ( { model | selectedGameMode = Just mode }, Cmd.none )
 
         StartGame ->
             case model.selectedGameMode of
                 Just mode ->
                     if mode.id == "real-game" then
-                        -- Mode Jeu Réel: pas besoin de serveur
+                        -- Mode Compagnon: pas besoin de serveur
                         ( { model
                             | currentView = GameView
                             , isRealGameMode = True
@@ -609,7 +614,41 @@ update msg model =
                         , Cmd.none
                         )
 
+                    else if String.startsWith "single-player" mode.id then
+                        -- Solo: skip session screen, create directly
+                        let
+                            name =
+                                if model.playerName == "" then
+                                    "Joueur"
+
+                                else
+                                    model.playerName
+                        in
+                        ( { model
+                            | currentView = GameView
+                            , isRealGameMode = False
+                            , plateauTiles = List.repeat 19 ""
+                            , aiPlateauTiles = List.repeat 19 ""
+                            , availablePositions = List.range 0 18
+                            , currentTile = Nothing
+                            , currentTileImage = Nothing
+                            , currentTurnNumber = 0
+                            , allPlayerPlateaus = []
+                            , aiScore = 0
+                            , showAiBoard = False
+                            , loading = True
+                            , error = ""
+                          }
+                        , sendToJs <|
+                            Encode.object
+                                [ ( "type", Encode.string "createSession" )
+                                , ( "playerName", Encode.string name )
+                                , ( "gameMode", Encode.string mode.id )
+                                ]
+                        )
+
                     else
+                        -- Multiplayer: show session screen
                         ( { model
                             | currentView = GameView
                             , isRealGameMode = False
@@ -1081,63 +1120,67 @@ update msg model =
             ( { model | gameState = Just gameState }, Cmd.none )
 
         GameFinished players playerTiles aiTiles allPlateaus ->
-            let
-                -- Merge final scores with existing player names
-                mergePlayerScores existingPlayers newPlayers =
-                    List.map
-                        (\newP ->
-                            let
-                                existingName =
-                                    List.filter (\p -> p.id == newP.id) existingPlayers
-                                        |> List.head
-                                        |> Maybe.map .name
-                                        |> Maybe.withDefault newP.name
-                            in
-                            { newP | name = existingName }
+            -- Guard: ignore stale gameFinished from old session (defense-in-depth)
+            case model.gameState of
+                Nothing ->
+                    -- No game state = session was reset, ignore stale message
+                    ( model, Cmd.none )
+
+                Just gs ->
+                    if gs.state == Finished then
+                        -- Already finished, ignore duplicate
+                        ( model, Cmd.none )
+
+                    else
+                        let
+                            -- Merge final scores with existing player names
+                            mergePlayerScores existingPlayers newPlayers =
+                                List.map
+                                    (\newP ->
+                                        let
+                                            existingName =
+                                                List.filter (\p -> p.id == newP.id) existingPlayers
+                                                    |> List.head
+                                                    |> Maybe.map .name
+                                                    |> Maybe.withDefault newP.name
+                                        in
+                                        { newP | name = existingName }
+                                    )
+                                    newPlayers
+
+                            mergedPlayers =
+                                mergePlayerScores gs.players players
+
+                            newGameState =
+                                Just
+                                    { gs
+                                        | state = Finished
+                                        , players = mergedPlayers
+                                    }
+
+                            simplePlayers =
+                                List.map (\p -> { id = p.id, name = p.name, score = p.score }) mergedPlayers
+
+                            result =
+                                GameLogic.handleGameFinishedPure
+                                    { players = simplePlayers
+                                    , playerTiles = playerTiles
+                                    , aiTiles = aiTiles
+                                    , allPlateaus = allPlateaus
+                                    }
+                        in
+                        ( { model
+                            | gameState = newGameState
+                            , statusMessage = result.statusMessage
+                            , plateauTiles = result.plateauTiles
+                            , aiPlateauTiles = result.aiPlateauTiles
+                            , allPlayerPlateaus = result.allPlayerPlateaus
+                            , error = ""
+                            , myTurn = result.myTurn
+                            , waitingForPlayers = result.waitingForPlayers
+                          }
+                        , Cmd.none
                         )
-                        newPlayers
-
-                mergedPlayers =
-                    case model.gameState of
-                        Just gs ->
-                            mergePlayerScores gs.players players
-
-                        Nothing ->
-                            players
-
-                newGameState =
-                    Maybe.map
-                        (\gs ->
-                            { gs
-                                | state = Finished
-                                , players = mergedPlayers
-                            }
-                        )
-                        model.gameState
-
-                simplePlayers =
-                    List.map (\p -> { id = p.id, name = p.name, score = p.score }) mergedPlayers
-
-                result =
-                    GameLogic.handleGameFinishedPure
-                        { players = simplePlayers
-                        , playerTiles = playerTiles
-                        , aiTiles = aiTiles
-                        , allPlateaus = allPlateaus
-                        }
-            in
-            ( { model
-                | gameState = newGameState
-                , statusMessage = result.statusMessage
-                , plateauTiles = result.plateauTiles
-                , aiPlateauTiles = result.aiPlateauTiles
-                , allPlayerPlateaus = result.allPlayerPlateaus
-                , error = ""
-                , myTurn = result.myTurn
-                , waitingForPlayers = result.waitingForPlayers
-              }
-            , Cmd.none
-            )
 
         GameError error ->
             ( { model | loading = False, error = error }, Cmd.none )
@@ -1474,7 +1517,8 @@ view : Model -> Browser.Document Msg
 view model =
     { title = "Take It Easy - Elm"
     , body =
-        [ div [ class "app-container" ]
+        [ div [ class ("app-container" ++
+            if isInProgressLayout model then " in-progress-layout" else "") ]
             [ case model.currentView of
                 LoginView ->
                     viewAuth model
@@ -2158,11 +2202,24 @@ viewGame model =
 
           else
             text ""
-        , if model.statusMessage /= "" then
-            div [ class "status-message" ] [ text model.statusMessage ]
+        , div
+            [ class "status-message"
+            , style "opacity"
+                (if model.statusMessage /= "" then
+                    "1"
 
-          else
-            text ""
+                 else
+                    "0"
+                )
+            ]
+            [ text
+                (if model.statusMessage /= "" then
+                    model.statusMessage
+
+                 else
+                    "\u{00A0}"
+                )
+            ]
         , if model.isRealGameMode then
             viewRealGame model
 
@@ -2242,17 +2299,21 @@ viewGameSession model session =
 viewGameState : Model -> GameState -> Session -> Html Msg
 viewGameState model gameState session =
     div [ class "game-state" ]
-        [ div [ class "players-list glass-container" ]
-            [ h3 [] [ text "Joueurs" ]
-            , ul []
-                (List.map (viewPlayer session.playerId) gameState.players)
-            ]
+        [ if gameState.state /= InProgress then
+            div [ class "players-list glass-container" ]
+                [ h3 [] [ text "Joueurs" ]
+                , ul []
+                    (List.map (viewPlayer session.playerId) gameState.players)
+                ]
+
+          else
+            text ""
         , case gameState.state of
             Waiting ->
                 viewWaitingState model session gameState
 
             InProgress ->
-                viewInProgressState model session
+                viewInProgressState model session gameState
 
             Finished ->
                 viewFinishedState model gameState
@@ -2321,46 +2382,50 @@ viewWaitingState model session gameState =
         ]
 
 
-viewInProgressState : Model -> Session -> Html Msg
-viewInProgressState model session =
+viewInProgressState : Model -> Session -> GameState -> Html Msg
+viewInProgressState model session gameState =
     div [ class "in-progress-state" ]
-        [ div [ class "turn-info glass-container" ]
-            [ h3 [] [ text ("Tour " ++ String.fromInt model.currentTurnNumber ++ "/19") ]
-            , case model.currentTile of
-                Just _ ->
-                    div [ class "current-tile" ]
-                        [ case model.currentTileImage of
-                            Just img ->
-                                case parseTileFromPath img of
-                                    Just tileData ->
-                                        div [ class "tile-svg-container" ]
-                                            [ viewTileSvg tileData ]
-
-                                    Nothing ->
-                                        Html.img [ src img, class "tile-image" ] []
-
-                            Nothing ->
-                                text ""
-                        ]
-
-                Nothing ->
-                    if not model.myTurn && not (List.isEmpty model.waitingForPlayers) then
-                        div [ class "waiting-message" ]
-                            [ p [ style "opacity" "0.8" ]
-                                [ text ("En attente de " ++ String.fromInt (List.length model.waitingForPlayers) ++ " joueur(s)...") ]
-                            ]
-
-                    else
-                        button
-                            [ class "start-turn-button"
-                            , onClick StartTurn
-                            , disabled model.loading
-                            ]
-                            [ text "Commencer le tour" ]
-            ]
-        , div [ class "game-board glass-container" ]
+        [ div [ class "game-board glass-container" ]
             [ h3 [] [ text "Plateau de jeu" ]
             , viewHexBoard model
+            , -- Overlay top-left: tile
+              div [ class "turn-info board-overlay" ]
+                [ h3 [] [ text ("Tour " ++ String.fromInt model.currentTurnNumber ++ "/19") ]
+                , div
+                    [ class "current-tile"
+                    , style "opacity"
+                        (if model.currentTileImage /= Nothing then
+                            "1"
+
+                         else
+                            "0"
+                        )
+                    ]
+                    [ case model.currentTileImage of
+                        Just img ->
+                            case parseTileFromPath img of
+                                Just tileData ->
+                                    div [ class "tile-svg-container" ]
+                                        [ viewTileSvg tileData ]
+
+                                Nothing ->
+                                    Html.img [ src img, class "tile-image" ] []
+
+                        Nothing ->
+                            div [ class "tile-svg-container" ] []
+                    ]
+                , if model.currentTileImage /= Nothing then
+                    div [ class "placement-hint" ]
+                        [ text "Place sur le plateau" ]
+
+                  else
+                    text ""
+                ]
+            , -- Overlay top-right: scores
+              div [ class "board-scores board-overlay" ]
+                [ ul []
+                    (List.map (viewPlayer session.playerId) gameState.players)
+                ]
             , -- Solo mode: Toggle button to show AI board
               if model.isSoloMode then
                 div [ style "margin-top" "15px", style "text-align" "center" ]
@@ -2414,6 +2479,16 @@ getPlayerScore model =
 
         Nothing ->
             0
+
+
+isInProgressLayout : Model -> Bool
+isInProgressLayout model =
+    model.currentView == GameView
+        && not model.isRealGameMode
+        && (case model.gameState of
+                Just gs -> gs.state == InProgress
+                Nothing -> False
+           )
 
 
 {-| Calcule le score d'un plateau Take It Easy.
@@ -2526,10 +2601,10 @@ viewHexBoard model =
                         List.head (List.drop index model.plateauTiles) |> Maybe.withDefault ""
 
                     isAvailable =
-                        List.member index model.availablePositions && model.myTurn
+                        List.member index model.availablePositions
 
                     canClick =
-                        isAvailable && model.currentTile /= Nothing
+                        isAvailable && model.currentTile /= Nothing && model.myTurn
                 in
                 div
                     [ class
@@ -2621,10 +2696,10 @@ viewHexBoardSmall tiles availablePositions myTurn currentTile =
                         List.head (List.drop index tiles) |> Maybe.withDefault ""
 
                     isAvailable =
-                        List.member index availablePositions && myTurn
+                        List.member index availablePositions
 
                     canClick =
-                        isAvailable && currentTile /= Nothing
+                        isAvailable && currentTile /= Nothing && myTurn
                 in
                 div
                     [ class
@@ -2937,11 +3012,11 @@ viewFinalHexBoard tiles =
 
 
 -- ============================================================================
--- REAL GAME MODE (Jeu Réel avec tuiles physiques)
+-- COMPANION MODE (Compagnon — jeu physique)
 -- ============================================================================
 
 
-{-| Vue principale du mode Jeu Réel
+{-| Vue principale du mode Compagnon
 -}
 viewRealGame : Model -> Html Msg
 viewRealGame model =
@@ -3088,7 +3163,7 @@ viewPickerTile usedTiles tileCode =
         ]
 
 
-{-| Plateau de jeu pour le mode Jeu Réel
+{-| Plateau de jeu pour le mode Compagnon
 -}
 viewRealGameBoard : Model -> Html Msg
 viewRealGameBoard model =
@@ -3184,7 +3259,7 @@ viewRealGameBoard model =
         )
 
 
-{-| Plateau IA pour le mode Jeu Réel (non-interactif)
+{-| Plateau IA pour le mode Compagnon (non-interactif)
 -}
 viewAiRealGameBoard : Model -> Html Msg
 viewAiRealGameBoard model =

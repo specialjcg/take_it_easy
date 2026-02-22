@@ -5222,7 +5222,7 @@ var $author$project$Main$Welcome = {$: 'Welcome'};
 var $author$project$Main$defaultGameModes = _List_fromArray(
 	[
 		{description: 'Affrontez l\'IA Graph Transformer (149 pts)', difficulty: $elm$core$Maybe$Nothing, icon: '🤖', id: 'single-player', name: 'Solo', simulations: $elm$core$Maybe$Nothing},
-		{description: 'Jouez avec le vrai jeu - sélectionnez les tuiles tirées', difficulty: $elm$core$Maybe$Nothing, icon: '🎲', id: 'real-game', name: 'Jeu Réel', simulations: $elm$core$Maybe$Nothing},
+		{description: 'Accompagnez votre partie physique — comparez-vous à l\'IA', difficulty: $elm$core$Maybe$Nothing, icon: '🎲', id: 'real-game', name: 'Compagnon', simulations: $elm$core$Maybe$Nothing},
 		{description: 'Jouez contre d\'autres joueurs en ligne', difficulty: $elm$core$Maybe$Nothing, icon: '👥', id: 'multiplayer', name: 'Multijoueur', simulations: $elm$core$Maybe$Nothing}
 	]);
 var $elm$core$List$repeatHelp = F3(
@@ -5420,6 +5420,7 @@ var $author$project$Main$SessionLeft = {$: 'SessionLeft'};
 var $author$project$Main$SessionPolled = function (a) {
 	return {$: 'SessionPolled', a: a};
 };
+var $author$project$Main$StartGame = {$: 'StartGame'};
 var $author$project$Main$TurnStarted = F6(
 	function (a, b, c, d, e, f) {
 		return {$: 'TurnStarted', a: a, b: b, c: c, d: d, e: e, f: f};
@@ -6418,309 +6419,384 @@ var $author$project$Main$handleJsMessage = F2(
 	});
 var $author$project$Main$update = F2(
 	function (msg, model) {
-		switch (msg.$) {
-			case 'UrlRequested':
-				var urlRequest = msg.a;
-				if (urlRequest.$ === 'Internal') {
-					var url = urlRequest.a;
+		update:
+		while (true) {
+			switch (msg.$) {
+				case 'UrlRequested':
+					var urlRequest = msg.a;
+					if (urlRequest.$ === 'Internal') {
+						var url = urlRequest.a;
+						return _Utils_Tuple2(
+							model,
+							A2(
+								$elm$browser$Browser$Navigation$pushUrl,
+								model.key,
+								$elm$url$Url$toString(url)));
+					} else {
+						var href = urlRequest.a;
+						return _Utils_Tuple2(
+							model,
+							$elm$browser$Browser$Navigation$load(href));
+					}
+				case 'UrlChanged':
+					var url = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{url: url}),
+						$elm$core$Platform$Cmd$none);
+				case 'SetEmailInput':
+					var email = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{emailInput: email}),
+						$elm$core$Platform$Cmd$none);
+				case 'SetUsernameInput':
+					var username = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{usernameInput: username}),
+						$elm$core$Platform$Cmd$none);
+				case 'SetPasswordInput':
+					var password = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{passwordInput: password}),
+						$elm$core$Platform$Cmd$none);
+				case 'SetConfirmPasswordInput':
+					var password = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{confirmPasswordInput: password}),
+						$elm$core$Platform$Cmd$none);
+				case 'SwitchAuthView':
+					var newAuthView = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: '', authView: newAuthView, confirmPasswordInput: '', emailInput: '', passwordInput: '', usernameInput: ''}),
+						$elm$core$Platform$Cmd$none);
+				case 'SkipAuth':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{currentView: $author$project$Main$ModeSelectionView, isAuthenticated: false}),
+						$elm$core$Platform$Cmd$none);
+				case 'GoToLogin':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: '', authView: $author$project$Main$Login, currentView: $author$project$Main$LoginView, emailInput: '', passwordInput: ''}),
+						$elm$core$Platform$Cmd$none);
+				case 'SubmitLogin':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: '', authLoading: true}),
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('login')),
+										_Utils_Tuple2(
+										'email',
+										$elm$json$Json$Encode$string(model.emailInput)),
+										_Utils_Tuple2(
+										'password',
+										$elm$json$Json$Encode$string(model.passwordInput))
+									]))));
+				case 'SubmitRegister':
+					return (!_Utils_eq(model.passwordInput, model.confirmPasswordInput)) ? _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: 'Les mots de passe ne correspondent pas'}),
+						$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: '', authLoading: true}),
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('register')),
+										_Utils_Tuple2(
+										'email',
+										$elm$json$Json$Encode$string(model.emailInput)),
+										_Utils_Tuple2(
+										'username',
+										$elm$json$Json$Encode$string(model.usernameInput)),
+										_Utils_Tuple2(
+										'password',
+										$elm$json$Json$Encode$string(model.passwordInput))
+									]))));
+				case 'SubmitForgotPassword':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: '', authLoading: true, resetMessage: ''}),
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('forgotPassword')),
+										_Utils_Tuple2(
+										'email',
+										$elm$json$Json$Encode$string(model.emailInput))
+									]))));
+				case 'SubmitResetPassword':
+					return (!_Utils_eq(model.passwordInput, model.confirmPasswordInput)) ? _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: 'Les mots de passe ne correspondent pas'}),
+						$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: '', authLoading: true}),
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('resetPassword')),
+										_Utils_Tuple2(
+										'token',
+										$elm$json$Json$Encode$string(model.resetToken)),
+										_Utils_Tuple2(
+										'newPassword',
+										$elm$json$Json$Encode$string(model.passwordInput))
+									]))));
+				case 'Logout':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authView: $author$project$Main$Welcome, currentView: $author$project$Main$LoginView, isAuthenticated: false, token: $elm$core$Maybe$Nothing, user: $elm$core$Maybe$Nothing}),
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('logout'))
+									]))));
+				case 'CheckAuth':
 					return _Utils_Tuple2(
 						model,
-						A2(
-							$elm$browser$Browser$Navigation$pushUrl,
-							model.key,
-							$elm$url$Url$toString(url)));
-				} else {
-					var href = urlRequest.a;
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('checkAuth'))
+									]))));
+				case 'LoginSuccess':
+					var user = msg.a;
+					var token = msg.b;
 					return _Utils_Tuple2(
-						model,
-						$elm$browser$Browser$Navigation$load(href));
-				}
-			case 'UrlChanged':
-				var url = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{url: url}),
-					$elm$core$Platform$Cmd$none);
-			case 'SetEmailInput':
-				var email = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{emailInput: email}),
-					$elm$core$Platform$Cmd$none);
-			case 'SetUsernameInput':
-				var username = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{usernameInput: username}),
-					$elm$core$Platform$Cmd$none);
-			case 'SetPasswordInput':
-				var password = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{passwordInput: password}),
-					$elm$core$Platform$Cmd$none);
-			case 'SetConfirmPasswordInput':
-				var password = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{confirmPasswordInput: password}),
-					$elm$core$Platform$Cmd$none);
-			case 'SwitchAuthView':
-				var newAuthView = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: '', authView: newAuthView, confirmPasswordInput: '', emailInput: '', passwordInput: '', usernameInput: ''}),
-					$elm$core$Platform$Cmd$none);
-			case 'SkipAuth':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{currentView: $author$project$Main$ModeSelectionView, isAuthenticated: false}),
-					$elm$core$Platform$Cmd$none);
-			case 'GoToLogin':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: '', authView: $author$project$Main$Login, currentView: $author$project$Main$LoginView, emailInput: '', passwordInput: ''}),
-					$elm$core$Platform$Cmd$none);
-			case 'SubmitLogin':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: '', authLoading: true}),
-					$author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('login')),
-									_Utils_Tuple2(
-									'email',
-									$elm$json$Json$Encode$string(model.emailInput)),
-									_Utils_Tuple2(
-									'password',
-									$elm$json$Json$Encode$string(model.passwordInput))
-								]))));
-			case 'SubmitRegister':
-				return (!_Utils_eq(model.passwordInput, model.confirmPasswordInput)) ? _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: 'Les mots de passe ne correspondent pas'}),
-					$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: '', authLoading: true}),
-					$author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('register')),
-									_Utils_Tuple2(
-									'email',
-									$elm$json$Json$Encode$string(model.emailInput)),
-									_Utils_Tuple2(
-									'username',
-									$elm$json$Json$Encode$string(model.usernameInput)),
-									_Utils_Tuple2(
-									'password',
-									$elm$json$Json$Encode$string(model.passwordInput))
-								]))));
-			case 'SubmitForgotPassword':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: '', authLoading: true, resetMessage: ''}),
-					$author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('forgotPassword')),
-									_Utils_Tuple2(
-									'email',
-									$elm$json$Json$Encode$string(model.emailInput))
-								]))));
-			case 'SubmitResetPassword':
-				return (!_Utils_eq(model.passwordInput, model.confirmPasswordInput)) ? _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: 'Les mots de passe ne correspondent pas'}),
-					$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: '', authLoading: true}),
-					$author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('resetPassword')),
-									_Utils_Tuple2(
-									'token',
-									$elm$json$Json$Encode$string(model.resetToken)),
-									_Utils_Tuple2(
-									'newPassword',
-									$elm$json$Json$Encode$string(model.passwordInput))
-								]))));
-			case 'Logout':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authView: $author$project$Main$Welcome, currentView: $author$project$Main$LoginView, isAuthenticated: false, token: $elm$core$Maybe$Nothing, user: $elm$core$Maybe$Nothing}),
-					$author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('logout'))
-								]))));
-			case 'CheckAuth':
-				return _Utils_Tuple2(
-					model,
-					$author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('checkAuth'))
-								]))));
-			case 'LoginSuccess':
-				var user = msg.a;
-				var token = msg.b;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							authError: '',
-							authLoading: false,
-							currentView: $author$project$Main$ModeSelectionView,
-							isAuthenticated: true,
-							playerName: user.username,
-							token: $elm$core$Maybe$Just(token),
-							user: $elm$core$Maybe$Just(user)
-						}),
-					$elm$core$Platform$Cmd$none);
-			case 'LoginFailure':
-				var error = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: error, authLoading: false}),
-					$elm$core$Platform$Cmd$none);
-			case 'RegisterSuccess':
-				var user = msg.a;
-				var token = msg.b;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							authError: '',
-							authLoading: false,
-							currentView: $author$project$Main$ModeSelectionView,
-							isAuthenticated: true,
-							playerName: user.username,
-							token: $elm$core$Maybe$Just(token),
-							user: $elm$core$Maybe$Just(user)
-						}),
-					$elm$core$Platform$Cmd$none);
-			case 'RegisterFailure':
-				var error = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: error, authLoading: false}),
-					$elm$core$Platform$Cmd$none);
-			case 'ForgotPasswordSuccess':
-				var message = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: '', authLoading: false, resetMessage: message}),
-					$elm$core$Platform$Cmd$none);
-			case 'ForgotPasswordFailure':
-				var error = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: error, authLoading: false}),
-					$elm$core$Platform$Cmd$none);
-			case 'ResetPasswordSuccess':
-				var message = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: '', authLoading: false, authView: $author$project$Main$Login, confirmPasswordInput: '', passwordInput: '', resetMessage: message, resetToken: ''}),
-					$elm$core$Platform$Cmd$none);
-			case 'ResetPasswordFailure':
-				var error = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{authError: error, authLoading: false}),
-					$elm$core$Platform$Cmd$none);
-			case 'CheckAuthSuccess':
-				var user = msg.a;
-				var token = msg.b;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							currentView: $author$project$Main$ModeSelectionView,
-							isAuthenticated: true,
-							playerName: user.username,
-							token: $elm$core$Maybe$Just(token),
-							user: $elm$core$Maybe$Just(user)
-						}),
-					$elm$core$Platform$Cmd$none);
-			case 'CheckAuthFailure':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{isAuthenticated: false, token: $elm$core$Maybe$Nothing, user: $elm$core$Maybe$Nothing}),
-					$elm$core$Platform$Cmd$none);
-			case 'SelectGameMode':
-				var mode = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							selectedGameMode: $elm$core$Maybe$Just(mode)
-						}),
-					$elm$core$Platform$Cmd$none);
-			case 'StartGame':
-				var _v2 = model.selectedGameMode;
-				if (_v2.$ === 'Just') {
-					var mode = _v2.a;
-					return (mode.id === 'real-game') ? _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
-								availablePositions: A2($elm$core$List$range, 0, 18),
-								currentTile: $elm$core$Maybe$Nothing,
-								currentTileImage: $elm$core$Maybe$Nothing,
-								currentTurnNumber: 0,
-								currentView: $author$project$Main$GameView,
-								isRealGameMode: true,
-								myTurn: true,
-								plateauTiles: A2($elm$core$List$repeat, 19, ''),
-								realGameScore: 0,
-								showTilePicker: true,
-								usedTiles: _List_Nil
+								authError: '',
+								authLoading: false,
+								currentView: $author$project$Main$ModeSelectionView,
+								isAuthenticated: true,
+								playerName: user.username,
+								token: $elm$core$Maybe$Just(token),
+								user: $elm$core$Maybe$Just(user)
 							}),
-						$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+						$elm$core$Platform$Cmd$none);
+				case 'LoginFailure':
+					var error = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: error, authLoading: false}),
+						$elm$core$Platform$Cmd$none);
+				case 'RegisterSuccess':
+					var user = msg.a;
+					var token = msg.b;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								authError: '',
+								authLoading: false,
+								currentView: $author$project$Main$ModeSelectionView,
+								isAuthenticated: true,
+								playerName: user.username,
+								token: $elm$core$Maybe$Just(token),
+								user: $elm$core$Maybe$Just(user)
+							}),
+						$elm$core$Platform$Cmd$none);
+				case 'RegisterFailure':
+					var error = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: error, authLoading: false}),
+						$elm$core$Platform$Cmd$none);
+				case 'ForgotPasswordSuccess':
+					var message = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: '', authLoading: false, resetMessage: message}),
+						$elm$core$Platform$Cmd$none);
+				case 'ForgotPasswordFailure':
+					var error = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: error, authLoading: false}),
+						$elm$core$Platform$Cmd$none);
+				case 'ResetPasswordSuccess':
+					var message = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: '', authLoading: false, authView: $author$project$Main$Login, confirmPasswordInput: '', passwordInput: '', resetMessage: message, resetToken: ''}),
+						$elm$core$Platform$Cmd$none);
+				case 'ResetPasswordFailure':
+					var error = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: error, authLoading: false}),
+						$elm$core$Platform$Cmd$none);
+				case 'CheckAuthSuccess':
+					var user = msg.a;
+					var token = msg.b;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								currentView: $author$project$Main$ModeSelectionView,
+								isAuthenticated: true,
+								playerName: user.username,
+								token: $elm$core$Maybe$Just(token),
+								user: $elm$core$Maybe$Just(user)
+							}),
+						$elm$core$Platform$Cmd$none);
+				case 'CheckAuthFailure':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{isAuthenticated: false, token: $elm$core$Maybe$Nothing, user: $elm$core$Maybe$Nothing}),
+						$elm$core$Platform$Cmd$none);
+				case 'SelectGameMode':
+					var mode = msg.a;
+					if (A2($elm$core$String$startsWith, 'single-player', mode.id)) {
+						var $temp$msg = $author$project$Main$StartGame,
+							$temp$model = _Utils_update(
+							model,
+							{
+								selectedGameMode: $elm$core$Maybe$Just(mode)
+							});
+						msg = $temp$msg;
+						model = $temp$model;
+						continue update;
+					} else {
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{
+									selectedGameMode: $elm$core$Maybe$Just(mode)
+								}),
+							$elm$core$Platform$Cmd$none);
+					}
+				case 'StartGame':
+					var _v2 = model.selectedGameMode;
+					if (_v2.$ === 'Just') {
+						var mode = _v2.a;
+						if (mode.id === 'real-game') {
+							return _Utils_Tuple2(
+								_Utils_update(
+									model,
+									{
+										availablePositions: A2($elm$core$List$range, 0, 18),
+										currentTile: $elm$core$Maybe$Nothing,
+										currentTileImage: $elm$core$Maybe$Nothing,
+										currentTurnNumber: 0,
+										currentView: $author$project$Main$GameView,
+										isRealGameMode: true,
+										myTurn: true,
+										plateauTiles: A2($elm$core$List$repeat, 19, ''),
+										realGameScore: 0,
+										showTilePicker: true,
+										usedTiles: _List_Nil
+									}),
+								$elm$core$Platform$Cmd$none);
+						} else {
+							if (A2($elm$core$String$startsWith, 'single-player', mode.id)) {
+								var name = (model.playerName === '') ? 'Joueur' : model.playerName;
+								return _Utils_Tuple2(
+									_Utils_update(
+										model,
+										{
+											aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
+											aiScore: 0,
+											allPlayerPlateaus: _List_Nil,
+											availablePositions: A2($elm$core$List$range, 0, 18),
+											currentTile: $elm$core$Maybe$Nothing,
+											currentTileImage: $elm$core$Maybe$Nothing,
+											currentTurnNumber: 0,
+											currentView: $author$project$Main$GameView,
+											error: '',
+											isRealGameMode: false,
+											loading: true,
+											plateauTiles: A2($elm$core$List$repeat, 19, ''),
+											showAiBoard: false
+										}),
+									$author$project$Main$sendToJs(
+										$elm$json$Json$Encode$object(
+											_List_fromArray(
+												[
+													_Utils_Tuple2(
+													'type',
+													$elm$json$Json$Encode$string('createSession')),
+													_Utils_Tuple2(
+													'playerName',
+													$elm$json$Json$Encode$string(name)),
+													_Utils_Tuple2(
+													'gameMode',
+													$elm$json$Json$Encode$string(mode.id))
+												]))));
+							} else {
+								return _Utils_Tuple2(
+									_Utils_update(
+										model,
+										{
+											aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
+											aiScore: 0,
+											allPlayerPlateaus: _List_Nil,
+											availablePositions: A2($elm$core$List$range, 0, 18),
+											currentTile: $elm$core$Maybe$Nothing,
+											currentTileImage: $elm$core$Maybe$Nothing,
+											currentTurnNumber: 0,
+											currentView: $author$project$Main$GameView,
+											isRealGameMode: false,
+											plateauTiles: A2($elm$core$List$repeat, 19, ''),
+											showAiBoard: false
+										}),
+									$elm$core$Platform$Cmd$none);
+							}
+						}
+					} else {
+						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					}
+				case 'BackToModeSelection':
+					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
@@ -6731,645 +6807,623 @@ var $author$project$Main$update = F2(
 								currentTile: $elm$core$Maybe$Nothing,
 								currentTileImage: $elm$core$Maybe$Nothing,
 								currentTurnNumber: 0,
-								currentView: $author$project$Main$GameView,
+								currentView: $author$project$Main$ModeSelectionView,
+								error: '',
+								gameState: $elm$core$Maybe$Nothing,
 								isRealGameMode: false,
+								loading: false,
+								myTurn: false,
+								pendingAiPosition: $elm$core$Maybe$Nothing,
 								plateauTiles: A2($elm$core$List$repeat, 19, ''),
-								showAiBoard: false
+								realGameScore: 0,
+								selectedGameMode: $elm$core$Maybe$Nothing,
+								session: $elm$core$Maybe$Nothing,
+								showAiBoard: false,
+								showTilePicker: false,
+								statusMessage: '',
+								usedTiles: _List_Nil,
+								waitingForPlayers: _List_Nil
 							}),
 						$elm$core$Platform$Cmd$none);
-				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
-				}
-			case 'BackToModeSelection':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
-							aiScore: 0,
-							allPlayerPlateaus: _List_Nil,
-							availablePositions: A2($elm$core$List$range, 0, 18),
-							currentTile: $elm$core$Maybe$Nothing,
-							currentTileImage: $elm$core$Maybe$Nothing,
-							currentTurnNumber: 0,
-							currentView: $author$project$Main$ModeSelectionView,
-							error: '',
-							gameState: $elm$core$Maybe$Nothing,
-							isRealGameMode: false,
-							loading: false,
-							myTurn: false,
-							pendingAiPosition: $elm$core$Maybe$Nothing,
-							plateauTiles: A2($elm$core$List$repeat, 19, ''),
-							realGameScore: 0,
-							selectedGameMode: $elm$core$Maybe$Nothing,
-							session: $elm$core$Maybe$Nothing,
-							showAiBoard: false,
-							showTilePicker: false,
-							statusMessage: '',
-							usedTiles: _List_Nil,
-							waitingForPlayers: _List_Nil
-						}),
-					$elm$core$Platform$Cmd$none);
-			case 'ToggleAiBoard':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{showAiBoard: !model.showAiBoard}),
-					$elm$core$Platform$Cmd$none);
-			case 'RestartSoloGame':
-				var gameMode = A2(
-					$elm$core$Maybe$withDefault,
-					'single-player',
-					A2(
-						$elm$core$Maybe$map,
-						function ($) {
-							return $.id;
-						},
-						model.selectedGameMode));
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
-							aiScore: 0,
-							allPlayerPlateaus: _List_Nil,
-							availablePositions: A2($elm$core$List$range, 0, 18),
-							currentTile: $elm$core$Maybe$Nothing,
-							currentTileImage: $elm$core$Maybe$Nothing,
-							currentTurnNumber: 0,
-							error: '',
-							gameState: $elm$core$Maybe$Nothing,
-							loading: true,
-							plateauTiles: A2($elm$core$List$repeat, 19, ''),
-							session: $elm$core$Maybe$Nothing,
-							showAiBoard: false,
-							statusMessage: ''
-						}),
-					$author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('createSession')),
-									_Utils_Tuple2(
-									'playerName',
-									$elm$json$Json$Encode$string(model.playerName)),
-									_Utils_Tuple2(
-									'gameMode',
-									$elm$json$Json$Encode$string(gameMode))
-								]))));
-			case 'SetPlayerName':
-				var name = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{playerName: name}),
-					$elm$core$Platform$Cmd$none);
-			case 'SetSessionCode':
-				var code = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{sessionCode: code}),
-					$elm$core$Platform$Cmd$none);
-			case 'CreateSession':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{error: '', loading: true}),
-					$author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('createSession')),
-									_Utils_Tuple2(
-									'playerName',
-									$elm$json$Json$Encode$string(model.playerName)),
-									_Utils_Tuple2(
-									'gameMode',
-									$elm$json$Json$Encode$string(
-										A2(
-											$elm$core$Maybe$withDefault,
-											'multiplayer',
-											A2(
-												$elm$core$Maybe$map,
-												function ($) {
-													return $.id;
-												},
-												model.selectedGameMode))))
-								]))));
-			case 'JoinSession':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{error: '', loading: true}),
-					$author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('joinSession')),
-									_Utils_Tuple2(
-									'sessionCode',
-									$elm$json$Json$Encode$string(model.sessionCode)),
-									_Utils_Tuple2(
-									'playerName',
-									$elm$json$Json$Encode$string(model.playerName))
-								]))));
-			case 'LeaveSession':
-				var _v3 = model.session;
-				if (_v3.$ === 'Just') {
-					var session = _v3.a;
+				case 'ToggleAiBoard':
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{loading: true}),
-						$author$project$Main$sendToJs(
-							$elm$json$Json$Encode$object(
-								_List_fromArray(
-									[
-										_Utils_Tuple2(
-										'type',
-										$elm$json$Json$Encode$string('leaveSession')),
-										_Utils_Tuple2(
-										'sessionId',
-										$elm$json$Json$Encode$string(session.sessionId)),
-										_Utils_Tuple2(
-										'playerId',
-										$elm$json$Json$Encode$string(session.playerId))
-									]))));
-				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
-				}
-			case 'SetReady':
-				var _v4 = model.session;
-				if (_v4.$ === 'Just') {
-					var session = _v4.a;
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{loading: true}),
-						$author$project$Main$sendToJs(
-							$elm$json$Json$Encode$object(
-								_List_fromArray(
-									[
-										_Utils_Tuple2(
-										'type',
-										$elm$json$Json$Encode$string('setReady')),
-										_Utils_Tuple2(
-										'sessionId',
-										$elm$json$Json$Encode$string(session.sessionId)),
-										_Utils_Tuple2(
-										'playerId',
-										$elm$json$Json$Encode$string(session.playerId))
-									]))));
-				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
-				}
-			case 'SessionCreated':
-				var session = msg.a;
-				var gameState = msg.b;
-				var isSoloMode = function () {
-					var _v7 = model.selectedGameMode;
-					if (_v7.$ === 'Just') {
-						var mode = _v7.a;
-						return A2($elm$core$String$startsWith, 'single-player', mode.id);
-					} else {
-						return false;
-					}
-				}();
-				var cmd = isSoloMode ? $elm$core$Platform$Cmd$batch(
-					_List_fromArray(
-						[
-							$author$project$Main$sendToJs(
-							$elm$json$Json$Encode$object(
-								_List_fromArray(
-									[
-										_Utils_Tuple2(
-										'type',
-										$elm$json$Json$Encode$string('setReady')),
-										_Utils_Tuple2(
-										'sessionId',
-										$elm$json$Json$Encode$string(session.sessionId)),
-										_Utils_Tuple2(
-										'playerId',
-										$elm$json$Json$Encode$string(session.playerId))
-									]))),
-							A2(
-							$elm$core$Task$perform,
-							function (_v5) {
-								return $author$project$Main$PollSession;
+							{showAiBoard: !model.showAiBoard}),
+						$elm$core$Platform$Cmd$none);
+				case 'RestartSoloGame':
+					var gameMode = A2(
+						$elm$core$Maybe$withDefault,
+						'single-player',
+						A2(
+							$elm$core$Maybe$map,
+							function ($) {
+								return $.id;
 							},
-							$elm$core$Process$sleep(5000))
-						])) : A2(
-					$elm$core$Task$perform,
-					function (_v6) {
-						return $author$project$Main$PollSession;
-					},
-					$elm$core$Process$sleep(2000));
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							gameState: $elm$core$Maybe$Just(gameState),
-							isSoloMode: isSoloMode,
-							loading: isSoloMode,
-							session: $elm$core$Maybe$Just(session),
-							statusMessage: 'Session créée: ' + session.sessionCode
-						}),
-					cmd);
-			case 'SessionJoined':
-				var session = msg.a;
-				var gameState = msg.b;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							gameState: $elm$core$Maybe$Just(gameState),
-							loading: false,
-							session: $elm$core$Maybe$Just(session),
-							statusMessage: 'Rejoint la session: ' + session.sessionCode
-						}),
-					A2(
+							model.selectedGameMode));
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
+								aiScore: 0,
+								allPlayerPlateaus: _List_Nil,
+								availablePositions: A2($elm$core$List$range, 0, 18),
+								currentTile: $elm$core$Maybe$Nothing,
+								currentTileImage: $elm$core$Maybe$Nothing,
+								currentTurnNumber: 0,
+								error: '',
+								gameState: $elm$core$Maybe$Nothing,
+								loading: true,
+								plateauTiles: A2($elm$core$List$repeat, 19, ''),
+								session: $elm$core$Maybe$Nothing,
+								showAiBoard: false,
+								statusMessage: ''
+							}),
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('createSession')),
+										_Utils_Tuple2(
+										'playerName',
+										$elm$json$Json$Encode$string(model.playerName)),
+										_Utils_Tuple2(
+										'gameMode',
+										$elm$json$Json$Encode$string(gameMode))
+									]))));
+				case 'SetPlayerName':
+					var name = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{playerName: name}),
+						$elm$core$Platform$Cmd$none);
+				case 'SetSessionCode':
+					var code = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{sessionCode: code}),
+						$elm$core$Platform$Cmd$none);
+				case 'CreateSession':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{error: '', loading: true}),
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('createSession')),
+										_Utils_Tuple2(
+										'playerName',
+										$elm$json$Json$Encode$string(model.playerName)),
+										_Utils_Tuple2(
+										'gameMode',
+										$elm$json$Json$Encode$string(
+											A2(
+												$elm$core$Maybe$withDefault,
+												'multiplayer',
+												A2(
+													$elm$core$Maybe$map,
+													function ($) {
+														return $.id;
+													},
+													model.selectedGameMode))))
+									]))));
+				case 'JoinSession':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{error: '', loading: true}),
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('joinSession')),
+										_Utils_Tuple2(
+										'sessionCode',
+										$elm$json$Json$Encode$string(model.sessionCode)),
+										_Utils_Tuple2(
+										'playerName',
+										$elm$json$Json$Encode$string(model.playerName))
+									]))));
+				case 'LeaveSession':
+					var _v3 = model.session;
+					if (_v3.$ === 'Just') {
+						var session = _v3.a;
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{loading: true}),
+							$author$project$Main$sendToJs(
+								$elm$json$Json$Encode$object(
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'type',
+											$elm$json$Json$Encode$string('leaveSession')),
+											_Utils_Tuple2(
+											'sessionId',
+											$elm$json$Json$Encode$string(session.sessionId)),
+											_Utils_Tuple2(
+											'playerId',
+											$elm$json$Json$Encode$string(session.playerId))
+										]))));
+					} else {
+						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					}
+				case 'SetReady':
+					var _v4 = model.session;
+					if (_v4.$ === 'Just') {
+						var session = _v4.a;
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{loading: true}),
+							$author$project$Main$sendToJs(
+								$elm$json$Json$Encode$object(
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'type',
+											$elm$json$Json$Encode$string('setReady')),
+											_Utils_Tuple2(
+											'sessionId',
+											$elm$json$Json$Encode$string(session.sessionId)),
+											_Utils_Tuple2(
+											'playerId',
+											$elm$json$Json$Encode$string(session.playerId))
+										]))));
+					} else {
+						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					}
+				case 'SessionCreated':
+					var session = msg.a;
+					var gameState = msg.b;
+					var isSoloMode = function () {
+						var _v7 = model.selectedGameMode;
+						if (_v7.$ === 'Just') {
+							var mode = _v7.a;
+							return A2($elm$core$String$startsWith, 'single-player', mode.id);
+						} else {
+							return false;
+						}
+					}();
+					var cmd = isSoloMode ? $elm$core$Platform$Cmd$batch(
+						_List_fromArray(
+							[
+								$author$project$Main$sendToJs(
+								$elm$json$Json$Encode$object(
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'type',
+											$elm$json$Json$Encode$string('setReady')),
+											_Utils_Tuple2(
+											'sessionId',
+											$elm$json$Json$Encode$string(session.sessionId)),
+											_Utils_Tuple2(
+											'playerId',
+											$elm$json$Json$Encode$string(session.playerId))
+										]))),
+								A2(
+								$elm$core$Task$perform,
+								function (_v5) {
+									return $author$project$Main$PollSession;
+								},
+								$elm$core$Process$sleep(5000))
+							])) : A2(
 						$elm$core$Task$perform,
-						function (_v8) {
+						function (_v6) {
 							return $author$project$Main$PollSession;
 						},
-						$elm$core$Process$sleep(2000)));
-			case 'SessionLeft':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
-							aiScore: 0,
-							allPlayerPlateaus: _List_Nil,
-							availablePositions: A2($elm$core$List$range, 0, 18),
-							currentTile: $elm$core$Maybe$Nothing,
-							currentTileImage: $elm$core$Maybe$Nothing,
-							currentTurnNumber: 0,
-							currentView: $author$project$Main$ModeSelectionView,
-							gameState: $elm$core$Maybe$Nothing,
-							loading: false,
-							myTurn: false,
-							plateauTiles: A2($elm$core$List$repeat, 19, ''),
-							session: $elm$core$Maybe$Nothing,
-							showAiBoard: false,
-							waitingForPlayers: _List_Nil
-						}),
-					$elm$core$Platform$Cmd$none);
-			case 'ReadySet':
-				var gameStarted = msg.a;
-				var newStatusMessage = gameStarted ? 'La partie commence!' : 'Prêt! En attente des autres joueurs...';
-				var cmd = gameStarted ? $elm$core$Platform$Cmd$batch(
-					_List_fromArray(
-						[
-							function () {
-							var _v9 = model.session;
-							if (_v9.$ === 'Just') {
-								var session = _v9.a;
-								return $author$project$Main$sendToJs(
-									$elm$json$Json$Encode$object(
-										_List_fromArray(
-											[
-												_Utils_Tuple2(
-												'type',
-												$elm$json$Json$Encode$string('startTurn')),
-												_Utils_Tuple2(
-												'sessionId',
-												$elm$json$Json$Encode$string(session.sessionId))
-											])));
-							} else {
-								return $elm$core$Platform$Cmd$none;
-							}
-						}(),
-							A2(
-							$elm$core$Task$perform,
-							function (_v10) {
-								return $author$project$Main$PollTurn;
-							},
-							$elm$core$Process$sleep(3000))
-						])) : A2(
-					$elm$core$Task$perform,
-					function (_v11) {
-						return $author$project$Main$PollSession;
-					},
-					$elm$core$Process$sleep(2000));
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{loading: gameStarted, statusMessage: newStatusMessage}),
-					cmd);
-			case 'SessionError':
-				var error = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{error: error, loading: false}),
-					$elm$core$Platform$Cmd$none);
-			case 'PollSession':
-				var _v12 = model.session;
-				if (_v12.$ === 'Just') {
-					var session = _v12.a;
-					return _Utils_Tuple2(
-						model,
-						$author$project$Main$sendToJs(
-							$elm$json$Json$Encode$object(
-								_List_fromArray(
-									[
-										_Utils_Tuple2(
-										'type',
-										$elm$json$Json$Encode$string('pollSession')),
-										_Utils_Tuple2(
-										'sessionId',
-										$elm$json$Json$Encode$string(session.sessionId))
-									]))));
-				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
-				}
-			case 'SessionPolled':
-				var gameState = msg.a;
-				var gameStarted = _Utils_eq(gameState.state, $author$project$Main$InProgress);
-				var autoStartCmd = gameStarted ? $elm$core$Platform$Cmd$batch(
-					_List_fromArray(
-						[
-							function () {
-							var _v13 = model.session;
-							if (_v13.$ === 'Just') {
-								var session = _v13.a;
-								return $author$project$Main$sendToJs(
-									$elm$json$Json$Encode$object(
-										_List_fromArray(
-											[
-												_Utils_Tuple2(
-												'type',
-												$elm$json$Json$Encode$string('startTurn')),
-												_Utils_Tuple2(
-												'sessionId',
-												$elm$json$Json$Encode$string(session.sessionId))
-											])));
-							} else {
-								return $elm$core$Platform$Cmd$none;
-							}
-						}(),
-							A2(
-							$elm$core$Task$perform,
-							function (_v14) {
-								return $author$project$Main$PollTurn;
-							},
-							$elm$core$Process$sleep(3000))
-						])) : A2(
-					$elm$core$Task$perform,
-					function (_v15) {
-						return $author$project$Main$PollSession;
-					},
-					$elm$core$Process$sleep(2000));
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							gameState: $elm$core$Maybe$Just(gameState),
-							loading: gameStarted
-						}),
-					autoStartCmd);
-			case 'StartTurn':
-				var _v16 = model.session;
-				if (_v16.$ === 'Just') {
-					var session = _v16.a;
+						$elm$core$Process$sleep(2000));
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{loading: true}),
-						$author$project$Main$sendToJs(
-							$elm$json$Json$Encode$object(
-								_List_fromArray(
-									[
-										_Utils_Tuple2(
-										'type',
-										$elm$json$Json$Encode$string('startTurn')),
-										_Utils_Tuple2(
-										'sessionId',
-										$elm$json$Json$Encode$string(session.sessionId))
-									]))));
-				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
-				}
-			case 'PlayMove':
-				var position = msg.a;
-				var _v17 = model.session;
-				if (_v17.$ === 'Just') {
-					var session = _v17.a;
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{loading: true}),
-						$author$project$Main$sendToJs(
-							$elm$json$Json$Encode$object(
-								_List_fromArray(
-									[
-										_Utils_Tuple2(
-										'type',
-										$elm$json$Json$Encode$string('playMove')),
-										_Utils_Tuple2(
-										'sessionId',
-										$elm$json$Json$Encode$string(session.sessionId)),
-										_Utils_Tuple2(
-										'playerId',
-										$elm$json$Json$Encode$string(session.playerId)),
-										_Utils_Tuple2(
-										'position',
-										$elm$json$Json$Encode$int(position))
-									]))));
-				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
-				}
-			case 'OpenTilePicker':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{showTilePicker: true}),
-					$elm$core$Platform$Cmd$none);
-			case 'SelectRealTile':
-				var tileCode = msg.a;
-				var result = A2(
-					$author$project$GameLogic$handleSelectRealTilePure,
-					$author$project$Main$toGameModel(model),
-					tileCode);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{currentTile: result.currentTile, currentTileImage: result.currentTileImage, showTilePicker: result.showTilePicker, usedTiles: result.usedTiles}),
-					$author$project$Main$resolveCmdIntent(result.cmdIntent));
-			case 'PlaceRealTile':
-				var position = msg.a;
-				var result = A2(
-					$author$project$GameLogic$handlePlaceRealTilePure,
-					$author$project$Main$toGameModel(model),
-					position);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{aiPlateauTiles: result.aiPlateauTiles, availablePositions: result.availablePositions, currentTile: result.currentTile, currentTileImage: result.currentTileImage, currentTurnNumber: result.currentTurnNumber, pendingAiPosition: result.pendingAiPosition, plateauTiles: result.plateauTiles, showTilePicker: result.showTilePicker, statusMessage: result.statusMessage}),
-					$elm$core$Platform$Cmd$none);
-			case 'ResetRealGame':
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
-							availablePositions: A2($elm$core$List$range, 0, 18),
-							currentTile: $elm$core$Maybe$Nothing,
-							currentTileImage: $elm$core$Maybe$Nothing,
-							currentTurnNumber: 0,
-							pendingAiPosition: $elm$core$Maybe$Nothing,
-							plateauTiles: A2($elm$core$List$repeat, 19, ''),
-							realGameScore: 0,
-							showTilePicker: true,
-							statusMessage: '',
-							usedTiles: _List_Nil
-						}),
-					$elm$core$Platform$Cmd$none);
-			case 'AiMoveResult':
-				var position = msg.a;
-				var errorMsg = msg.b;
-				var result = A2($author$project$GameLogic$handleAiMoveResultPure, position, errorMsg);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{pendingAiPosition: result.pendingAiPosition, statusMessage: result.statusMessage}),
-					$elm$core$Platform$Cmd$none);
-			case 'TurnStarted':
-				var tile = msg.a;
-				var tileImage = msg.b;
-				var turnNumber = msg.c;
-				var positions = msg.d;
-				var players = msg.e;
-				var waiting = msg.f;
-				var updatedGameState = A2(
-					$elm$core$Maybe$map,
-					function (gs) {
-						return _Utils_update(
-							gs,
 							{
-								players: $elm$core$List$isEmpty(players) ? gs.players : players,
-								state: $author$project$Main$InProgress
-							});
-					},
-					model.gameState);
-				var result = A2(
-					$author$project$GameLogic$handleTurnStartedPure,
-					$author$project$Main$toGameModel(model),
-					{positions: positions, tile: tile, tileImage: tileImage, turnNumber: turnNumber, waiting: waiting});
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{availablePositions: result.availablePositions, currentTile: result.currentTile, currentTileImage: result.currentTileImage, currentTurnNumber: result.currentTurnNumber, gameState: updatedGameState, loading: result.loading, myTurn: result.myTurn, waitingForPlayers: result.waitingForPlayers}),
-					$author$project$Main$resolveCmdIntent(result.cmdIntent));
-			case 'MovePlayed':
-				var position = msg.a;
-				var points = msg.b;
-				var aiTiles = msg.c;
-				var aiScore = msg.d;
-				var isGameOver = msg.e;
-				var result = A2(
-					$author$project$GameLogic$handleMovePlayedPure,
-					$author$project$Main$toGameModel(model),
-					{aiScore: aiScore, aiTiles: aiTiles, isGameOver: isGameOver, points: points, position: position});
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{aiPlateauTiles: result.aiPlateauTiles, aiScore: aiScore, availablePositions: result.availablePositions, currentTile: result.currentTile, currentTileImage: result.currentTileImage, loading: result.loading, myTurn: result.myTurn, plateauTiles: result.plateauTiles, statusMessage: result.statusMessage}),
-					$author$project$Main$resolveCmdIntent(result.cmdIntent));
-			case 'GameStateUpdated':
-				var gameState = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							gameState: $elm$core$Maybe$Just(gameState)
-						}),
-					$elm$core$Platform$Cmd$none);
-			case 'GameFinished':
-				var players = msg.a;
-				var playerTiles = msg.b;
-				var aiTiles = msg.c;
-				var allPlateaus = msg.d;
-				var mergePlayerScores = F2(
-					function (existingPlayers, newPlayers) {
-						return A2(
-							$elm$core$List$map,
-							function (newP) {
-								var existingName = A2(
-									$elm$core$Maybe$withDefault,
-									newP.name,
-									A2(
-										$elm$core$Maybe$map,
-										function ($) {
-											return $.name;
-										},
-										$elm$core$List$head(
-											A2(
-												$elm$core$List$filter,
-												function (p) {
-													return _Utils_eq(p.id, newP.id);
-												},
-												existingPlayers))));
-								return _Utils_update(
-									newP,
-									{name: existingName});
+								gameState: $elm$core$Maybe$Just(gameState),
+								isSoloMode: isSoloMode,
+								loading: isSoloMode,
+								session: $elm$core$Maybe$Just(session),
+								statusMessage: 'Session créée: ' + session.sessionCode
+							}),
+						cmd);
+				case 'SessionJoined':
+					var session = msg.a;
+					var gameState = msg.b;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								gameState: $elm$core$Maybe$Just(gameState),
+								loading: false,
+								session: $elm$core$Maybe$Just(session),
+								statusMessage: 'Rejoint la session: ' + session.sessionCode
+							}),
+						A2(
+							$elm$core$Task$perform,
+							function (_v8) {
+								return $author$project$Main$PollSession;
 							},
-							newPlayers);
-					});
-				var mergedPlayers = function () {
-					var _v18 = model.gameState;
-					if (_v18.$ === 'Just') {
-						var gs = _v18.a;
-						return A2(mergePlayerScores, gs.players, players);
+							$elm$core$Process$sleep(2000)));
+				case 'SessionLeft':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
+								aiScore: 0,
+								allPlayerPlateaus: _List_Nil,
+								availablePositions: A2($elm$core$List$range, 0, 18),
+								currentTile: $elm$core$Maybe$Nothing,
+								currentTileImage: $elm$core$Maybe$Nothing,
+								currentTurnNumber: 0,
+								currentView: $author$project$Main$ModeSelectionView,
+								gameState: $elm$core$Maybe$Nothing,
+								loading: false,
+								myTurn: false,
+								plateauTiles: A2($elm$core$List$repeat, 19, ''),
+								session: $elm$core$Maybe$Nothing,
+								showAiBoard: false,
+								waitingForPlayers: _List_Nil
+							}),
+						$elm$core$Platform$Cmd$none);
+				case 'ReadySet':
+					var gameStarted = msg.a;
+					var newStatusMessage = gameStarted ? 'La partie commence!' : 'Prêt! En attente des autres joueurs...';
+					var cmd = gameStarted ? $elm$core$Platform$Cmd$batch(
+						_List_fromArray(
+							[
+								function () {
+								var _v9 = model.session;
+								if (_v9.$ === 'Just') {
+									var session = _v9.a;
+									return $author$project$Main$sendToJs(
+										$elm$json$Json$Encode$object(
+											_List_fromArray(
+												[
+													_Utils_Tuple2(
+													'type',
+													$elm$json$Json$Encode$string('startTurn')),
+													_Utils_Tuple2(
+													'sessionId',
+													$elm$json$Json$Encode$string(session.sessionId))
+												])));
+								} else {
+									return $elm$core$Platform$Cmd$none;
+								}
+							}(),
+								A2(
+								$elm$core$Task$perform,
+								function (_v10) {
+									return $author$project$Main$PollTurn;
+								},
+								$elm$core$Process$sleep(3000))
+							])) : A2(
+						$elm$core$Task$perform,
+						function (_v11) {
+							return $author$project$Main$PollSession;
+						},
+						$elm$core$Process$sleep(2000));
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{loading: gameStarted, statusMessage: newStatusMessage}),
+						cmd);
+				case 'SessionError':
+					var error = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{error: error, loading: false}),
+						$elm$core$Platform$Cmd$none);
+				case 'PollSession':
+					var _v12 = model.session;
+					if (_v12.$ === 'Just') {
+						var session = _v12.a;
+						return _Utils_Tuple2(
+							model,
+							$author$project$Main$sendToJs(
+								$elm$json$Json$Encode$object(
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'type',
+											$elm$json$Json$Encode$string('pollSession')),
+											_Utils_Tuple2(
+											'sessionId',
+											$elm$json$Json$Encode$string(session.sessionId))
+										]))));
 					} else {
-						return players;
+						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					}
-				}();
-				var newGameState = A2(
-					$elm$core$Maybe$map,
-					function (gs) {
-						return _Utils_update(
-							gs,
-							{players: mergedPlayers, state: $author$project$Main$Finished});
-					},
-					model.gameState);
-				var simplePlayers = A2(
-					$elm$core$List$map,
-					function (p) {
-						return {id: p.id, name: p.name, score: p.score};
-					},
-					mergedPlayers);
-				var result = $author$project$GameLogic$handleGameFinishedPure(
-					{aiTiles: aiTiles, allPlateaus: allPlateaus, playerTiles: playerTiles, players: simplePlayers});
-				return _Utils_Tuple2(
-					_Utils_update(
+				case 'SessionPolled':
+					var gameState = msg.a;
+					var gameStarted = _Utils_eq(gameState.state, $author$project$Main$InProgress);
+					var autoStartCmd = gameStarted ? $elm$core$Platform$Cmd$batch(
+						_List_fromArray(
+							[
+								function () {
+								var _v13 = model.session;
+								if (_v13.$ === 'Just') {
+									var session = _v13.a;
+									return $author$project$Main$sendToJs(
+										$elm$json$Json$Encode$object(
+											_List_fromArray(
+												[
+													_Utils_Tuple2(
+													'type',
+													$elm$json$Json$Encode$string('startTurn')),
+													_Utils_Tuple2(
+													'sessionId',
+													$elm$json$Json$Encode$string(session.sessionId))
+												])));
+								} else {
+									return $elm$core$Platform$Cmd$none;
+								}
+							}(),
+								A2(
+								$elm$core$Task$perform,
+								function (_v14) {
+									return $author$project$Main$PollTurn;
+								},
+								$elm$core$Process$sleep(3000))
+							])) : A2(
+						$elm$core$Task$perform,
+						function (_v15) {
+							return $author$project$Main$PollSession;
+						},
+						$elm$core$Process$sleep(2000));
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								gameState: $elm$core$Maybe$Just(gameState),
+								loading: gameStarted
+							}),
+						autoStartCmd);
+				case 'StartTurn':
+					var _v16 = model.session;
+					if (_v16.$ === 'Just') {
+						var session = _v16.a;
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{loading: true}),
+							$author$project$Main$sendToJs(
+								$elm$json$Json$Encode$object(
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'type',
+											$elm$json$Json$Encode$string('startTurn')),
+											_Utils_Tuple2(
+											'sessionId',
+											$elm$json$Json$Encode$string(session.sessionId))
+										]))));
+					} else {
+						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					}
+				case 'PlayMove':
+					var position = msg.a;
+					var _v17 = model.session;
+					if (_v17.$ === 'Just') {
+						var session = _v17.a;
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{loading: true}),
+							$author$project$Main$sendToJs(
+								$elm$json$Json$Encode$object(
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'type',
+											$elm$json$Json$Encode$string('playMove')),
+											_Utils_Tuple2(
+											'sessionId',
+											$elm$json$Json$Encode$string(session.sessionId)),
+											_Utils_Tuple2(
+											'playerId',
+											$elm$json$Json$Encode$string(session.playerId)),
+											_Utils_Tuple2(
+											'position',
+											$elm$json$Json$Encode$int(position))
+										]))));
+					} else {
+						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					}
+				case 'OpenTilePicker':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{showTilePicker: true}),
+						$elm$core$Platform$Cmd$none);
+				case 'SelectRealTile':
+					var tileCode = msg.a;
+					var result = A2(
+						$author$project$GameLogic$handleSelectRealTilePure,
+						$author$project$Main$toGameModel(model),
+						tileCode);
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{currentTile: result.currentTile, currentTileImage: result.currentTileImage, showTilePicker: result.showTilePicker, usedTiles: result.usedTiles}),
+						$author$project$Main$resolveCmdIntent(result.cmdIntent));
+				case 'PlaceRealTile':
+					var position = msg.a;
+					var result = A2(
+						$author$project$GameLogic$handlePlaceRealTilePure,
+						$author$project$Main$toGameModel(model),
+						position);
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{aiPlateauTiles: result.aiPlateauTiles, availablePositions: result.availablePositions, currentTile: result.currentTile, currentTileImage: result.currentTileImage, currentTurnNumber: result.currentTurnNumber, pendingAiPosition: result.pendingAiPosition, plateauTiles: result.plateauTiles, showTilePicker: result.showTilePicker, statusMessage: result.statusMessage}),
+						$elm$core$Platform$Cmd$none);
+				case 'ResetRealGame':
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
+								availablePositions: A2($elm$core$List$range, 0, 18),
+								currentTile: $elm$core$Maybe$Nothing,
+								currentTileImage: $elm$core$Maybe$Nothing,
+								currentTurnNumber: 0,
+								pendingAiPosition: $elm$core$Maybe$Nothing,
+								plateauTiles: A2($elm$core$List$repeat, 19, ''),
+								realGameScore: 0,
+								showTilePicker: true,
+								statusMessage: '',
+								usedTiles: _List_Nil
+							}),
+						$elm$core$Platform$Cmd$none);
+				case 'AiMoveResult':
+					var position = msg.a;
+					var errorMsg = msg.b;
+					var result = A2($author$project$GameLogic$handleAiMoveResultPure, position, errorMsg);
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{pendingAiPosition: result.pendingAiPosition, statusMessage: result.statusMessage}),
+						$elm$core$Platform$Cmd$none);
+				case 'TurnStarted':
+					var tile = msg.a;
+					var tileImage = msg.b;
+					var turnNumber = msg.c;
+					var positions = msg.d;
+					var players = msg.e;
+					var waiting = msg.f;
+					var updatedGameState = A2(
+						$elm$core$Maybe$map,
+						function (gs) {
+							return _Utils_update(
+								gs,
+								{
+									players: $elm$core$List$isEmpty(players) ? gs.players : players,
+									state: $author$project$Main$InProgress
+								});
+						},
+						model.gameState);
+					var result = A2(
+						$author$project$GameLogic$handleTurnStartedPure,
+						$author$project$Main$toGameModel(model),
+						{positions: positions, tile: tile, tileImage: tileImage, turnNumber: turnNumber, waiting: waiting});
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{availablePositions: result.availablePositions, currentTile: result.currentTile, currentTileImage: result.currentTileImage, currentTurnNumber: result.currentTurnNumber, gameState: updatedGameState, loading: result.loading, myTurn: result.myTurn, waitingForPlayers: result.waitingForPlayers}),
+						$author$project$Main$resolveCmdIntent(result.cmdIntent));
+				case 'MovePlayed':
+					var position = msg.a;
+					var points = msg.b;
+					var aiTiles = msg.c;
+					var aiScore = msg.d;
+					var isGameOver = msg.e;
+					var result = A2(
+						$author$project$GameLogic$handleMovePlayedPure,
+						$author$project$Main$toGameModel(model),
+						{aiScore: aiScore, aiTiles: aiTiles, isGameOver: isGameOver, points: points, position: position});
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{aiPlateauTiles: result.aiPlateauTiles, aiScore: aiScore, availablePositions: result.availablePositions, currentTile: result.currentTile, currentTileImage: result.currentTileImage, loading: result.loading, myTurn: result.myTurn, plateauTiles: result.plateauTiles, statusMessage: result.statusMessage}),
+						$author$project$Main$resolveCmdIntent(result.cmdIntent));
+				case 'GameStateUpdated':
+					var gameState = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								gameState: $elm$core$Maybe$Just(gameState)
+							}),
+						$elm$core$Platform$Cmd$none);
+				case 'GameFinished':
+					var players = msg.a;
+					var playerTiles = msg.b;
+					var aiTiles = msg.c;
+					var allPlateaus = msg.d;
+					var _v18 = model.gameState;
+					if (_v18.$ === 'Nothing') {
+						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					} else {
+						var gs = _v18.a;
+						if (_Utils_eq(gs.state, $author$project$Main$Finished)) {
+							return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+						} else {
+							var mergePlayerScores = F2(
+								function (existingPlayers, newPlayers) {
+									return A2(
+										$elm$core$List$map,
+										function (newP) {
+											var existingName = A2(
+												$elm$core$Maybe$withDefault,
+												newP.name,
+												A2(
+													$elm$core$Maybe$map,
+													function ($) {
+														return $.name;
+													},
+													$elm$core$List$head(
+														A2(
+															$elm$core$List$filter,
+															function (p) {
+																return _Utils_eq(p.id, newP.id);
+															},
+															existingPlayers))));
+											return _Utils_update(
+												newP,
+												{name: existingName});
+										},
+										newPlayers);
+								});
+							var mergedPlayers = A2(mergePlayerScores, gs.players, players);
+							var newGameState = $elm$core$Maybe$Just(
+								_Utils_update(
+									gs,
+									{players: mergedPlayers, state: $author$project$Main$Finished}));
+							var simplePlayers = A2(
+								$elm$core$List$map,
+								function (p) {
+									return {id: p.id, name: p.name, score: p.score};
+								},
+								mergedPlayers);
+							var result = $author$project$GameLogic$handleGameFinishedPure(
+								{aiTiles: aiTiles, allPlateaus: allPlateaus, playerTiles: playerTiles, players: simplePlayers});
+							return _Utils_Tuple2(
+								_Utils_update(
+									model,
+									{aiPlateauTiles: result.aiPlateauTiles, allPlayerPlateaus: result.allPlayerPlateaus, error: '', gameState: newGameState, myTurn: result.myTurn, plateauTiles: result.plateauTiles, statusMessage: result.statusMessage, waitingForPlayers: result.waitingForPlayers}),
+								$elm$core$Platform$Cmd$none);
+						}
+					}
+				case 'GameError':
+					var error = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{error: error, loading: false}),
+						$elm$core$Platform$Cmd$none);
+				case 'PollTurn':
+					return _Utils_Tuple2(
 						model,
-						{aiPlateauTiles: result.aiPlateauTiles, allPlayerPlateaus: result.allPlayerPlateaus, error: '', gameState: newGameState, myTurn: result.myTurn, plateauTiles: result.plateauTiles, statusMessage: result.statusMessage, waitingForPlayers: result.waitingForPlayers}),
-					$elm$core$Platform$Cmd$none);
-			case 'GameError':
-				var error = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{error: error, loading: false}),
-					$elm$core$Platform$Cmd$none);
-			case 'PollTurn':
-				return _Utils_Tuple2(
-					model,
-					$author$project$Main$resolveCmdIntent(
-						$author$project$GameLogic$handlePollTurnPure(
-							$author$project$Main$toGameModel(model))));
-			default:
-				var value = msg.a;
-				return A2($author$project$Main$handleJsMessage, value, model);
+						$author$project$Main$resolveCmdIntent(
+							$author$project$GameLogic$handlePollTurnPure(
+								$author$project$Main$toGameModel(model))));
+				default:
+					var value = msg.a;
+					return A2($author$project$Main$handleJsMessage, value, model);
+			}
 		}
 	});
 var $elm$html$Html$Attributes$stringProperty = F2(
@@ -9470,7 +9524,6 @@ var $author$project$Main$viewFinishedState = F2(
 						]))
 				]));
 	});
-var $author$project$Main$StartTurn = {$: 'StartTurn'};
 var $author$project$Main$ToggleAiBoard = {$: 'ToggleAiBoard'};
 var $author$project$Main$viewAiHexBoard = function (tiles) {
 	var hexRadius = 40;
@@ -9639,8 +9692,8 @@ var $author$project$Main$viewHexBoard = function (model) {
 						'',
 						$elm$core$List$head(
 							A2($elm$core$List$drop, index, model.plateauTiles)));
-					var isAvailable = A2($elm$core$List$member, index, model.availablePositions) && model.myTurn;
-					var canClick = isAvailable && (!_Utils_eq(model.currentTile, $elm$core$Maybe$Nothing));
+					var isAvailable = A2($elm$core$List$member, index, model.availablePositions);
+					var canClick = isAvailable && ((!_Utils_eq(model.currentTile, $elm$core$Maybe$Nothing)) && model.myTurn);
 					return A2(
 						$elm$html$Html$div,
 						_List_fromArray(
@@ -9727,84 +9780,56 @@ var $author$project$Main$viewInProgressState = F2(
 									$elm$html$Html$text(
 									'Tour ' + ($elm$core$String$fromInt(model.currentTurnNumber) + '/19'))
 								])),
-							function () {
-							var _v0 = model.currentTile;
-							if (_v0.$ === 'Just') {
-								return A2(
-									$elm$html$Html$div,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$class('current-tile')
-										]),
-									_List_fromArray(
-										[
-											function () {
-											var _v1 = model.currentTileImage;
-											if (_v1.$ === 'Just') {
-												var img = _v1.a;
-												var _v2 = $author$project$TileSvg$parseTileFromPath(img);
-												if (_v2.$ === 'Just') {
-													var tileData = _v2.a;
-													return A2(
-														$elm$html$Html$div,
-														_List_fromArray(
-															[
-																$elm$html$Html$Attributes$class('tile-svg-container')
-															]),
-														_List_fromArray(
-															[
-																$author$project$TileSvg$viewTileSvg(tileData)
-															]));
-												} else {
-													return A2(
-														$elm$html$Html$img,
-														_List_fromArray(
-															[
-																$elm$html$Html$Attributes$src(img),
-																$elm$html$Html$Attributes$class('tile-image')
-															]),
-														_List_Nil);
-												}
-											} else {
-												return $elm$html$Html$text('');
-											}
-										}()
-										]));
-							} else {
-								return ((!model.myTurn) && (!$elm$core$List$isEmpty(model.waitingForPlayers))) ? A2(
-									$elm$html$Html$div,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$class('waiting-message')
-										]),
-									_List_fromArray(
-										[
-											A2(
-											$elm$html$Html$p,
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('current-tile'),
+									A2(
+									$elm$html$Html$Attributes$style,
+									'opacity',
+									(!_Utils_eq(model.currentTileImage, $elm$core$Maybe$Nothing)) ? '1' : '0')
+								]),
+							_List_fromArray(
+								[
+									function () {
+									var _v0 = model.currentTileImage;
+									if (_v0.$ === 'Just') {
+										var img = _v0.a;
+										var _v1 = $author$project$TileSvg$parseTileFromPath(img);
+										if (_v1.$ === 'Just') {
+											var tileData = _v1.a;
+											return A2(
+												$elm$html$Html$div,
+												_List_fromArray(
+													[
+														$elm$html$Html$Attributes$class('tile-svg-container')
+													]),
+												_List_fromArray(
+													[
+														$author$project$TileSvg$viewTileSvg(tileData)
+													]));
+										} else {
+											return A2(
+												$elm$html$Html$img,
+												_List_fromArray(
+													[
+														$elm$html$Html$Attributes$src(img),
+														$elm$html$Html$Attributes$class('tile-image')
+													]),
+												_List_Nil);
+										}
+									} else {
+										return A2(
+											$elm$html$Html$div,
 											_List_fromArray(
 												[
-													A2($elm$html$Html$Attributes$style, 'opacity', '0.8')
+													$elm$html$Html$Attributes$class('tile-svg-container')
 												]),
-											_List_fromArray(
-												[
-													$elm$html$Html$text(
-													'En attente de ' + ($elm$core$String$fromInt(
-														$elm$core$List$length(model.waitingForPlayers)) + ' joueur(s)...'))
-												]))
-										])) : A2(
-									$elm$html$Html$button,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$class('start-turn-button'),
-											$elm$html$Html$Events$onClick($author$project$Main$StartTurn),
-											$elm$html$Html$Attributes$disabled(model.loading)
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text('Commencer le tour')
-										]));
-							}
-						}()
+											_List_Nil);
+									}
+								}()
+								]))
 						])),
 					A2(
 					$elm$html$Html$div,
@@ -10919,16 +10944,21 @@ var $author$project$Main$viewGame = function (model) {
 					[
 						$elm$html$Html$text(model.error)
 					])) : $elm$html$Html$text(''),
-				(model.statusMessage !== '') ? A2(
+				A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('status-message')
+						$elm$html$Html$Attributes$class('status-message'),
+						A2(
+						$elm$html$Html$Attributes$style,
+						'opacity',
+						(model.statusMessage !== '') ? '1' : '0')
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text(model.statusMessage)
-					])) : $elm$html$Html$text(''),
+						$elm$html$Html$text(
+						(model.statusMessage !== '') ? model.statusMessage : '\u00A0')
+					])),
 				function () {
 				if (model.isRealGameMode) {
 					return $author$project$Main$viewRealGame(model);
@@ -10944,7 +10974,6 @@ var $author$project$Main$viewGame = function (model) {
 			}()
 			]));
 };
-var $author$project$Main$StartGame = {$: 'StartGame'};
 var $author$project$Main$SelectGameMode = function (a) {
 	return {$: 'SelectGameMode', a: a};
 };
