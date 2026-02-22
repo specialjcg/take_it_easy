@@ -85,6 +85,17 @@ function initPorts(app) {
                     await handlePlayMove(app, message.sessionId, message.playerId, message.position);
                     break;
 
+                // ========== SCORES & LEADERBOARD ==========
+                case 'fetchMyScores':
+                    await handleFetchMyScores(app);
+                    break;
+                case 'fetchLeaderboard':
+                    await handleFetchLeaderboard(app);
+                    break;
+                case 'recordGame':
+                    handleRecordGame(message.gameMode, message.score, message.won);
+                    break;
+
                 // ========== REAL GAME MODE (Jeu Réel) ==========
                 case 'getAiMove':
                     await handleGetAiMove(app, message.tileCode, message.boardState, message.availablePositions, message.turnNumber);
@@ -271,6 +282,59 @@ async function handleResetPassword(app, token, newPassword) {
             error: 'Erreur de connexion au serveur'
         });
     }
+}
+
+// ============================================================================
+// SCORES & LEADERBOARD HANDLERS
+// ============================================================================
+
+async function handleFetchMyScores(app) {
+    const { token } = loadAuth();
+    if (!token) return;
+
+    try {
+        const response = await fetch(`${AUTH_API_BASE}/my-scores`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            app.ports.receiveFromJs.send({
+                type: 'myScoresReceived',
+                scores: data.scores || []
+            });
+        }
+    } catch (e) {
+        console.error('Fetch my scores error:', e);
+    }
+}
+
+async function handleFetchLeaderboard(app) {
+    try {
+        const response = await fetch(`${AUTH_API_BASE}/leaderboard`);
+        if (response.ok) {
+            const data = await response.json();
+            app.ports.receiveFromJs.send({
+                type: 'leaderboardReceived',
+                leaderboard: data.leaderboard || []
+            });
+        }
+    } catch (e) {
+        console.error('Fetch leaderboard error:', e);
+    }
+}
+
+function handleRecordGame(gameMode, score, won) {
+    const { token } = loadAuth();
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    fetch(`${AUTH_API_BASE}/record-game`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ game_mode: gameMode, score, won })
+    }).catch(e => console.error('Record game error:', e));
 }
 
 // ============================================================================

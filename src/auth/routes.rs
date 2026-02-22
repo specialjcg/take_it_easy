@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::{
@@ -63,6 +63,10 @@ pub fn auth_router(state: Arc<AuthState>) -> Router {
         .route("/providers", get(get_providers))
         // User info
         .route("/me", get(get_current_user))
+        // Scores & leaderboard
+        .route("/my-scores", get(get_my_scores))
+        .route("/leaderboard", get(get_leaderboard))
+        .route("/record-game", post(record_game))
         .with_state(state)
 }
 
@@ -607,6 +611,115 @@ async fn get_current_user(
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get user").into_response()
         }
     }
+}
+
+/// Extract user_id from JWT Bearer token
+fn extract_user_id(
+    state: &AuthState,
+    headers: &axum::http::HeaderMap,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Missing authorization header".to_string(),
+                }),
+            )
+        })?;
+
+    let claims = state.jwt.verify_token(token).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Invalid or expired token".to_string(),
+            }),
+        )
+    })?;
+
+    Ok(claims.claims.sub)
+}
+
+/// GET /auth/my-scores - Get authenticated user's game history
+async fn get_my_scores(
+    State(state): State<Arc<AuthState>>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let user_id = match extract_user_id(&state, &headers) {
+        Ok(id) => id,
+        Err(resp) => return resp.into_response(),
+    };
+
+    match state.db.get_user_game_history(&user_id, 10) {
+        Ok(scores) => {
+            #[derive(Serialize)]
+            struct Resp {
+                scores: Vec<super::database::GameHistoryRow>,
+            }
+            Json(Resp { scores }).into_response()
+        }
+        Err(e) => {
+            log::error!("Failed to get game history: {}", e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get scores")
+                .into_response()
+        }
+    }
+}
+
+/// GET /auth/leaderboard - Public global leaderboard
+async fn get_leaderboard(State(state): State<Arc<AuthState>>) -> impl IntoResponse {
+    match state.db.get_leaderboard(10) {
+        Ok(leaderboard) => {
+            #[derive(Serialize)]
+            struct Resp {
+                leaderboard: Vec<super::database::LeaderboardRow>,
+            }
+            Json(Resp { leaderboard }).into_response()
+        }
+        Err(e) => {
+            log::error!("Failed to get leaderboard: {}", e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get leaderboard")
+                .into_response()
+        }
+    }
+}
+
+/// POST /auth/record-game - Record a finished game for the authenticated user
+async fn record_game(
+    State(state): State<Arc<AuthState>>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<RecordGameRequest>,
+) -> impl IntoResponse {
+    // Use authenticated user if available, otherwise guest
+    let user_id = extract_user_id(&state, &headers)
+        .unwrap_or_else(|_| AuthDatabase::GUEST_USER_ID.to_string());
+
+    match state
+        .db
+        .record_game(&user_id, &req.game_mode, req.score, req.won)
+    {
+        Ok(()) => {
+            Json(MessageResponse {
+                message: "Game recorded".to_string(),
+            })
+            .into_response()
+        }
+        Err(e) => {
+            log::error!("Failed to record game: {}", e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to record game")
+                .into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct RecordGameRequest {
+    game_mode: String,
+    score: i32,
+    won: bool,
 }
 
 /// Generate a random token

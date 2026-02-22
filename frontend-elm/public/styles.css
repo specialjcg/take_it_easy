@@ -468,6 +468,131 @@ body {
 }
 
 /* ============================================================================
+   SCORES & LEADERBOARD
+   ============================================================================ */
+
+.scores-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.scores-section-single {
+    grid-template-columns: 1fr;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.scores-panel {
+    padding: 1.25rem;
+}
+
+.scores-panel h3 {
+    text-align: center;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+    color: #4ecdc4;
+}
+
+.scores-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.scores-table th {
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    color: rgba(255, 255, 255, 0.6);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-weight: 500;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.scores-table td {
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.scores-table .score-cell {
+    color: #4ecdc4;
+    font-weight: 600;
+}
+
+.scores-table .rank-cell {
+    color: rgba(255, 255, 255, 0.5);
+    width: 2rem;
+}
+
+.scores-table .date-cell {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.8rem;
+}
+
+.scores-empty {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.9rem;
+    padding: 1rem 0;
+}
+
+.scores-guest {
+    text-align: center;
+    padding: 1.25rem 0;
+}
+
+.scores-guest-label {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 0.5rem;
+}
+
+.scores-guest-hint {
+    font-size: 0.85rem;
+    color: rgba(78, 205, 196, 0.7);
+}
+
+.scores-stats {
+    text-align: center;
+    font-size: 0.9rem;
+    color: rgba(78, 205, 196, 0.9);
+    margin-bottom: 0.75rem;
+}
+
+@media (max-width: 768px) {
+    .scores-section {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Welcome page leaderboard */
+.welcome-leaderboard {
+    margin-top: 1.5rem;
+    padding: 1rem 1.5rem;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 100%;
+    max-width: 400px;
+}
+
+.welcome-leaderboard h3 {
+    text-align: center;
+    margin: 0 0 0.75rem 0;
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.welcome-leaderboard .scores-table {
+    font-size: 0.85rem;
+}
+
+/* ============================================================================
    MODE SELECTION
    ============================================================================ */
 

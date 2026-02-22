@@ -69,6 +69,22 @@ type alias GameMode =
     }
 
 
+type alias GameHistoryEntry =
+    { score : Int
+    , gameMode : String
+    , won : Bool
+    , playedAt : String
+    }
+
+
+type alias LeaderboardEntry =
+    { username : String
+    , bestScore : Int
+    , gamesPlayed : Int
+    , gamesWon : Int
+    }
+
+
 type SessionState
     = Waiting
     | InProgress
@@ -155,6 +171,10 @@ type alias Model =
     -- End of game: all player boards (id, name, tiles)
     , allPlayerPlateaus : List ( String, String, List String )
 
+    -- Scores & Leaderboard
+    , myScores : List GameHistoryEntry
+    , leaderboard : List LeaderboardEntry
+
     -- UI
     , loading : Bool
     , error : String
@@ -218,6 +238,10 @@ initialModel key url =
 
     -- End of game
     , allPlayerPlateaus = []
+
+    -- Scores & Leaderboard
+    , myScores = []
+    , leaderboard = []
 
     -- UI
     , loading = False
@@ -325,6 +349,9 @@ type Msg
     | GameStateUpdated GameState
     | GameFinished (List Player) (List String) (List String) (List ( String, List String ))
     | GameError String
+      -- Scores & Leaderboard
+    | MyScoresReceived (List GameHistoryEntry)
+    | LeaderboardReceived (List LeaderboardEntry)
       -- JS Interop
     | ReceivedFromJs Decode.Value
 
@@ -361,6 +388,19 @@ toGameModel model =
             |> Maybe.map (\gs -> gs.state == Finished)
             |> Maybe.withDefault False
     }
+
+
+fetchLeaderboard : Cmd Msg
+fetchLeaderboard =
+    sendToJs <| Encode.object [ ( "type", Encode.string "fetchLeaderboard" ) ]
+
+
+fetchScoresAndLeaderboard : Cmd Msg
+fetchScoresAndLeaderboard =
+    Cmd.batch
+        [ sendToJs <| Encode.object [ ( "type", Encode.string "fetchMyScores" ) ]
+        , fetchLeaderboard
+        ]
 
 
 resolveCmdIntent : GameLogic.CmdIntent -> Cmd Msg
@@ -436,7 +476,7 @@ update msg model =
 
         SkipAuth ->
             ( { model | currentView = ModeSelectionView, isAuthenticated = False }
-            , Cmd.none
+            , fetchLeaderboard
             )
 
         GoToLogin ->
@@ -526,7 +566,7 @@ update msg model =
                 , currentView = ModeSelectionView
                 , playerName = user.username
               }
-            , Cmd.none
+            , fetchScoresAndLeaderboard
             )
 
         LoginFailure error ->
@@ -542,7 +582,7 @@ update msg model =
                 , currentView = ModeSelectionView
                 , playerName = user.username
               }
-            , Cmd.none
+            , fetchScoresAndLeaderboard
             )
 
         RegisterFailure error ->
@@ -578,7 +618,7 @@ update msg model =
                 , currentView = ModeSelectionView
                 , playerName = user.username
               }
-            , Cmd.none
+            , fetchScoresAndLeaderboard
             )
 
         CheckAuthFailure ->
@@ -698,7 +738,11 @@ update msg model =
                 , realGameScore = 0
                 , pendingAiPosition = Nothing
               }
-            , Cmd.none
+            , if model.isAuthenticated then
+                fetchScoresAndLeaderboard
+
+              else
+                fetchLeaderboard
             )
 
         ToggleAiBoard ->
@@ -1168,6 +1212,50 @@ update msg model =
                                     , aiTiles = aiTiles
                                     , allPlateaus = allPlateaus
                                     }
+
+                            recordCmd =
+                                let
+                                    myId =
+                                        model.session
+                                            |> Maybe.map .playerId
+                                            |> Maybe.withDefault ""
+
+                                    myPlayer =
+                                        mergedPlayers
+                                            |> List.filter (\p -> p.id == myId)
+                                            |> List.head
+
+                                    myScore =
+                                        myPlayer
+                                            |> Maybe.map .score
+                                            |> Maybe.withDefault 0
+
+                                    aiPlayer =
+                                        mergedPlayers
+                                            |> List.filter (\p -> p.id == "mcts_ai")
+                                            |> List.head
+
+                                    didWin =
+                                        case aiPlayer of
+                                            Just ai ->
+                                                myScore > ai.score
+
+                                            Nothing ->
+                                                mergedPlayers
+                                                    |> List.all (\p -> p.score <= myScore)
+
+                                    gameMode =
+                                        model.selectedGameMode
+                                            |> Maybe.map .id
+                                            |> Maybe.withDefault "single-player"
+                                in
+                                sendToJs <|
+                                    Encode.object
+                                        [ ( "type", Encode.string "recordGame" )
+                                        , ( "gameMode", Encode.string gameMode )
+                                        , ( "score", Encode.int myScore )
+                                        , ( "won", Encode.bool didWin )
+                                        ]
                         in
                         ( { model
                             | gameState = newGameState
@@ -1179,8 +1267,15 @@ update msg model =
                             , myTurn = result.myTurn
                             , waitingForPlayers = result.waitingForPlayers
                           }
-                        , Cmd.none
+                        , recordCmd
                         )
+
+        -- Scores & Leaderboard
+        MyScoresReceived scores ->
+            ( { model | myScores = scores }, Cmd.none )
+
+        LeaderboardReceived lb ->
+            ( { model | leaderboard = lb }, Cmd.none )
 
         GameError error ->
             ( { model | loading = False, error = error }, Cmd.none )
@@ -1264,6 +1359,12 @@ handleJsMessage value model =
                 JsAiMoveResult position error ->
                     update (AiMoveResult position error) model
 
+                JsMyScoresReceived scores ->
+                    update (MyScoresReceived scores) model
+
+                JsLeaderboardReceived lb ->
+                    update (LeaderboardReceived lb) model
+
         Err _ ->
             ( model, Cmd.none )
 
@@ -1291,6 +1392,8 @@ type JsMessage
     | JsGameFinished (List Player) (List String) (List String) (List ( String, List String ))
     | JsGameError String
     | JsAiMoveResult Int String
+    | JsMyScoresReceived (List GameHistoryEntry)
+    | JsLeaderboardReceived (List LeaderboardEntry)
 
 
 jsMessageDecoder : Decode.Decoder JsMessage
@@ -1444,6 +1547,14 @@ jsMessageDecoderByType msgType =
                     ]
                 )
 
+        "myScoresReceived" ->
+            Decode.map JsMyScoresReceived
+                (Decode.field "scores" (Decode.list gameHistoryEntryDecoder))
+
+        "leaderboardReceived" ->
+            Decode.map JsLeaderboardReceived
+                (Decode.field "leaderboard" (Decode.list leaderboardEntryDecoder))
+
         _ ->
             Decode.fail ("Unknown message type: " ++ msgType)
 
@@ -1505,6 +1616,24 @@ sessionStateDecoder =
                     _ ->
                         Decode.succeed Waiting
             )
+
+
+gameHistoryEntryDecoder : Decode.Decoder GameHistoryEntry
+gameHistoryEntryDecoder =
+    Decode.map4 GameHistoryEntry
+        (Decode.field "score" Decode.int)
+        (Decode.field "game_mode" Decode.string)
+        (Decode.field "won" Decode.bool)
+        (Decode.field "played_at" Decode.string)
+
+
+leaderboardEntryDecoder : Decode.Decoder LeaderboardEntry
+leaderboardEntryDecoder =
+    Decode.map4 LeaderboardEntry
+        (Decode.field "username" Decode.string)
+        (Decode.field "best_score" Decode.int)
+        (Decode.field "games_played" Decode.int)
+        (Decode.field "games_won" Decode.int)
 
 
 
@@ -1587,7 +1716,7 @@ authSubtitle authView =
 
 
 viewWelcome : Model -> Html Msg
-viewWelcome _ =
+viewWelcome model =
     div [ class "welcome-content" ]
         [ viewWelcomeBoard
         , p [ class "welcome-pitch" ]
@@ -1605,15 +1734,49 @@ viewWelcome _ =
                 , onClick (SwitchAuthView Login)
                 ]
                 [ text "Se connecter" ]
-            , text " · "
+            , text " \u{00B7} "
             , button
                 [ type_ "button"
                 , class "link-button"
                 , onClick (SwitchAuthView Register)
                 ]
-                [ text "Créer un compte" ]
+                [ text "Cr\u{00E9}er un compte" ]
             ]
+        , viewWelcomeLeaderboard model.leaderboard
         ]
+
+
+viewWelcomeLeaderboard : List LeaderboardEntry -> Html Msg
+viewWelcomeLeaderboard entries =
+    if List.isEmpty entries then
+        text ""
+
+    else
+        div [ class "welcome-leaderboard" ]
+            [ h3 [] [ text "Classement mondial" ]
+            , table [ class "scores-table" ]
+                [ thead []
+                    [ tr []
+                        [ th [] [ text "#" ]
+                        , th [] [ text "Joueur" ]
+                        , th [] [ text "Meilleur" ]
+                        , th [] [ text "Parties" ]
+                        ]
+                    ]
+                , tbody []
+                    (List.indexedMap
+                        (\i entry ->
+                            tr []
+                                [ td [ class "rank-cell" ] [ text (String.fromInt (i + 1)) ]
+                                , td [] [ text entry.username ]
+                                , td [ class "score-cell" ] [ text (String.fromInt entry.bestScore) ]
+                                , td [] [ text (String.fromInt entry.gamesPlayed) ]
+                                ]
+                        )
+                        entries
+                    )
+                ]
+            ]
 
 
 {-| Animated hex board for the welcome page — mini-tutorial showing scoring
@@ -2106,6 +2269,7 @@ viewModeSelection model =
             ]
         , div [ class "modes-grid" ]
             (List.map (viewModeCard model.selectedGameMode) model.gameModes)
+        , viewScoresSection model
         , case model.selectedGameMode of
             Just mode ->
                 div [ class "action-panel" ]
@@ -2122,6 +2286,117 @@ viewModeSelection model =
             Nothing ->
                 text ""
         ]
+
+
+viewScoresSection : Model -> Html Msg
+viewScoresSection model =
+    let
+        hasLeaderboard =
+            not (List.isEmpty model.leaderboard)
+
+        top5 =
+            List.take 5 model.myScores
+
+        leaderboardPanel =
+            div [ class "scores-panel glass-container" ]
+                [ h3 [] [ text "Classement mondial" ]
+                , table [ class "scores-table" ]
+                    [ thead []
+                        [ tr []
+                            [ th [] [ text "#" ]
+                            , th [] [ text "Joueur" ]
+                            , th [] [ text "Meilleur" ]
+                            , th [] [ text "Parties" ]
+                            ]
+                        ]
+                    , tbody []
+                        (List.indexedMap
+                            (\i entry ->
+                                tr []
+                                    [ td [ class "rank-cell" ] [ text (String.fromInt (i + 1)) ]
+                                    , td [] [ text entry.username ]
+                                    , td [ class "score-cell" ] [ text (String.fromInt entry.bestScore) ]
+                                    , td [] [ text (String.fromInt entry.gamesPlayed) ]
+                                    ]
+                            )
+                            model.leaderboard
+                        )
+                    ]
+                ]
+    in
+    if not hasLeaderboard then
+        text ""
+
+    else if not model.isAuthenticated then
+        div [ class "scores-section scores-section-single" ]
+            [ leaderboardPanel ]
+
+    else
+        div [ class "scores-section" ]
+            [ div [ class "scores-panel glass-container" ]
+                [ h3 [] [ text "Mes 5 meilleures parties" ]
+                , if List.isEmpty top5 then
+                    p [ class "scores-empty" ] [ text "Aucune partie jou\u{00E9}e" ]
+
+                  else
+                    let
+                        totalWins =
+                            List.length (List.filter .won model.myScores)
+
+                        totalGames =
+                            List.length model.myScores
+                    in
+                    div []
+                        [ p [ class "scores-stats" ]
+                            [ text (String.fromInt totalWins ++ " victoire" ++ (if totalWins > 1 then "s" else "") ++ " / " ++ String.fromInt totalGames ++ " partie" ++ (if totalGames > 1 then "s" else "")) ]
+                        , table [ class "scores-table" ]
+                            [ thead []
+                                [ tr []
+                                    [ th [] [ text "Score" ]
+                                    , th [] [ text "Mode" ]
+                                    , th [] [ text "R\u{00E9}sultat" ]
+                                    , th [] [ text "Date" ]
+                                    ]
+                                ]
+                            , tbody []
+                                (List.map
+                                    (\entry ->
+                                        tr []
+                                            [ td [ class "score-cell" ] [ text (String.fromInt entry.score) ]
+                                            , td [] [ text (gameModeLabel entry.gameMode) ]
+                                            , td [] [ text (if entry.won then "Victoire" else "D\u{00E9}faite") ]
+                                            , td [ class "date-cell" ] [ text (formatDate entry.playedAt) ]
+                                            ]
+                                    )
+                                    top5
+                                )
+                            ]
+                        ]
+                ]
+            , leaderboardPanel
+            ]
+
+
+gameModeLabel : String -> String
+gameModeLabel mode =
+    case mode of
+        "single-player" ->
+            "Solo"
+
+        "real-game" ->
+            "Compagnon"
+
+        "multiplayer" ->
+            "Multi"
+
+        _ ->
+            mode
+
+
+formatDate : String -> String
+formatDate isoDate =
+    -- Extract YYYY-MM-DD from ISO 8601 string
+    String.left 10 isoDate
 
 
 viewUserHeader : Model -> Html Msg
@@ -3390,7 +3665,10 @@ init _ url key =
                     baseModel
     in
     ( modelWithResetToken
-    , sendToJs <| Encode.object [ ( "type", Encode.string "checkAuth" ) ]
+    , Cmd.batch
+        [ sendToJs <| Encode.object [ ( "type", Encode.string "checkAuth" ) ]
+        , fetchLeaderboard
+        ]
     )
 
 

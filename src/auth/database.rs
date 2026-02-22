@@ -1,9 +1,26 @@
 //! SQLite database operations for authentication
 
 use rusqlite::{params, Connection, Result as SqliteResult};
+use serde::Serialize;
 use std::sync::{Arc, Mutex};
 
 use super::models::{OAuthAccount, OAuthProvider, TokenType, User, VerificationToken};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GameHistoryRow {
+    pub score: i32,
+    pub game_mode: String,
+    pub won: bool,
+    pub played_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LeaderboardRow {
+    pub username: String,
+    pub best_score: i32,
+    pub games_played: i32,
+    pub games_won: i32,
+}
 
 /// Database connection wrapper
 pub struct AuthDatabase {
@@ -18,6 +35,7 @@ impl AuthDatabase {
             conn: Arc::new(Mutex::new(conn)),
         };
         db.init_tables()?;
+        db.ensure_guest_user()?;
         Ok(db)
     }
 
@@ -79,12 +97,44 @@ impl AuthDatabase {
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS game_history (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                game_mode TEXT NOT NULL,
+                score INTEGER NOT NULL,
+                won INTEGER NOT NULL DEFAULT 0,
+                played_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
             CREATE INDEX IF NOT EXISTS idx_oauth_provider ON oauth_accounts(provider, provider_user_id);
             CREATE INDEX IF NOT EXISTS idx_tokens_token ON verification_tokens(token);
+            CREATE INDEX IF NOT EXISTS idx_game_history_user_score ON game_history(user_id, score DESC);
+            CREATE INDEX IF NOT EXISTS idx_game_history_score ON game_history(score DESC);
             "#,
         )?;
 
+        Ok(())
+    }
+
+    // ==================== Guest User ====================
+
+    pub const GUEST_USER_ID: &'static str = "00000000-0000-0000-0000-000000000000";
+
+    /// Ensure the guest user exists (for anonymous game recording)
+    pub fn ensure_guest_user(&self) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, email, username, password_hash, email_verified, created_at, updated_at)
+             VALUES (?1, ?2, ?3, NULL, 0, ?4, ?4)",
+            params![Self::GUEST_USER_ID, "guest@localhost", "Joueur invit\u{00e9}", now],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO game_stats (user_id) VALUES (?1)",
+            params![Self::GUEST_USER_ID],
+        )?;
         Ok(())
     }
 
@@ -303,6 +353,90 @@ impl AuthDatabase {
             params![now],
         )?;
         Ok(deleted)
+    }
+
+    // ==================== Game History Operations ====================
+
+    /// Record a finished game and update aggregated stats
+    pub fn record_game(
+        &self,
+        user_id: &str,
+        game_mode: &str,
+        score: i32,
+        won: bool,
+    ) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO game_history (id, user_id, game_mode, score, won, played_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, user_id, game_mode, score, won as i32, now],
+        )?;
+
+        conn.execute(
+            "UPDATE game_stats SET
+                games_played = games_played + 1,
+                total_score = total_score + ?2,
+                best_score = MAX(best_score, ?2),
+                games_won = games_won + ?3
+             WHERE user_id = ?1",
+            params![user_id, score, won as i32],
+        )?;
+
+        Ok(())
+    }
+
+    /// Get a user's game history ordered by best score
+    pub fn get_user_game_history(
+        &self,
+        user_id: &str,
+        limit: i32,
+    ) -> SqliteResult<Vec<GameHistoryRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT score, game_mode, won, played_at
+             FROM game_history
+             WHERE user_id = ?1
+             ORDER BY score DESC
+             LIMIT ?2",
+        )?;
+
+        let rows = stmt.query_map(params![user_id, limit], |row| {
+            Ok(GameHistoryRow {
+                score: row.get(0)?,
+                game_mode: row.get(1)?,
+                won: row.get::<_, i32>(2)? != 0,
+                played_at: row.get(3)?,
+            })
+        })?;
+
+        rows.collect()
+    }
+
+    /// Get the global leaderboard ordered by best score
+    pub fn get_leaderboard(&self, limit: i32) -> SqliteResult<Vec<LeaderboardRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT u.username, gs.best_score, gs.games_played, gs.games_won
+             FROM game_stats gs
+             JOIN users u ON u.id = gs.user_id
+             WHERE gs.games_played > 0
+             ORDER BY gs.best_score DESC
+             LIMIT ?1",
+        )?;
+
+        let rows = stmt.query_map(params![limit], |row| {
+            Ok(LeaderboardRow {
+                username: row.get(0)?,
+                best_score: row.get(1)?,
+                games_played: row.get(2)?,
+                games_won: row.get(3)?,
+            })
+        })?;
+
+        rows.collect()
     }
 }
 
