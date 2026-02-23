@@ -7312,32 +7312,36 @@ var $author$project$Main$update = F2(
 					}
 				case 44:
 					var position = msg.a;
-					var _v17 = model.f;
-					if (!_v17.$) {
-						var session = _v17.a;
-						return _Utils_Tuple2(
-							_Utils_update(
-								model,
-								{aM: true}),
-							$author$project$Main$sendToJs(
-								$elm$json$Json$Encode$object(
-									_List_fromArray(
-										[
-											_Utils_Tuple2(
-											'type',
-											$elm$json$Json$Encode$string('playMove')),
-											_Utils_Tuple2(
-											'sessionId',
-											$elm$json$Json$Encode$string(session.bf)),
-											_Utils_Tuple2(
-											'playerId',
-											$elm$json$Json$Encode$string(session.bY)),
-											_Utils_Tuple2(
-											'position',
-											$elm$json$Json$Encode$int(position))
-										]))));
-					} else {
+					if (model.aM) {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					} else {
+						var _v17 = model.f;
+						if (!_v17.$) {
+							var session = _v17.a;
+							return _Utils_Tuple2(
+								_Utils_update(
+									model,
+									{aM: true}),
+								$author$project$Main$sendToJs(
+									$elm$json$Json$Encode$object(
+										_List_fromArray(
+											[
+												_Utils_Tuple2(
+												'type',
+												$elm$json$Json$Encode$string('playMove')),
+												_Utils_Tuple2(
+												'sessionId',
+												$elm$json$Json$Encode$string(session.bf)),
+												_Utils_Tuple2(
+												'playerId',
+												$elm$json$Json$Encode$string(session.bY)),
+												_Utils_Tuple2(
+												'position',
+												$elm$json$Json$Encode$int(position))
+											]))));
+						} else {
+							return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+						}
 					}
 				case 45:
 					return _Utils_Tuple2(
@@ -10270,7 +10274,7 @@ var $author$project$Main$viewInProgressState = F3(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('game-board glass-container'),
+							$elm$html$Html$Attributes$class('ai-board-container glass-container'),
 							A2($elm$html$Html$Attributes$style, 'margin-top', '20px')
 						]),
 					_List_fromArray(

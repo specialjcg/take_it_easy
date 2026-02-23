@@ -1,17 +1,21 @@
 // src/services/game_service/async_move_handler.rs - Gestion asynchrone des mouvements
 // Permet un feedback immédiat à l'UI pendant que MCTS calcule en arrière-plan
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex;
+use tokio::sync::Mutex as TokioMutex;
+use tokio::task::JoinHandle;
 use tonic::{Response, Status};
 
 use crate::generated::takeiteasygame::v1::*;
 use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
 use crate::services::game_manager::{
-    ensure_current_tile, player_move_from_json, process_player_move_with_direct_inference,
-    process_player_move_with_hybrid_mcts, process_player_move_with_mcts, MoveResult, PlayerMove,
-    TakeItEasyGameState,
+    compute_ai_move_background, ensure_current_tile, is_game_finished, player_move_from_json,
+    process_ai_turn_direct, process_player_move_immediate,
+    process_player_move_with_direct_inference, process_player_move_with_hybrid_mcts,
+    process_player_move_with_mcts, MoveResult, PlayerMove, TakeItEasyGameState,
 };
 use crate::services::session_manager::{
     get_store_from_manager, update_session_in_store, SessionManager,
@@ -19,6 +23,13 @@ use crate::services::session_manager::{
 
 use super::response_builders::{make_move_error_response, make_move_success_response};
 use super::session_utils::get_session_by_code_or_id_from_store;
+
+// Global pending AI tasks: session_id → JoinHandle
+static PENDING_AI_TASKS: OnceLock<TokioMutex<HashMap<String, JoinHandle<()>>>> = OnceLock::new();
+
+fn pending_ai_tasks() -> &'static TokioMutex<HashMap<String, JoinHandle<()>>> {
+    PENDING_AI_TASKS.get_or_init(|| TokioMutex::new(HashMap::new()))
+}
 
 pub struct AsyncMoveRequest {
     pub session_id: String,
@@ -154,9 +165,8 @@ fn create_immediate_move_confirmation(
     response
 }
 
-/// Process AI move synchronously and return response
-/// Uses direct Graph Transformer inference by default (149.38 pts)
-/// Falls back to MCTS only when Q-Net hybrid is explicitly enabled
+/// Process player move with async AI: returns immediately, AI computes in background
+/// Falls back to synchronous MCTS only when Q-Net hybrid is explicitly enabled
 #[allow(clippy::too_many_arguments)]
 async fn process_mcts_and_respond(
     session_manager: Arc<SessionManager>,
@@ -170,40 +180,153 @@ async fn process_mcts_and_respond(
     session_id: String,
     game_mode: String,
 ) -> MakeMoveResponse {
-    // Use direct Graph Transformer inference by default
-    // Only use MCTS if hybrid Q-Net is explicitly enabled
-    let ai_type = if qvalue_net.is_some() {
-        "HYBRID MCTS"
+    // 1. Await any pending background AI task from the previous turn
+    let had_pending_task;
+    {
+        let mut tasks = pending_ai_tasks().lock().await;
+        if let Some(handle) = tasks.remove(&session_id) {
+            log::info!("Awaiting pending AI task for session {}", session_id);
+            let _ = handle.await;
+            had_pending_task = true;
+        } else {
+            had_pending_task = false;
+        }
+    }
+
+    // Hybrid MCTS mode: fall back to synchronous processing (legacy path)
+    if qvalue_net.is_some() {
+        log::info!("🎯 Traitement HYBRID MCTS pour joueur {}", player_move.player_id);
+        return process_mcts_and_respond_sync(
+            session_manager, policy_net, value_net, qvalue_net,
+            num_simulations, top_k, game_state, player_move, session_id, game_mode,
+        ).await;
+    }
+
+    // 2. Re-fetch game state if background AI updated it
+    let game_state = if had_pending_task {
+        let store = get_store_from_manager(&session_manager);
+        match get_session_by_code_or_id_from_store(store, &session_id).await {
+            Some(session) => {
+                serde_json::from_str(&session.board_state).unwrap_or(game_state)
+            }
+            None => game_state,
+        }
     } else {
-        "Graph Transformer Direct"
+        game_state
     };
+
+    // 3. Process human move immediately (no AI wait)
     log::info!(
-        "🎯 Traitement {} pour joueur {}",
-        ai_type,
+        "🎯 Traitement async GT pour joueur {} (AI en background)",
         player_move.player_id
     );
 
-    // Use direct inference for Graph Transformer, MCTS only for hybrid mode
+    let result = process_player_move_immediate(game_state, player_move.clone()).await;
+
+    match result {
+        Ok((mut move_result, ai_context)) => {
+            let game_over = is_game_finished(&move_result.new_game_state);
+
+            // Handle AI context: sync on game over, async otherwise
+            if let Some(ctx) = ai_context {
+                if game_over {
+                    // Game over: compute AI's last move synchronously for complete final screen
+                    log::info!("Game over: computing AI last move synchronously");
+                    match process_ai_turn_direct(ctx.game_state, &policy_net).await {
+                        Ok((updated_ai_state, ai_move)) => {
+                            if let Some(ai_plateau) = updated_ai_state.player_plateaus.get("mcts_ai") {
+                                move_result.new_game_state.player_plateaus
+                                    .insert("mcts_ai".to_string(), ai_plateau.clone());
+                                let ai_score = crate::scoring::scoring::result(ai_plateau);
+                                move_result.new_game_state.scores
+                                    .insert("mcts_ai".to_string(), ai_score);
+                            }
+                            move_result.mcts_response = Some(ai_move);
+                        }
+                        Err(e) => log::error!("Failed to compute AI last move: {}", e),
+                    }
+                } else {
+                    // Mid-game: spawn background AI task
+                    let sm = session_manager.clone();
+                    let pn = policy_net.clone();
+                    let sid = session_id.clone();
+                    let handle = tokio::spawn(async move {
+                        compute_ai_move_background(ctx, sm, pn).await;
+                    });
+                    pending_ai_tasks().lock().await.insert(sid, handle);
+                }
+            }
+
+            let final_state = move_result.new_game_state.clone();
+            let store = get_store_from_manager(&session_manager);
+
+            if let Some(mut session) =
+                get_session_by_code_or_id_from_store(store, &session_id).await
+            {
+                session.board_state = serde_json::to_string(&final_state).unwrap_or_default();
+
+                if game_over {
+                    session.state = 2;
+                    log::info!("🏁 Session {} marquée comme FINISHED", session_id);
+
+                    if let Some(recorder) = crate::recording::game_recorder::get_recorder() {
+                        if let Err(e) = recorder.finalize_game(
+                            &session_id,
+                            final_state.scores.clone(),
+                        ) {
+                            log::error!("Failed to finalize game recording: {}", e);
+                        }
+                    }
+                }
+
+                // Sync all player scores
+                for (player_id, score) in &final_state.scores {
+                    if let Some(player) = session.players.get_mut(player_id) {
+                        player.score = *score;
+                    }
+                }
+
+                if let Err(e) = update_session_in_store(store, session).await {
+                    log::error!("Failed to update session: {}", e);
+                }
+            }
+
+            log::info!("Réponse pour session {} (game_over={})", session_id, game_over);
+            make_move_success_response(move_result, &game_mode)
+        }
+        Err(error_code) => {
+            log::error!("Échec traitement move: {}", error_code);
+            make_move_error_response(
+                error_code.clone(),
+                format!("Move processing failed: {}", error_code),
+            )
+        }
+    }
+}
+
+/// Synchronous fallback for hybrid MCTS mode (legacy)
+#[allow(clippy::too_many_arguments)]
+async fn process_mcts_and_respond_sync(
+    session_manager: Arc<SessionManager>,
+    policy_net: Arc<Mutex<PolicyNet>>,
+    value_net: Arc<Mutex<ValueNet>>,
+    qvalue_net: Option<Arc<Mutex<QValueNet>>>,
+    num_simulations: usize,
+    top_k: usize,
+    game_state: TakeItEasyGameState,
+    player_move: PlayerMove,
+    session_id: String,
+    game_mode: String,
+) -> MakeMoveResponse {
     let result = if let Some(ref qnet) = qvalue_net {
-        // Hybrid MCTS mode (legacy)
         process_player_move_with_hybrid_mcts(
-            game_state.clone(),
-            player_move.clone(),
-            &policy_net,
-            &value_net,
-            qnet,
-            num_simulations,
-            top_k,
-        )
-        .await
+            game_state, player_move.clone(), &policy_net, &value_net, qnet,
+            num_simulations, top_k,
+        ).await
     } else {
-        // Direct Graph Transformer inference (recommended)
         process_player_move_with_direct_inference(
-            game_state.clone(),
-            player_move.clone(),
-            &policy_net,
-        )
-        .await
+            game_state, player_move.clone(), &policy_net,
+        ).await
     };
 
     match result {
@@ -214,53 +337,37 @@ async fn process_mcts_and_respond(
             if let Some(mut session) =
                 get_session_by_code_or_id_from_store(store, &session_id).await
             {
-                // Sauvegarder l'état final
                 session.board_state = serde_json::to_string(&final_state).unwrap_or_default();
 
-                // Mettre à jour l'état de la session quand le jeu est terminé
-                use crate::services::game_manager::is_game_finished;
                 if is_game_finished(&final_state) {
-                    session.state = 2; // SessionState::FINISHED
+                    session.state = 2;
                     log::info!("🏁 Session {} marquée comme FINISHED", session_id);
 
-                    // Safety net: finalize game recording if not already done
                     if let Some(recorder) = crate::recording::game_recorder::get_recorder() {
                         if let Err(e) = recorder.finalize_game(
                             &session_id,
                             final_state.scores.clone(),
                         ) {
-                            log::error!("❌ Failed to finalize game recording: {}", e);
+                            log::error!("Failed to finalize game recording: {}", e);
                         }
                     }
                 }
 
-                // Synchroniser les scores
                 for (player_id, score) in &final_state.scores {
                     if let Some(player) = session.players.get_mut(player_id) {
                         player.score = *score;
-                        log::info!(
-                            "🏆 Score mis à jour: {} = {} points",
-                            player_id,
-                            score
-                        );
                     }
                 }
 
                 if let Err(e) = update_session_in_store(store, session).await {
-                    log::error!("❌ Échec mise à jour session: {}", e);
-                } else {
-                    log::info!(
-                        "✅ Traitement AI terminé avec succès pour session {}",
-                        session_id
-                    );
+                    log::error!("Failed to update session: {}", e);
                 }
             }
 
-            // Retourner la vraie réponse avec les résultats MCTS
             make_move_success_response(move_result, &game_mode)
         }
         Err(error_code) => {
-            log::error!("❌ Échec traitement AI: {}", error_code);
+            log::error!("Échec traitement AI: {}", error_code);
             make_move_error_response(
                 error_code.clone(),
                 format!("AI processing failed: {}", error_code),

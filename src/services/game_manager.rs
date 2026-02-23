@@ -3,7 +3,10 @@
 use crate::generated::takeiteasygame::v1::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::Mutex;
+
+use crate::services::session_manager::SessionManager;
 
 // Import de vos modules existants
 use crate::game::create_deck::{create_deck, Deck};
@@ -760,6 +763,126 @@ pub async fn process_player_move_with_direct_inference(
         is_game_over: is_game_finished(&new_state),
         turn_completed: new_state.waiting_for_players.is_empty(),
     })
+}
+
+/// Context for spawning AI computation in the background
+#[derive(Debug, Clone)]
+pub struct AiTaskContext {
+    pub game_state: TakeItEasyGameState,
+    pub session_id: String,
+}
+
+/// Process player move immediately (skip AI), return context for background AI
+/// Used for async flow: human gets instant response, AI computes in background
+pub async fn process_player_move_immediate(
+    game_state: TakeItEasyGameState,
+    player_move: PlayerMove,
+) -> Result<(MoveResult, Option<AiTaskContext>), String> {
+    let initial_score = game_state
+        .scores
+        .get(&player_move.player_id)
+        .copied()
+        .unwrap_or(0);
+
+    // 1. Apply player move
+    let mut new_state = apply_player_move(game_state, player_move.clone())?;
+
+    // 2. Prepare AI context BEFORE removing AI from waiting list
+    let ai_context = if player_move.player_id != "mcts_ai"
+        && new_state
+            .waiting_for_players
+            .contains(&"mcts_ai".to_string())
+    {
+        let ctx = AiTaskContext {
+            game_state: new_state.clone(),
+            session_id: new_state.session_id.clone(),
+        };
+        // Remove AI from waiting so check_turn_completion proceeds
+        new_state.waiting_for_players.retain(|id| id != "mcts_ai");
+        Some(ctx)
+    } else {
+        None
+    };
+
+    // 3. Check turn completion (draws next tile, updates scores)
+    new_state = check_turn_completion(new_state)?;
+
+    // 4. Calculate points earned
+    let current_score = new_state
+        .scores
+        .get(&player_move.player_id)
+        .copied()
+        .unwrap_or(0);
+    let points_earned = current_score - initial_score;
+
+    Ok((
+        MoveResult {
+            new_game_state: new_state.clone(),
+            points_earned,
+            mcts_response: None, // AI hasn't played yet
+            is_game_over: is_game_finished(&new_state),
+            turn_completed: new_state.waiting_for_players.is_empty(),
+        },
+        ai_context,
+    ))
+}
+
+/// Compute AI move in background and merge result into session
+pub async fn compute_ai_move_background(
+    ai_context: AiTaskContext,
+    session_manager: Arc<SessionManager>,
+    policy_net: Arc<Mutex<PolicyNet>>,
+) {
+    use crate::services::session_manager::{get_store_from_manager, update_session_in_store};
+    use crate::services::game_service::session_utils::get_session_by_code_or_id_from_store;
+
+    match process_ai_turn_direct(ai_context.game_state, &policy_net).await {
+        Ok((updated_state, _ai_move)) => {
+            // Merge only the AI plateau + score into the current session state
+            let store = get_store_from_manager(&session_manager);
+            if let Some(mut session) =
+                get_session_by_code_or_id_from_store(store, &ai_context.session_id).await
+            {
+                match serde_json::from_str::<TakeItEasyGameState>(&session.board_state) {
+                    Ok(mut current_state) => {
+                        // Copy AI plateau from the computed state
+                        if let Some(ai_plateau) = updated_state.player_plateaus.get("mcts_ai") {
+                            current_state
+                                .player_plateaus
+                                .insert("mcts_ai".to_string(), ai_plateau.clone());
+                            // Recalculate AI score from updated plateau
+                            let ai_score = result(ai_plateau);
+                            current_state.scores.insert("mcts_ai".to_string(), ai_score);
+                        }
+                        session.board_state =
+                            serde_json::to_string(&current_state).unwrap_or_default();
+
+                        // Sync AI score to session player
+                        if let Some(player) = session.players.get_mut("mcts_ai") {
+                            if let Some(&score) = current_state.scores.get("mcts_ai") {
+                                player.score = score;
+                            }
+                        }
+
+                        if let Err(e) = update_session_in_store(store, session).await {
+                            log::error!("Background AI: failed to update session: {}", e);
+                        } else {
+                            log::info!(
+                                "Background AI: session {} updated successfully",
+                                ai_context.session_id
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Background AI: failed to parse session state: {}", e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Background AI failed for session {}: {}", ai_context.session_id, e);
+        }
+    }
 }
 
 /// Process player move with hybrid Q-Net MCTS for superior AI play

@@ -1015,20 +1015,23 @@ update msg model =
                     ( model, Cmd.none )
 
         PlayMove position ->
-            case model.session of
-                Just session ->
-                    ( { model | loading = True }
-                    , sendToJs <|
-                        Encode.object
-                            [ ( "type", Encode.string "playMove" )
-                            , ( "sessionId", Encode.string session.sessionId )
-                            , ( "playerId", Encode.string session.playerId )
-                            , ( "position", Encode.int position )
-                            ]
-                    )
+            if model.loading then
+                ( model, Cmd.none )
+            else
+                case model.session of
+                    Just session ->
+                        ( { model | loading = True }
+                        , sendToJs <|
+                            Encode.object
+                                [ ( "type", Encode.string "playMove" )
+                                , ( "sessionId", Encode.string session.sessionId )
+                                , ( "playerId", Encode.string session.playerId )
+                                , ( "position", Encode.int position )
+                                ]
+                        )
 
-                Nothing ->
-                    ( model, Cmd.none )
+                    Nothing ->
+                        ( model, Cmd.none )
 
         -- Real Game Mode
         OpenTilePicker ->
@@ -2728,7 +2731,7 @@ viewInProgressState model session gameState =
             ]
         , -- Show AI board if toggled
           if model.isSoloMode && model.showAiBoard then
-            div [ class "game-board glass-container", style "margin-top" "20px" ]
+            div [ class "ai-board-container glass-container", style "margin-top" "20px" ]
                 [ h3 [] [ text ("🤖 Plateau IA - " ++ String.fromInt model.aiScore ++ " pts") ]
                 , viewAiHexBoard model.aiPlateauTiles
                 ]
