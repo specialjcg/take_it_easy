@@ -266,7 +266,7 @@ impl GrpcServer {
                 self.top_k, self.num_simulations
             )
         } else {
-            "Graph Transformer Direct (149.38 pts)".to_string()
+            "V1Beam (GT + rollouts, ~152 pts)".to_string()
         };
 
         if self.single_player {

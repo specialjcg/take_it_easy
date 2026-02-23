@@ -300,7 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             } else {
-                log::info!("🎯 Mode Graph Transformer Direct activé (149.38 pts sans MCTS)");
+                log::info!("🎯 Mode V1Beam activé (GT + line_boost + v1_row + beam rollouts, ~152 pts)");
                 None
             };
 

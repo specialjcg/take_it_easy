@@ -20,7 +20,9 @@ use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
 use crate::recording::{get_recorder, PlayerType as RecorderPlayerType};
 use crate::scoring::scoring::result;
-use rand::Rng;
+use crate::strategy::gt_boost::gt_beam_v1_select;
+use rand::rngs::StdRng;
+use rand::{thread_rng, Rng, SeedableRng};
 // ============================================================================
 // ADAPTATION DE VOS TYPES EXISTANTS VERS LE SYSTÈME FONCTIONNEL
 // ============================================================================
@@ -353,8 +355,8 @@ pub async fn process_mcts_turn(
     Ok((game_state, mcts_move))
 }
 
-/// Process AI turn using DIRECT Graph Transformer inference (no MCTS)
-/// This is the validated approach achieving 149.38 pts average
+/// Process AI turn using V1Beam strategy (GT + line_boost + v1_row + beam rollouts)
+/// Achieves ~+2.35 pts over GT Direct (149.38 → ~152 pts) with ~100ms latency per move
 pub async fn process_ai_turn_direct(
     mut game_state: TakeItEasyGameState,
     policy_net: &Mutex<PolicyNet>,
@@ -378,46 +380,31 @@ pub async fn process_ai_turn_direct(
         return Err("NO_LEGAL_MOVES_FOR_AI".to_string());
     }
 
-    // Convert plateau to tensor for Graph Transformer (47 features)
-    let input_tensor = convert_plateau_for_gat_47ch(
+    // V1Beam: GT logits + line_boost + v1_row_bonus with beam rollouts
+    let policy_locked = policy_net.lock().await;
+    let gt_net = policy_locked
+        .as_graph_transformer()
+        .ok_or("V1Beam requires GraphTransformer architecture")?;
+
+    let mut rng = StdRng::from_rng(&mut thread_rng());
+    let best_position = gt_beam_v1_select(
         ai_plateau,
         &current_tile,
         &game_state.deck,
         game_state.current_turn,
-        game_state.total_turns,
+        gt_net,
+        3.0,  // line_boost
+        4,    // beam_k (top-4 candidates)
+        10,   // num_rollouts per candidate
+        2.0,  // v1_bonus
+        &mut rng,
     );
-
-    // Direct policy inference (no MCTS search)
-    let policy_locked = policy_net.lock().await;
-    let policy_output = policy_locked.forward(&input_tensor, false);
     drop(policy_locked);
 
-    // Extract policy probabilities
-    let policy_vec: Vec<f32> = {
-        let flat = policy_output.flatten(0, -1);
-        let size = flat.size()[0] as usize;
-        let mut buf = vec![0f32; size];
-        flat.copy_data(&mut buf, size);
-        buf
-    };
-
-    // Find best legal position
-    let best_position = legal_moves
-        .iter()
-        .filter(|&&pos| pos < policy_vec.len())
-        .max_by(|&a, &b| {
-            let val_a = policy_vec[*a];
-            let val_b = policy_vec[*b];
-            val_a.partial_cmp(&val_b).unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .copied()
-        .unwrap_or(legal_moves[0]);
-
     log::info!(
-        "🎯 AI Direct: tile {:?} → position {} (score: {:.3})",
+        "🎯 AI V1Beam: tile {:?} → position {} (beam_k=4, rollouts=10)",
         current_tile,
         best_position,
-        policy_vec.get(best_position).unwrap_or(&0.0)
     );
 
     // Record AI move
@@ -434,7 +421,7 @@ pub async fn process_ai_turn_direct(
             ai_plateau,
             &current_tile,
             best_position,
-            policy_vec.get(best_position).map(|&v| v),
+            None, // V1Beam doesn't expose per-position scores
         );
     }
 
@@ -451,9 +438,9 @@ pub async fn process_ai_turn_direct(
     let ai_move = MctsMove {
         position: best_position,
         tile: current_tile,
-        evaluation_score: *policy_vec.get(best_position).unwrap_or(&0.0),
-        search_depth: 0,         // Direct inference, no search
-        variations_considered: 0, // Direct inference, no variations
+        evaluation_score: 0.0,
+        search_depth: 10,        // V1Beam rollouts
+        variations_considered: 4, // beam_k candidates
     };
 
     Ok((game_state, ai_move))

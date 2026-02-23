@@ -84,6 +84,14 @@ impl PolicyNet {
         }
     }
 
+    /// Returns a reference to the inner GraphTransformerPolicyNet, if that's the active arch.
+    pub fn as_graph_transformer(&self) -> Option<&GraphTransformerPolicyNet> {
+        match &self.net {
+            PolicyNetImpl::GraphTransformer(gt) => Some(gt),
+            _ => None,
+        }
+    }
+
     pub fn forward(&self, input: &Tensor, train: bool) -> Tensor {
         match &self.net {
             PolicyNetImpl::Cnn(net) => net.forward(input, train),
