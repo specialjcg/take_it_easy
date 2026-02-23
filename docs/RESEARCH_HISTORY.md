@@ -430,25 +430,82 @@ Les 3 pistes d'amélioration évidentes ont été tentées :
 
 ---
 
+## 10. Tentative de fine-tuning centre-9 (février 2026)
+
+### Contexte
+L'analyse de 79 parties humaines montrait que l'IA place 84% des tuiles-9 sur les bords (R0/R4)
+alors que les humains gagnants placent 51% au centre (R2). Hypothèse : le fine-tuning centre-9
+pourrait améliorer le score moyen.
+
+### Approches testées
+
+| Approche | Données | Score | 9→centre | Delta |
+|----------|---------|-------|----------|-------|
+| **Baseline GT Direct** | — | **152.9 pts** | 7.5% | — |
+| Human game fine-tune (all) | 1083 samples, 5x win weight | 144.5 | ~10% | -8.4 |
+| Human game fine-tune (win only) | 323 samples, ai_weight=0 | 138.6 | — | -14.3 |
+| Distillation fast teacher | 189k, GT+LineBoost+V1Bonus | 153.2 | 10.5% | +0.3 |
+| Distillation nine-only gentle | 189k, v1_bonus=5.0 | 153.2 | 10.5% | +0.0 |
+| **Label override centre-9** | 378k, weight=3.0x | **141.1** | **44.5%** | **-11.8** |
+| Label override gentle | 378k, weight=1.5x, 3 epochs | 144.1 | 46.2% | -8.8 |
+
+### Résultat : la stratégie bord-9 est optimale
+
+Le GT place délibérément les 9-tiles sur les bords. Les expériences montrent que :
+
+1. **La distillation subtile ne change rien** : quand le teacher est proche du GT (96% d'accord),
+   le modèle converge vers l'identique. Résultat : +0.0 pts.
+
+2. **La distillation agressive perd des points** : forcer 44% de 9-tiles au centre (vs 7.5%)
+   coûte ~10 pts car le modèle a appris des coordinations (diagonales, lignes) autour du
+   placement bord-9. Changer les 9-tiles casse ces coordinations.
+
+3. **Les parties humaines sont trop bruitées** : 323 victoires humaines (~240 samples après
+   filtre) ne contiennent pas assez de signal. Les coups humains, même gagnants, sont
+   souvent sous-optimaux par rapport au GT.
+
+### Pourquoi bord-9 > centre-9 pour le GT
+
+- Les rangées bord (3 positions) sont plus faciles à compléter que le centre (5 positions)
+- Probabilité de compléter H2 avec 5 tuiles-9 : nécessite de réserver 5 positions et de
+  tirer 5+ tuiles-9 dans le bon ordre — contrainte trop forte
+- Le GT coordonne les 9-tiles avec les diagonales (v2, v3) depuis les bords
+- Centre-9 est une stratégie **haute variance** : parfois 45 pts (H2), souvent 0 pts
+- Bord-9 est une stratégie **basse variance, meilleur score moyen**
+
+### Conclusion
+
+La stratégie centre-9 observée chez les humains gagnants n'est pas transférable au GT par
+fine-tuning supervisé. Le GT a trouvé un optimum local différent (bord-9 + coordination diagonale)
+qui score mieux en moyenne. Pour changer cette stratégie, il faudrait du **RL avec exploration**
+permettant au modèle de découvrir de nouvelles coordinations autour du centre-9.
+
+L'heuristique V1Beam en inférence (+0.8 à +2.4 pts) reste la meilleure approche pour
+introduire un biais centre-9 sans modifier les poids.
+
+### Fichiers créés
+- `src/bin/distill_v1beam.rs` — outil de distillation V1Beam → GT (non deployé)
+
+---
+
 ## Conclusion
 
 Après 4 mois de recherche (novembre 2025 — février 2026) :
 
-1. **Le Graph Transformer** est l'approche définitive : **149 pts**, +24 pts vs Hybrid MCTS
+1. **Le Graph Transformer** est l'approche définitive : **~153 pts** (benchmark 500 jeux), +24 pts vs Hybrid MCTS
 2. **L'attention sur graphe** résout le problème fondamental de géométrie hexagonale
-3. **Les heuristiques humaines sont inutiles** sur un GT bien entraîné — le modèle a déjà
-   appris la stratégie optimale (complétion de lignes, gestion des conflits)
-4. **Les pistes classiques d'amélioration** (plus de données, plus de paramètres, value head)
-   sont en rendements décroissants
+3. **Les heuristiques humaines (centre-9) ne fonctionnent pas en fine-tuning** — le GT a appris
+   une stratégie bord-9 + diagonales qui est localement optimale pour ses poids
+4. **Le fine-tuning supervisé** est limité par : données bruitées, dilution du signal, et
+   impossibilité de réapprendre les coordinations sans RL
 
-Pour progresser significativement au-delà de 150 pts, il faudrait :
-- Un changement qualitatif dans les données d'entraînement (parties humaines expertes)
-- Une approche d'apprentissage fondamentalement différente (RL avec exploration ciblée)
-- Ou accepter que ~150 pts est proche du plafond pour cette taille de modèle
+Pour progresser significativement au-delà de 153 pts, il faudrait :
+- **RL avec exploration ciblée** (pas du supervisé) pour découvrir de nouvelles coordinations
+- **Ou accepter que ~153 pts** est le plafond pour cette architecture GT (128-dim, 2 couches)
 
-**Score production stable** : **149.38 pts** (Graph Transformer Direct)
+**Score production stable** : **~153 pts** (Graph Transformer Direct, benchmark 500 jeux)
 
 ---
 
-*Document mis à jour le 18 février 2026*
+*Document mis à jour le 23 février 2026*
 *Auteurs: Claude Opus 4.5/4.6 + équipe de développement*
