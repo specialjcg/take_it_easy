@@ -21,7 +21,7 @@ echo "╚═══════════════════════�
 # ── 1. Installer les dépendances système ──
 echo -e "\n[1/5] Installing system dependencies..."
 apt-get update -qq && apt-get install -y -qq \
-    curl build-essential pkg-config libssl-dev git wget unzip > /dev/null 2>&1
+    curl build-essential pkg-config libssl-dev git wget unzip protobuf-compiler > /dev/null 2>&1
 echo "  Done."
 
 # ── 2. Installer Rust ──
@@ -66,6 +66,20 @@ else
     git checkout feature/cuda-gpu
 fi
 
+# Override .cargo/config.toml to point to CUDA libtorch (repo has local CPU paths)
+mkdir -p .cargo
+cat > .cargo/config.toml <<'TOML'
+[env]
+LIBTORCH = { value = "/opt/libtorch", force = true }
+LD_LIBRARY_PATH = { value = "/opt/libtorch/lib", force = true }
+
+[build]
+
+[target.'cfg(test)']
+rustflags = ["-C", "link-arg=-Wl,-rpath=/opt/libtorch/lib"]
+TOML
+echo "  .cargo/config.toml overwritten for CUDA libtorch."
+
 # Copier les poids si uploadés dans /root/
 mkdir -p model_weights
 if [ -f "/root/graph_transformer_policy.safetensors" ]; then
@@ -79,9 +93,19 @@ else
     exit 1
 fi
 
-# ── 5. Build ──
-echo -e "\n[5/5] Building (release)... this takes ~5 min first time"
-cargo build --release --bin benchmark_mcts_gpu 2>&1 | tail -3
+# ── 5. Verify CUDA libs & Build ──
+echo -e "\n[5/5] Verifying libtorch CUDA and building..."
+if [ -f "$LIBTORCH_DIR/lib/libtorch_cuda.so" ]; then
+    echo "  libtorch_cuda.so found — CUDA linking will be enabled."
+else
+    echo "  ERROR: libtorch_cuda.so NOT found in $LIBTORCH_DIR/lib/"
+    echo "  torch-sys will only link CPU. Check your libtorch installation."
+    ls "$LIBTORCH_DIR/lib/"libtorch*.so 2>/dev/null || echo "  No libtorch*.so files found!"
+    exit 1
+fi
+# Clean torch-sys cache to force re-detection of CUDA libs
+cargo clean -p torch-sys 2>/dev/null || true
+cargo build --release --bin benchmark_mcts_gpu --bin train_value_net 2>&1 | tail -5
 
 # ── CUDA check ──
 echo -e "\n═══════════════════════════════════════════════════"
@@ -90,13 +114,19 @@ echo "════════════════════════�
 ./target/release/benchmark_mcts_gpu --device cuda --num-games 1 --sim-counts "10" 2>&1 | head -12
 
 echo -e "\n═══════════════════════════════════════════════════"
-echo "  Ready! Run the full benchmark with:"
+echo "  Ready! Commands:"
 echo ""
-echo "  # Quick test (5 min)"
-echo "  ./target/release/benchmark_mcts_gpu \\"
-echo "    --device cuda --num-games 50 --sim-counts \"50,100,500\" --batch-size 64"
+echo "  # 1. Train value network (GPU, ~10 min for 10k games)"
+echo "  ./target/release/train_value_net \\"
+echo "    --device cuda --num-games 10000 --epochs 80 --eval-games 200"
 echo ""
-echo "  # Full benchmark (30-60 min)"
+echo "  # 2. Benchmark expectimax vs GT Direct"
 echo "  ./target/release/benchmark_mcts_gpu \\"
-echo "    --device cuda --num-games 100 --sim-counts \"50,100,500,1000,5000\" --batch-size 128"
+echo "    --device cuda --num-games 200 \\"
+echo "    --value-model-path model_weights/value_net.safetensors \\"
+echo "    --sim-counts \"50,100\""
+echo ""
+echo "  # 3. MCTS-only benchmark"
+echo "  ./target/release/benchmark_mcts_gpu \\"
+echo "    --device cuda --num-games 100 --sim-counts \"50,100,500,1000\" --batch-size 128"
 echo "═══════════════════════════════════════════════════"

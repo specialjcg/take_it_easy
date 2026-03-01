@@ -22,8 +22,10 @@ use take_it_easy::neural::device_util::{check_cuda, parse_device};
 use take_it_easy::neural::graph_transformer::GraphTransformerPolicyNet;
 use take_it_easy::neural::model_io::load_varstore;
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
+use take_it_easy::neural::graph_transformer::GraphTransformerValueNet;
 use take_it_easy::scoring::scoring::result;
 use take_it_easy::strategy::batched_mcts::{batched_gt_mcts_select, BatchedMctsConfig};
+use take_it_easy::strategy::expectimax::{expectimax_select, ExpectimaxConfig};
 
 #[derive(Parser)]
 #[command(name = "benchmark_mcts_gpu", about = "Benchmark batched MCTS at various sim budgets")]
@@ -71,6 +73,10 @@ struct Args {
     /// Random seed
     #[arg(long, default_value_t = 42)]
     seed: u64,
+
+    /// Path to value network weights (enables Expectimax benchmark)
+    #[arg(long)]
+    value_model_path: Option<String>,
 }
 
 /// Play one game using GT Direct (argmax, no heuristics).
@@ -129,6 +135,29 @@ fn play_mcts(
         }
 
         let pos = batched_gt_mcts_select(&plateau, &tile, &deck, turn, policy_net, config, rng);
+        plateau.tiles[pos] = tile;
+    }
+
+    result(&plateau)
+}
+
+/// Play one game using expectimax (value network lookahead).
+fn play_expectimax(
+    policy_net: &GraphTransformerPolicyNet,
+    value_net: &GraphTransformerValueNet,
+    config: &ExpectimaxConfig,
+    tile_sequence: &[Tile],
+) -> i32 {
+    let mut plateau = create_plateau_empty();
+    let mut deck = create_deck();
+
+    for (turn, &tile) in tile_sequence.iter().enumerate() {
+        deck = replace_tile_in_deck(&deck, &tile);
+        let legal = get_legal_moves(&plateau);
+        if legal.is_empty() {
+            break;
+        }
+        let pos = expectimax_select(&plateau, &tile, &deck, turn, policy_net, value_net, config);
         plateau.tiles[pos] = tile;
     }
 
@@ -292,6 +321,57 @@ fn main() {
             scores,
             elapsed_ms,
         });
+    }
+
+    // 3. Expectimax (if value model provided)
+    if let Some(ref value_path) = args.value_model_path {
+        if Path::new(value_path).exists() {
+            print!("Running Expectimax ({} games)...", args.num_games);
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+
+            let mut value_vs = nn::VarStore::new(device);
+            let value_net = GraphTransformerValueNet::new(
+                &value_vs, 47, args.embed_dim, args.num_layers, args.num_heads, 0.0,
+            );
+            match load_varstore(&mut value_vs, value_path) {
+                Ok(()) => {}
+                Err(e) => {
+                    eprintln!("\nError loading value model: {}", e);
+                    std::process::exit(1);
+                }
+            }
+
+            let ex_config = ExpectimaxConfig {
+                device,
+                boost: args.boost,
+                score_mean: 140.0,
+                score_std: 40.0,
+            };
+
+            let start = Instant::now();
+            let scores: Vec<i32> = sequences
+                .iter()
+                .enumerate()
+                .map(|(i, seq)| {
+                    let score = play_expectimax(&policy_net, &value_net, &ex_config, seq);
+                    if (i + 1) % 10 == 0 {
+                        print!(" {}g", i + 1);
+                        std::io::Write::flush(&mut std::io::stdout()).ok();
+                    }
+                    score
+                })
+                .collect();
+            let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+            println!(" done ({:.0}ms)", elapsed_ms);
+
+            results.push(BenchResult {
+                label: "Expectimax".into(),
+                scores,
+                elapsed_ms,
+            });
+        } else {
+            eprintln!("Warning: value model not found: {}", value_path);
+        }
     }
 
     // Print results table
