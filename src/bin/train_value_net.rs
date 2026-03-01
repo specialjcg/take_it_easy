@@ -137,8 +137,8 @@ fn main() {
     println!("Training: {} epochs, lr={}, batch_size={}", args.epochs, args.lr, args.batch_size);
     println!("Architecture: embed={}, layers={}, heads={}", args.embed_dim, args.num_layers, args.num_heads);
 
-    // Load policy network
-    let mut policy_vs = nn::VarStore::new(device);
+    // Load policy network on CPU (gt_boosted_select generates features on CPU)
+    let mut policy_vs = nn::VarStore::new(Device::Cpu);
     let policy_net = GraphTransformerPolicyNet::new(
         &policy_vs, 47, args.embed_dim, args.num_layers, args.num_heads, 0.0,
     );
