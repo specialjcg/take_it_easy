@@ -364,8 +364,8 @@ fn main() {
         let gt_avg = gt_scores.iter().sum::<i32>() as f64 / gt_scores.len() as f64;
         println!(" {:.1} pts", gt_avg);
 
-        // Test multiple min_turn values: full expectimax (0), and hybrid (10, 12, 14, 16)
-        let min_turns = [0, 10, 12, 14, 16];
+        // Test multiple min_turn values: full expectimax + various hybrid handoffs
+        let min_turns = [0, 6, 8, 9, 10, 11, 12, 14];
         let mut results: Vec<(String, Vec<i32>)> = Vec::new();
 
         for &mt in &min_turns {
