@@ -1,3 +1,4 @@
+pub mod device_util;
 pub mod gnn;
 pub mod graph_transformer;
 pub mod manager;

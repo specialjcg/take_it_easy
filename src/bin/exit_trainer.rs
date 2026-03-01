@@ -14,6 +14,7 @@ use std::time::Instant;
 use tch::{nn, nn::OptimizerConfig, Device, Kind, Tensor};
 
 use take_it_easy::game::create_deck::create_deck;
+use take_it_easy::neural::device_util::parse_device;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::replace_tile_in_deck;
@@ -106,6 +107,10 @@ struct Args {
     /// Random seed
     #[arg(long, default_value_t = 42)]
     seed: u64,
+
+    /// Device: "cpu", "cuda", "cuda:0"
+    #[arg(long, default_value = "cpu")]
+    device: String,
 }
 
 struct Sample {
@@ -388,7 +393,14 @@ fn main() {
     println!("  Save to:          {}", args.save_path);
 
     // Initialize model
-    let device = Device::Cpu;
+    let device = match parse_device(&args.device) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return;
+        }
+    };
+    println!("  Device:           {:?}", device);
     let mut vs = nn::VarStore::new(device);
     let policy_net = GraphTransformerPolicyNet::new(
         &vs,
