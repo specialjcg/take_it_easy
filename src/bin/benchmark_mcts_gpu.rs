@@ -346,6 +346,7 @@ fn main() {
                 boost: args.boost,
                 score_mean: 140.0,
                 score_std: 40.0,
+                min_turn: 0,
             };
 
             let start = Instant::now();

@@ -348,76 +348,80 @@ fn main() {
             return;
         }
 
-        let expectimax_config = ExpectimaxConfig {
-            device,
-            boost: args.boost,
-            score_mean: args.score_mean,
-            score_std: args.score_std,
-        };
-
+        // Generate shared tile sequences
         let mut eval_rng = StdRng::seed_from_u64(args.seed + 2000);
-        let mut gt_scores = Vec::with_capacity(args.eval_games);
-        let mut ex_scores = Vec::with_capacity(args.eval_games);
+        let eval_sequences: Vec<Vec<Tile>> = (0..args.eval_games)
+            .map(|_| random_tile_sequence(&mut eval_rng))
+            .collect();
 
-        for i in 0..args.eval_games {
-            let tile_seq = random_tile_sequence(&mut eval_rng);
+        // GT Direct baseline
+        print!("  GT Direct...");
+        std::io::Write::flush(&mut std::io::stdout()).ok();
+        let gt_scores: Vec<i32> = eval_sequences
+            .iter()
+            .map(|seq| play_gt_direct(&policy_net, device, seq, args.boost))
+            .collect();
+        let gt_avg = gt_scores.iter().sum::<i32>() as f64 / gt_scores.len() as f64;
+        println!(" {:.1} pts", gt_avg);
 
-            // GT Direct
-            let gt = play_gt_direct(&policy_net, device, &tile_seq, args.boost);
-            gt_scores.push(gt);
+        // Test multiple min_turn values: full expectimax (0), and hybrid (10, 12, 14, 16)
+        let min_turns = [0, 10, 12, 14, 16];
+        let mut results: Vec<(String, Vec<i32>)> = Vec::new();
 
-            // Expectimax
-            let ex = play_expectimax(
-                &policy_net,
-                &eval_value_net,
-                &expectimax_config,
-                &tile_seq,
-            );
-            ex_scores.push(ex);
+        for &mt in &min_turns {
+            let label = if mt == 0 {
+                "Expectimax(all)".to_string()
+            } else {
+                format!("GT+Ex(t>={})", mt)
+            };
+            print!("  {}...", label);
+            std::io::Write::flush(&mut std::io::stdout()).ok();
 
-            if (i + 1) % 20 == 0 {
-                let gt_avg = gt_scores.iter().sum::<i32>() as f64 / gt_scores.len() as f64;
-                let ex_avg = ex_scores.iter().sum::<i32>() as f64 / ex_scores.len() as f64;
-                println!(
-                    "  [{:>4}/{}] GT Direct: {:.1}  Expectimax: {:.1}  (delta: {:+.1})",
-                    i + 1,
-                    args.eval_games,
-                    gt_avg,
-                    ex_avg,
-                    ex_avg - gt_avg
-                );
-            }
+            let config = ExpectimaxConfig {
+                device,
+                boost: args.boost,
+                score_mean: args.score_mean,
+                score_std: args.score_std,
+                min_turn: mt,
+            };
+
+            let scores: Vec<i32> = eval_sequences
+                .iter()
+                .map(|seq| play_expectimax(&policy_net, &eval_value_net, &config, seq))
+                .collect();
+            let avg = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+            println!(" {:.1} pts ({:+.1})", avg, avg - gt_avg);
+            results.push((label, scores));
         }
 
-        let gt_avg = gt_scores.iter().sum::<i32>() as f64 / gt_scores.len() as f64;
-        let ex_avg = ex_scores.iter().sum::<i32>() as f64 / ex_scores.len() as f64;
-        let gt_std = std_dev(&gt_scores);
-        let ex_std = std_dev(&ex_scores);
-
-        println!("\n{}", "=".repeat(60));
+        // Print summary table
+        println!("\n{}", "=".repeat(68));
         println!(
-            "{:<16} {:>8} {:>8} {:>8} {:>8}",
-            "Strategy", "Avg", "Std", "Min", "Max"
+            "{:<18} {:>8} {:>8} {:>8} {:>8} {:>8}",
+            "Strategy", "Avg", "Std", "Min", "Max", "Delta"
         );
-        println!("{}", "-".repeat(60));
+        println!("{}", "-".repeat(68));
         println!(
-            "{:<16} {:>8.1} {:>8.1} {:>8} {:>8}",
+            "{:<18} {:>8.1} {:>8.1} {:>8} {:>8}",
             "GT Direct",
             gt_avg,
-            gt_std,
+            std_dev(&gt_scores),
             gt_scores.iter().min().unwrap(),
             gt_scores.iter().max().unwrap()
         );
-        println!(
-            "{:<16} {:>8.1} {:>8.1} {:>8} {:>8}  ({:+.1})",
-            "Expectimax",
-            ex_avg,
-            ex_std,
-            ex_scores.iter().min().unwrap(),
-            ex_scores.iter().max().unwrap(),
-            ex_avg - gt_avg
-        );
-        println!("{}", "=".repeat(60));
+        for (label, scores) in &results {
+            let avg = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+            println!(
+                "{:<18} {:>8.1} {:>8.1} {:>8} {:>8} {:>+8.1}",
+                label,
+                avg,
+                std_dev(scores),
+                scores.iter().min().unwrap(),
+                scores.iter().max().unwrap(),
+                avg - gt_avg
+            );
+        }
+        println!("{}", "=".repeat(68));
     }
 }
 

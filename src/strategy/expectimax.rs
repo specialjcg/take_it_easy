@@ -20,6 +20,9 @@ pub struct ExpectimaxConfig {
     pub boost: f64,
     pub score_mean: f64,
     pub score_std: f64,
+    /// Minimum turn to activate expectimax (before this, use GT Direct).
+    /// Set to 0 to always use expectimax.
+    pub min_turn: usize,
 }
 
 /// 1-ply expectimax: pick the position that maximises E[V | place tile at p].
@@ -39,8 +42,8 @@ pub fn expectimax_select(
         return legal.first().copied().unwrap_or(0);
     }
 
-    // Last turn or no future tiles: fallback to GT Direct (GPU-aware)
-    if turn >= 18 {
+    // Before min_turn or last turn: use GT Direct
+    if turn < config.min_turn || turn >= 18 {
         return gt_direct_gpu(plateau, tile, deck, turn, policy_net, config);
     }
 
