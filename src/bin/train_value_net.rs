@@ -31,7 +31,6 @@ use take_it_easy::neural::model_io::{load_varstore, save_varstore};
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
 use take_it_easy::strategy::expectimax::{expectimax_select, ExpectimaxConfig};
-use take_it_easy::strategy::gt_boost::gt_boosted_select;
 
 #[derive(Parser, Debug)]
 #[command(name = "train_value_net")]
@@ -146,8 +145,8 @@ fn main() {
     println!("Training: {} epochs, lr={}, batch_size={}", args.epochs, args.lr, args.batch_size);
     println!("Architecture: embed={}, layers={}, heads={}", args.embed_dim, args.num_layers, args.num_heads);
 
-    // Load policy network on CPU (gt_boosted_select generates features on CPU)
-    let mut policy_vs = nn::VarStore::new(Device::Cpu);
+    // Load policy network on the target device
+    let mut policy_vs = nn::VarStore::new(device);
     let policy_net = GraphTransformerPolicyNet::new(
         &policy_vs, 47, args.embed_dim, args.num_layers, args.num_heads, 0.0,
     );
@@ -364,7 +363,7 @@ fn main() {
             let tile_seq = random_tile_sequence(&mut eval_rng);
 
             // GT Direct
-            let gt = play_gt_direct(&policy_net, &tile_seq, args.boost);
+            let gt = play_gt_direct(&policy_net, device, &tile_seq, args.boost);
             gt_scores.push(gt);
 
             // Expectimax
@@ -422,12 +421,17 @@ fn main() {
     }
 }
 
-/// Generate training data by playing games with GT Direct.
+/// Generate training data by playing games with GT Direct (GPU-accelerated).
+///
+/// Policy inference runs on the target device (GPU if available).
+/// Features are created on CPU then moved to device for the forward pass.
 fn generate_data(
     policy_net: &GraphTransformerPolicyNet,
     device: Device,
     args: &Args,
 ) -> Vec<Sample> {
+    use take_it_easy::strategy::gt_boost::line_boost;
+
     let mut rng = StdRng::seed_from_u64(args.seed);
     let mut samples = Vec::with_capacity(args.num_games * 19);
 
@@ -436,28 +440,42 @@ fn generate_data(
         let mut deck = create_deck();
         let mut game_features: Vec<Tensor> = Vec::with_capacity(19);
 
-        // Draw random tile sequence
         let tile_seq = random_tile_sequence(&mut rng);
 
         for (turn, &tile) in tile_seq.iter().enumerate() {
             deck = replace_tile_in_deck(&deck, &tile);
 
-            // Record features BEFORE making the move
+            // Record features on CPU BEFORE making the move
             let feat = convert_plateau_for_gat_47ch(&plateau, &tile, &deck, turn, 19);
-            game_features.push(feat);
+            game_features.push(feat.shallow_clone());
 
-            // Play with GT Direct
             let legal = get_legal_moves(&plateau);
             if legal.is_empty() {
                 break;
             }
-            let pos = gt_boosted_select(&plateau, &tile, &deck, turn, policy_net, args.boost);
+
+            // GT Direct inference on device (GPU)
+            let feat_device = feat.unsqueeze(0).to_device(device);
+            let logits = tch::no_grad(|| policy_net.forward(&feat_device, false))
+                .squeeze_dim(0)
+                .to_device(Device::Cpu);
+            let logit_values: Vec<f64> = Vec::<f64>::try_from(&logits).unwrap();
+
+            // Mask + line_boost → argmax
+            let pos = *legal
+                .iter()
+                .max_by(|&&a, &&b| {
+                    let sa = logit_values[a] + line_boost(&plateau, &tile, a, args.boost);
+                    let sb = logit_values[b] + line_boost(&plateau, &tile, b, args.boost);
+                    sa.partial_cmp(&sb).unwrap()
+                })
+                .unwrap();
+
             plateau.tiles[pos] = tile;
         }
 
         let final_score = result(&plateau);
 
-        // Every position in this game gets the same final score as target
         for feat in game_features {
             samples.push(Sample {
                 features: feat,
@@ -525,12 +543,15 @@ fn random_tile_sequence(rng: &mut StdRng) -> Vec<Tile> {
     seq
 }
 
-/// Play one game with GT Direct + line_boost.
+/// Play one game with GT Direct + line_boost (GPU-aware).
 fn play_gt_direct(
     policy_net: &GraphTransformerPolicyNet,
+    device: Device,
     tile_sequence: &[Tile],
     boost: f64,
 ) -> i32 {
+    use take_it_easy::strategy::gt_boost::line_boost;
+
     let mut plateau = create_plateau_empty();
     let mut deck = create_deck();
 
@@ -540,7 +561,24 @@ fn play_gt_direct(
         if legal.is_empty() {
             break;
         }
-        let pos = gt_boosted_select(&plateau, &tile, &deck, turn, policy_net, boost);
+
+        let feat = convert_plateau_for_gat_47ch(&plateau, &tile, &deck, turn, 19)
+            .unsqueeze(0)
+            .to_device(device);
+        let logits = tch::no_grad(|| policy_net.forward(&feat, false))
+            .squeeze_dim(0)
+            .to_device(Device::Cpu);
+        let logit_values: Vec<f64> = Vec::<f64>::try_from(&logits).unwrap();
+
+        let pos = *legal
+            .iter()
+            .max_by(|&&a, &&b| {
+                let sa = logit_values[a] + line_boost(&plateau, &tile, a, boost);
+                let sb = logit_values[b] + line_boost(&plateau, &tile, b, boost);
+                sa.partial_cmp(&sb).unwrap()
+            })
+            .unwrap();
+
         plateau.tiles[pos] = tile;
     }
 

@@ -13,7 +13,7 @@ use crate::game::remove_tile_from_deck::{get_available_tiles, replace_tile_in_de
 use crate::game::tile::Tile;
 use crate::neural::graph_transformer::{GraphTransformerPolicyNet, GraphTransformerValueNet};
 use crate::neural::tensor_conversion::convert_plateau_for_gat_47ch;
-use crate::strategy::gt_boost::gt_boosted_select;
+use crate::strategy::gt_boost::line_boost;
 
 pub struct ExpectimaxConfig {
     pub device: Device,
@@ -39,16 +39,16 @@ pub fn expectimax_select(
         return legal.first().copied().unwrap_or(0);
     }
 
-    // Last turn: no future tiles to evaluate — fallback to GT Direct
+    // Last turn or no future tiles: fallback to GT Direct (GPU-aware)
     if turn >= 18 {
-        return gt_boosted_select(plateau, tile, deck, turn, policy_net, config.boost);
+        return gt_direct_gpu(plateau, tile, deck, turn, policy_net, config);
     }
 
     let deck_after = replace_tile_in_deck(deck, tile);
     let future_tiles = get_available_tiles(&deck_after);
 
     if future_tiles.is_empty() {
-        return gt_boosted_select(plateau, tile, deck, turn, policy_net, config.boost);
+        return gt_direct_gpu(plateau, tile, deck, turn, policy_net, config);
     }
 
     // Build batched features: for each (legal_pos, future_tile) pair
@@ -98,4 +98,36 @@ pub fn expectimax_select(
     }
 
     best_pos
+}
+
+/// GPU-aware GT Direct fallback: logits + line_boost → argmax.
+fn gt_direct_gpu(
+    plateau: &Plateau,
+    tile: &Tile,
+    deck: &Deck,
+    turn: usize,
+    policy_net: &GraphTransformerPolicyNet,
+    config: &ExpectimaxConfig,
+) -> usize {
+    let legal = get_legal_moves(plateau);
+    if legal.len() <= 1 {
+        return legal.first().copied().unwrap_or(0);
+    }
+
+    let feat = convert_plateau_for_gat_47ch(plateau, tile, deck, turn, 19)
+        .unsqueeze(0)
+        .to_device(config.device);
+    let logits = tch::no_grad(|| policy_net.forward(&feat, false))
+        .squeeze_dim(0)
+        .to_device(Device::Cpu);
+    let logit_values: Vec<f64> = Vec::<f64>::try_from(&logits).unwrap();
+
+    *legal
+        .iter()
+        .max_by(|&&a, &&b| {
+            let sa = logit_values[a] + line_boost(plateau, tile, a, config.boost);
+            let sb = logit_values[b] + line_boost(plateau, tile, b, config.boost);
+            sa.partial_cmp(&sb).unwrap()
+        })
+        .unwrap()
 }
