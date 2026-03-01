@@ -163,6 +163,14 @@ fn main() {
         }
     }
 
+    // ── Eval-only shortcut ──
+    let eval_only = args.num_games == 0 && args.data_dir.is_none();
+    if eval_only && args.eval_games == 0 {
+        println!("Nothing to do (num_games=0, eval_games=0).");
+        return;
+    }
+
+    if !eval_only {
     // ── Phase 1: Load or generate training data ──
     println!("\n--- Phase 1: Data ---\n");
     let gen_start = Instant::now();
@@ -333,6 +341,7 @@ fn main() {
     println!("\nTraining complete in {:.1}s", train_time);
     println!("Best val loss: {:.4} (MAE ~{:.1} pts)", best_val_loss, best_val_loss.sqrt() * args.score_std);
     println!("Model saved to: {}", args.model_path);
+    } // end if !eval_only
 
     // ── Phase 3: Evaluate with Expectimax ──
     if args.eval_games > 0 {
