@@ -12,13 +12,15 @@
 use clap::Parser;
 use rand::prelude::*;
 use rand::rngs::StdRng;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::time::Instant;
 use tch::{nn, nn::OptimizerConfig, Device, Kind, Tensor};
 
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
-use take_it_easy::game::plateau::create_plateau_empty;
+use take_it_easy::game::plateau::{create_plateau_empty, Plateau};
 use take_it_easy::game::remove_tile_from_deck::replace_tile_in_deck;
 use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::device_util::{check_cuda, parse_device};
@@ -110,6 +112,14 @@ struct Args {
     /// Weight decay
     #[arg(long, default_value_t = 0.0001)]
     weight_decay: f64,
+
+    /// Data directory with CSV files (skip self-play, load from CSVs instead)
+    #[arg(long)]
+    data_dir: Option<String>,
+
+    /// Minimum score to include from CSV data
+    #[arg(long, default_value_t = 0)]
+    min_score: i32,
 }
 
 struct Sample {
@@ -133,7 +143,6 @@ fn main() {
     };
     check_cuda();
     println!("Device: {:?}", device);
-    println!("Generating {} games with GT Direct (boost={:.1})", args.num_games, args.boost);
     println!("Training: {} epochs, lr={}, batch_size={}", args.epochs, args.lr, args.batch_size);
     println!("Architecture: embed={}, layers={}, heads={}", args.embed_dim, args.num_layers, args.num_heads);
 
@@ -155,27 +164,47 @@ fn main() {
         }
     }
 
-    // ── Phase 1: Generate training data ──
-    println!("\n--- Phase 1: Data Generation ---\n");
+    // ── Phase 1: Load or generate training data ──
+    println!("\n--- Phase 1: Data ---\n");
     let gen_start = Instant::now();
-    let samples = generate_data(&policy_net, device, &args);
+
+    let samples = if let Some(ref data_dir) = args.data_dir {
+        println!("Loading CSV data from {}...", data_dir);
+        let csv_samples = load_all_csv(data_dir, args.min_score);
+        println!("Loaded {} CSV rows (score >= {})", csv_samples.len(), args.min_score);
+        if csv_samples.is_empty() {
+            eprintln!("No CSV data found!");
+            return;
+        }
+        // Convert CSV samples to tensor features
+        csv_samples
+            .iter()
+            .map(|s| {
+                let mut plateau = Plateau { tiles: vec![Tile(0, 0, 0); 19] };
+                for i in 0..19 {
+                    plateau.tiles[i] = decode_tile(s.plateau[i]);
+                }
+                let tile = Tile(s.tile.0, s.tile.1, s.tile.2);
+                let deck = create_deck();
+                Sample {
+                    features: convert_plateau_for_gat_47ch(&plateau, &tile, &deck, s.turn, 19),
+                    final_score: s.final_score,
+                }
+            })
+            .collect::<Vec<_>>()
+    } else {
+        println!("Generating {} games with GT Direct (boost={:.1})...", args.num_games, args.boost);
+        generate_data(&policy_net, device, &args)
+    };
+
     let gen_time = gen_start.elapsed().as_secs_f32();
-    println!(
-        "Generated {} samples from {} games ({:.1}s, {:.0} games/s)",
-        samples.len(),
-        args.num_games,
-        gen_time,
-        args.num_games as f32 / gen_time
-    );
+    println!("{} samples ready ({:.1}s)", samples.len(), gen_time);
 
     // Score statistics
     let scores: Vec<f64> = samples.iter().map(|s| s.final_score as f64).collect();
     let mean = scores.iter().sum::<f64>() / scores.len() as f64;
     let std = (scores.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / scores.len() as f64).sqrt();
-    // Use unique game scores (every 19 samples = 1 game)
-    let game_scores: Vec<f64> = scores.iter().step_by(19).copied().collect();
-    let game_mean = game_scores.iter().sum::<f64>() / game_scores.len() as f64;
-    println!("Game score stats: mean={:.1}, std={:.1}", game_mean, std);
+    println!("Score stats: mean={:.1}, std={:.1}", mean, std);
 
     if samples.is_empty() {
         eprintln!("No samples generated!");
@@ -545,4 +574,86 @@ fn std_dev(scores: &[i32]) -> f64 {
     let mean = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
     let var = scores.iter().map(|&s| (s as f64 - mean).powi(2)).sum::<f64>() / scores.len() as f64;
     var.sqrt()
+}
+
+// ── CSV loading (reused from train_graph_transformer_value.rs) ──
+
+#[derive(Clone)]
+struct CsvSample {
+    plateau: [i32; 19],
+    tile: (i32, i32, i32),
+    turn: usize,
+    final_score: i32,
+}
+
+fn load_all_csv(dir: &str, min_score: i32) -> Vec<CsvSample> {
+    let mut samples = Vec::new();
+    let path = Path::new(dir);
+    if !path.exists() {
+        return samples;
+    }
+    for entry in std::fs::read_dir(path).unwrap() {
+        let entry = entry.unwrap();
+        let file_path = entry.path();
+        if file_path.extension().map_or(false, |e| e == "csv") {
+            samples.extend(load_csv(&file_path, min_score));
+        }
+    }
+    samples
+}
+
+fn load_csv(path: &Path, min_score: i32) -> Vec<CsvSample> {
+    let mut samples = Vec::new();
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => return samples,
+    };
+    let reader = BufReader::new(file);
+    let mut lines = reader.lines();
+    let _ = lines.next(); // skip header
+
+    for line in lines {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        let fields: Vec<&str> = line.split(',').collect();
+        if fields.len() < 28 {
+            continue;
+        }
+        let final_score: i32 = match fields[26].parse() {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if final_score < min_score {
+            continue;
+        }
+        let turn: usize = match fields[1].parse() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let mut plateau = [0i32; 19];
+        for i in 0..19 {
+            plateau[i] = fields[3 + i].parse().unwrap_or(0);
+        }
+        let tile = (
+            fields[22].parse().unwrap_or(0),
+            fields[23].parse().unwrap_or(0),
+            fields[24].parse().unwrap_or(0),
+        );
+        samples.push(CsvSample {
+            plateau,
+            tile,
+            turn,
+            final_score,
+        });
+    }
+    samples
+}
+
+fn decode_tile(encoded: i32) -> Tile {
+    if encoded == 0 {
+        return Tile(0, 0, 0);
+    }
+    Tile(encoded / 100, (encoded / 10) % 10, encoded % 10)
 }
