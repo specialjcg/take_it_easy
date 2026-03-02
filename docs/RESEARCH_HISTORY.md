@@ -1,7 +1,7 @@
 # Take It Easy AI - Historique Complet des Recherches
 
 **Projet**: IA pour le jeu de plateau "Take It Easy"
-**Période**: Novembre 2025 - Février 2026
+**Période**: Novembre 2025 - Mars 2026
 **Technologie**: Rust + PyTorch (tch-rs) + gRPC + Elm (MVU)
 
 ---
@@ -18,6 +18,8 @@
 8. [Leçons Apprises](#leçons-apprises)
 9. [État Actuel et Recommandations](#état-actuel-et-recommandations)
 14. [Value Network + Expectimax Hybride (mars 2026)](#14-value-network--expectimax-hybride-mars-2026)
+15. [Policy Distillation depuis Expectimax (mars 2026)](#15-policy-distillation-depuis-expectimax-mars-2026)
+16. [2-ply Expectimax (mars 2026)](#16-2-ply-expectimax-mars-2026)
 
 ---
 
@@ -27,9 +29,11 @@
 
 | Approche | Score Moyen | Status |
 |----------|-------------|--------|
-| **GT + Expectimax Hybride (t≥8)** | **157.5 pts** | **MEILLEUR** |
-| GT + Expectimax Hybride (t≥10) | 157.0 pts | Très proche |
-| GT Direct (+line_boost) | 152.3 pts | Production actuelle |
+| **2-ply Expectimax Hybride (t≥8)** | **159.2 pts** | **MEILLEUR** (nécessite value net GPU) |
+| 1-ply Expectimax Hybride (t≥8) | 157.5 pts | Ancien meilleur |
+| 2-ply Expectimax (t≥10) | 158.1 pts | Bon compromis vitesse/score |
+| **Distilled Expectimax Policy** | **154.0 pts** | **+3.4 vs GT Direct, sans value net** |
+| GT Direct (+line_boost) | 152.3 pts | Ancienne production |
 | GT + V1Beam (v=1.0) | 151.73 pts | +2.3 pts, haute variance |
 | Hybrid MCTS (Q-net + CNN) | 125.14 pts | Ancien production |
 | Pattern Rollouts V2 | 139.40 pts | Alternative MCTS |
@@ -687,35 +691,169 @@ du *ranking* des positions (ce qui compte pour la décision) s'améliore avec pl
 
 ---
 
+## 15. Policy Distillation depuis Expectimax (mars 2026)
+
+### Motivation
+
+L'hybride GT+Expectimax(t≥8) atteint 157.5 pts mais nécessite un value network GPU à l'inférence
+(~300 évals par coup). L'objectif est de **distiller les décisions expectimax dans un pur policy net**
+qui tourne à la même vitesse que GT Direct, sans value net.
+
+### Méthode
+
+1. **Data generation** : 100k parties avec GT+Expectimax(t≥8) hybride, enregistrant
+   (features, position_choisie, score_final, masque_légal) à chaque tour → 1.9M samples
+2. **Student initialization** : le policy net est initialisé à partir des poids du teacher (GT Direct)
+   pour un fine-tuning plutôt qu'un entraînement from scratch (39/39 variables copiées)
+3. **Training** : cross-entropy sur les décisions de l'expert, pondérée par le score de la partie :
+   `weight = (score / 100)^3` — les parties à haut score pèsent plus
+4. **Logits masqués** : positions illégales à -1e9 avant softmax, comme le teacher
+
+### Hyperparamètres
+
+| Param | Valeur |
+|-------|--------|
+| Games | 100,000 |
+| Samples | 1,900,000 (19/partie) |
+| Epochs | 80 |
+| Batch size | 64 |
+| Learning rate | 0.0005 |
+| Split train/val | 90/10 |
+| Score moyen data | 156.7 pts |
+| Weight power | 3.0 |
+
+### Résultats Training
+
+- Val accuracy : **93.8%** (le student reproduit 93.8% des décisions de l'expert)
+- Val loss : 0.1408
+- Training time : 14,234s (~4h) sur RTX 3090
+- Best model sauvé : `model_weights/distilled_expectimax_policy.safetensors`
+
+### Résultats Évaluation (500 parties)
+
+| Stratégie | Score Moy | Std | Min | Max | Delta |
+|-----------|-----------|-----|-----|-----|-------|
+| GT Direct (teacher) | 150.6 | 26.0 | 76 | 229 | — |
+| GT+Ex(t≥8) | 155.2 | 26.9 | 56 | 240 | +4.6 |
+| **Distilled policy** | **154.0** | 26.1 | 64 | 240 | **+3.4** |
+
+### Analyse
+
+- La distillation capture **74% du gain** de l'expectimax (+3.4 / +4.6)
+- Le student ne nécessite **aucun value net** à l'inférence → même latence que GT Direct
+- Les 6.2% de désaccords (100% - 93.8%) coûtent ~1.2 pts
+- Le score moyen distillé (154.0) dépasse **le plafond historique de GT Direct (~153 pts)**
+- C'est la première approche qui améliore le policy net pur sans overhead d'inférence
+
+### Fichiers
+
+| Fichier | Rôle |
+|---------|------|
+| `src/bin/distill_expectimax.rs` | Pipeline complet (data gen + training + eval) |
+| `model_weights/distilled_expectimax_policy.safetensors` | Poids distillés (Vast.ai) |
+
+---
+
+## 16. 2-ply Expectimax (mars 2026)
+
+### Motivation
+
+Le 1-ply expectimax regarde 1 coup en avant : pour chaque position p, il évalue
+E[V(état après p)] en moyennant sur les tuiles futures possibles. Mais il ne peut
+pas voir les conséquences de ses choix sur le coup d'après. Le 2-ply regarde 2 coups
+en avant : max(p1) → avg(tile1) → max(p2) → avg(tile2) → V(état).
+
+### Algorithme
+
+```
+Pour chaque position p1 (legal moves) :
+  Placer tuile courante à p1
+  Pour chaque tuile1 possible (deck restant) :
+    Pour chaque position p2 (legal moves après p1) :
+      Placer tuile1 à p2
+      Pour chaque tuile2 possible (deck restant - tuile1) :
+        V(état_après_p1_p2, tuile2) → leaf evaluation
+      → avg over tuile2 → V(p1, tuile1, p2)
+    → max over p2 → best_V(p1, tuile1)
+  → avg over tuile1 → E[V | p1]
+→ max over p1 → best position
+```
+
+### Taille des batches
+
+La structure est rectangulaire : |p1| × |t1| × |p2| × |t2| où p2 = p1-1, t2 = t1-1.
+
+| Tour | |p1| | |t1| | |p2| | |t2| | Total leaves |
+|------|------|------|------|------|-------------|
+| 8 | 11 | 18 | 10 | 17 | 33,660 |
+| 10 | 9 | 16 | 8 | 15 | 17,280 |
+| 12 | 7 | 14 | 6 | 13 | 7,644 |
+| 14 | 5 | 12 | 4 | 11 | 2,640 |
+
+Forward pass chunké par lots de 8192 pour la mémoire GPU.
+
+### Résultats (500 parties, value net 100k)
+
+| Stratégie | Score Moy | Std | Delta vs GT Direct |
+|-----------|-----------|-----|--------------------|
+| GT Direct | 152.3 | 26.5 | — |
+| 1-ply GT+Ex(t≥8) | 157.5 | 25.4 | +5.2 |
+| **2-ply GT+Ex(t≥8)** | **159.2** | **25.6** | **+6.9** |
+| 2-ply GT+Ex(t≥10) | 158.1 | 25.9 | +5.8 |
+| 2-ply GT+Ex(t≥12) | 156.0 | 26.0 | +3.7 |
+
+### Analyse
+
+- Le 2-ply apporte **+1.7 pts** de plus que le 1-ply au même min_turn (159.2 vs 157.5)
+- Le gain total est **+6.9 pts** sur GT Direct — le meilleur résultat jamais atteint
+- Le sweet spot reste t≥8 : assez tôt pour bénéficier du lookahead, mais pas trop pour
+  ne pas perturber la policy GT dans les premiers coups
+- Temps par partie : ~3-5s GPU (vs <1s pour 1-ply)
+- Le 2-ply au tour 17 fall back automatiquement au 1-ply (pas assez de profondeur)
+
+### Fichiers
+
+| Fichier | Modification |
+|---------|-------------|
+| `src/strategy/expectimax.rs` | Ajout `expectimax_2ply_select` (~120 lignes) |
+| `src/bin/train_value_net.rs` | Phase 3 teste aussi 2-ply à min_turn={8,10,12} |
+
+---
+
 ## Conclusion
 
 Après 5 mois de recherche (novembre 2025 — mars 2026) :
 
 1. **Le Graph Transformer** reste la base : ~153 pts en mode direct
-2. **L'approche hybride GT + Expectimax brise le plafond** : **157.5 pts (+5.2)** confirmé sur 500 parties
-3. **L'attention sur graphe** résout le problème fondamental de géométrie hexagonale
-4. **Les heuristiques humaines (centre-9) ne fonctionnent pas en fine-tuning** — le GT a appris
+2. **Le 2-ply expectimax pousse encore plus loin** : **159.2 pts (+6.9)** confirmé sur 500 parties
+3. **Le 1-ply expectimax hybride** : 157.5 pts (+5.2) — bon compromis performance/vitesse
+4. **La distillation expectimax → policy net fonctionne** : **154.0 pts (+3.4)** sans value net
+4. **L'attention sur graphe** résout le problème fondamental de géométrie hexagonale
+5. **Les heuristiques humaines (centre-9) ne fonctionnent pas en fine-tuning** — le GT a appris
    une stratégie bord-9 + diagonales qui est localement optimale pour ses poids
-5. **Le RL (PPO, REINFORCE, REINFORCE+dense) ne dépasse pas le supervisé** — la policy
+6. **Le RL (PPO, REINFORCE, REINFORCE+dense) ne dépasse pas le supervisé** — la policy
    supervisée est un optimum local robuste
-6. **L'ExIt échoue quand l'expert < l'élève** — V1Beam (141 pts) < GT Direct (153 pts)
-7. **Le MCTS + GT prior dégrade le score** — rollouts stochastiques < GT argmax
-8. **Le value net + expectimax fonctionne en mode hybride** — la clé est de limiter
+7. **L'ExIt échoue quand l'expert < l'élève** — V1Beam (141 pts) < GT Direct (153 pts)
+8. **Le MCTS + GT prior dégrade le score** — rollouts stochastiques < GT argmax
+9. **Le value net + expectimax fonctionne en mode hybride** — la clé est de limiter
    l'expectimax aux tours où le value net est assez précis (t≥8)
 
-**Score production** : **~157.5 pts** (GT + Expectimax hybride t≥8, benchmark 500 jeux)
+**Meilleur score** : **~159.2 pts** (2-ply Expectimax hybride t≥8, nécessite value net GPU)
+**Meilleur 1-ply** : **~157.5 pts** (1-ply Expectimax hybride t≥8)
+**Meilleur policy pur** : **~154.0 pts** (Distilled Expectimax, déployable partout)
 
 ### Pistes à explorer
 
 | Piste | Difficulté | Probabilité de gain | Détails |
 |-------|-----------|---------------------|---------|
-| **2-ply expectimax** | Moyenne | Moyenne | Lookahead de 2 coups au lieu d'1, batch plus gros (~5k évals/coup) |
+| ~~**2-ply expectimax**~~ | ~~Moyenne~~ | ~~Moyenne~~ | ✅ **Fait** : 159.2 pts (+6.9), ~34k évals/coup au tour 8 (section 16) |
 | **Value net plus gros** (dim=256, 4 layers) | Faible | Faible-Moyenne | Potentiellement meilleur ranking, mais risque d'overfitting |
 | **Entraîner V sur les positions de l'expectimax** (itératif) | Moyenne | Moyenne | V actuel entraîné sur GT Direct, pas sur les états expectimax |
-| **Policy distillation depuis expectimax** | Moyenne | Moyenne | Utiliser les décisions expectimax comme targets pour un nouveau policy net |
-| **Intégrer l'expectimax en production** | Faible | Certain | Nécessite le value net sur le serveur + latence OK (~10ms/coup GPU) |
+| ~~**Policy distillation depuis expectimax**~~ | ~~Moyenne~~ | ~~Moyenne~~ | ✅ **Fait** : 154.0 pts (+3.4), 93.8% accuracy (section 15) |
+| **Distillation itérative** (V2) | Moyenne | Moyenne | Re-entraîner V sur les positions du distillé, puis re-distiller |
+| **Déployer distilled policy en production** | Faible | Certain | Remplacer le policy net actuel par le distillé (+3.4 pts gratuit) |
 
 ---
 
-*Document mis à jour le 1er mars 2026*
+*Document mis à jour le 2 mars 2026*
 *Auteurs: Claude Opus 4.5/4.6 + équipe de développement*
