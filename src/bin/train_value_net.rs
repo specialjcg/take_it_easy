@@ -30,7 +30,9 @@ use take_it_easy::neural::graph_transformer::{
 use take_it_easy::neural::model_io::{load_varstore, save_varstore};
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
-use take_it_easy::strategy::expectimax::{expectimax_select, ExpectimaxConfig};
+use take_it_easy::strategy::expectimax::{
+    expectimax_select, expectimax_2ply_select, ExpectimaxConfig,
+};
 
 #[derive(Parser, Debug)]
 #[command(name = "train_value_net")]
@@ -403,15 +405,39 @@ fn main() {
             results.push((label, scores));
         }
 
+        // 2-ply expectimax tests
+        let min_turns_2ply = [8, 10, 12];
+        for &mt in &min_turns_2ply {
+            let label = format!("2ply+Ex(t>={})", mt);
+            print!("  {}...", label);
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+
+            let config = ExpectimaxConfig {
+                device,
+                boost: args.boost,
+                score_mean: args.score_mean,
+                score_std: args.score_std,
+                min_turn: mt,
+            };
+
+            let scores: Vec<i32> = eval_sequences
+                .iter()
+                .map(|seq| play_expectimax_2ply(&policy_net, &eval_value_net, &config, seq))
+                .collect();
+            let avg = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+            println!(" {:.1} pts ({:+.1})", avg, avg - gt_avg);
+            results.push((label, scores));
+        }
+
         // Print summary table
-        println!("\n{}", "=".repeat(68));
+        println!("\n{}", "=".repeat(72));
         println!(
-            "{:<18} {:>8} {:>8} {:>8} {:>8} {:>8}",
+            "{:<22} {:>8} {:>8} {:>8} {:>8} {:>8}",
             "Strategy", "Avg", "Std", "Min", "Max", "Delta"
         );
-        println!("{}", "-".repeat(68));
+        println!("{}", "-".repeat(72));
         println!(
-            "{:<18} {:>8.1} {:>8.1} {:>8} {:>8}",
+            "{:<22} {:>8.1} {:>8.1} {:>8} {:>8}",
             "GT Direct",
             gt_avg,
             std_dev(&gt_scores),
@@ -421,7 +447,7 @@ fn main() {
         for (label, scores) in &results {
             let avg = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
             println!(
-                "{:<18} {:>8.1} {:>8.1} {:>8} {:>8} {:>+8.1}",
+                "{:<22} {:>8.1} {:>8.1} {:>8} {:>8} {:>+8.1}",
                 label,
                 avg,
                 std_dev(scores),
@@ -430,7 +456,7 @@ fn main() {
                 avg - gt_avg
             );
         }
-        println!("{}", "=".repeat(68));
+        println!("{}", "=".repeat(72));
     }
 }
 
@@ -615,6 +641,30 @@ fn play_expectimax(
             break;
         }
         let pos = expectimax_select(&plateau, &tile, &deck, turn, policy_net, value_net, config);
+        plateau.tiles[pos] = tile;
+    }
+
+    result(&plateau)
+}
+
+fn play_expectimax_2ply(
+    policy_net: &GraphTransformerPolicyNet,
+    value_net: &GraphTransformerValueNet,
+    config: &ExpectimaxConfig,
+    tile_sequence: &[Tile],
+) -> i32 {
+    let mut plateau = create_plateau_empty();
+    let mut deck = create_deck();
+
+    for (turn, &tile) in tile_sequence.iter().enumerate() {
+        deck = replace_tile_in_deck(&deck, &tile);
+        let legal = get_legal_moves(&plateau);
+        if legal.is_empty() {
+            break;
+        }
+        let pos = expectimax_2ply_select(
+            &plateau, &tile, &deck, turn, policy_net, value_net, config,
+        );
         plateau.tiles[pos] = tile;
     }
 
