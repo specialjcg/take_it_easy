@@ -27,7 +27,9 @@ use take_it_easy::neural::graph_transformer::{
 use take_it_easy::neural::model_io::{load_varstore, save_varstore};
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
-use take_it_easy::strategy::expectimax::{expectimax_select, ExpectimaxConfig};
+use take_it_easy::strategy::expectimax::{
+    expectimax_select, expectimax_2ply_select, ExpectimaxConfig,
+};
 use take_it_easy::strategy::gt_boost::line_boost;
 
 #[derive(Parser, Debug)]
@@ -65,6 +67,10 @@ struct Args {
     #[arg(long, default_value_t = 8)]
     min_turn: usize,
 
+    /// Expectimax depth (1 = 1-ply, 2 = 2-ply)
+    #[arg(long, default_value_t = 2)]
+    depth: usize,
+
     /// Path to teacher policy model
     #[arg(long, default_value = "model_weights/graph_transformer_policy.safetensors")]
     policy_path: String,
@@ -74,7 +80,7 @@ struct Args {
     value_path: String,
 
     /// Path to save distilled policy
-    #[arg(long, default_value = "model_weights/distilled_expectimax_policy.safetensors")]
+    #[arg(long, default_value = "model_weights/distilled_2ply_policy.safetensors")]
     save_path: String,
 
     /// Embedding dimension
@@ -149,7 +155,10 @@ fn main() {
     };
     check_cuda();
     println!("Device: {:?}", device);
-    println!("Strategy: GT Direct (t<{}) + Expectimax (t>={})", args.min_turn, args.min_turn);
+    println!(
+        "Strategy: GT Direct (t<{}) + {}-ply Expectimax (t>={})",
+        args.min_turn, args.depth, args.min_turn
+    );
 
     // ── Load teacher models ──
     let mut teacher_policy_vs = nn::VarStore::new(device);
@@ -371,12 +380,19 @@ fn main() {
         let gt_avg = avg(&gt_scores);
         println!(" {:.1} pts", gt_avg);
 
-        // GT+Expectimax hybrid (teacher)
-        print!("  GT+Ex(t>={}) (teacher)...", args.min_turn);
+        // Expectimax hybrid (teacher) — same depth as training
+        let ex_label = format!("{}ply+Ex(t>={})", args.depth, args.min_turn);
+        print!("  {} (teacher)...", ex_label);
         std::io::Write::flush(&mut std::io::stdout()).ok();
         let ex_scores: Vec<i32> = eval_sequences
             .iter()
-            .map(|seq| play_expectimax_game(&teacher_policy, &value_net, &ex_config, seq))
+            .map(|seq| {
+                if args.depth >= 2 {
+                    play_expectimax_2ply_game(&teacher_policy, &value_net, &ex_config, seq)
+                } else {
+                    play_expectimax_game(&teacher_policy, &value_net, &ex_config, seq)
+                }
+            })
             .collect();
         let ex_avg = avg(&ex_scores);
         println!(" {:.1} pts ({:+.1})", ex_avg, ex_avg - gt_avg);
@@ -405,7 +421,7 @@ fn main() {
         );
         println!(
             "{:<24} {:>8.1} {:>8.1} {:>8} {:>8} {:>+8.1}",
-            format!("GT+Ex(t>={})", args.min_turn), ex_avg, std_dev(&ex_scores),
+            ex_label, ex_avg, std_dev(&ex_scores),
             ex_scores.iter().min().unwrap(), ex_scores.iter().max().unwrap(),
             ex_avg - gt_avg
         );
@@ -457,6 +473,8 @@ fn generate_data(
             // Choose position with hybrid strategy
             let pos = if legal.len() == 1 {
                 legal[0]
+            } else if args.depth >= 2 {
+                expectimax_2ply_select(&plateau, &tile, &deck, turn, policy_net, value_net, ex_config)
             } else {
                 expectimax_select(&plateau, &tile, &deck, turn, policy_net, value_net, ex_config)
             };
@@ -598,6 +616,31 @@ fn play_expectimax_game(
             break;
         }
         let pos = expectimax_select(&plateau, &tile, &deck, turn, policy_net, value_net, config);
+        plateau.tiles[pos] = tile;
+    }
+
+    result(&plateau)
+}
+
+/// Play one game with 2-ply expectimax hybrid strategy.
+fn play_expectimax_2ply_game(
+    policy_net: &GraphTransformerPolicyNet,
+    value_net: &GraphTransformerValueNet,
+    config: &ExpectimaxConfig,
+    tile_sequence: &[Tile],
+) -> i32 {
+    let mut plateau = create_plateau_empty();
+    let mut deck = create_deck();
+
+    for (turn, &tile) in tile_sequence.iter().enumerate() {
+        deck = replace_tile_in_deck(&deck, &tile);
+        let legal = get_legal_moves(&plateau);
+        if legal.is_empty() {
+            break;
+        }
+        let pos = expectimax_2ply_select(
+            &plateau, &tile, &deck, turn, policy_net, value_net, config,
+        );
         plateau.tiles[pos] = tile;
     }
 
