@@ -28,7 +28,7 @@ use take_it_easy::neural::model_io::{load_varstore, save_varstore};
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
 use take_it_easy::strategy::expectimax::{
-    expectimax_select, expectimax_2ply_select, ExpectimaxConfig,
+    expectimax_select, expectimax_2ply_select, expectimax_2ply_with_evs, ExpectimaxConfig,
 };
 use take_it_easy::strategy::gt_boost::line_boost;
 
@@ -130,13 +130,22 @@ struct Args {
     /// Initialize student from teacher weights (fine-tune) vs random init
     #[arg(long, default_value_t = true)]
     init_from_teacher: bool,
+
+    /// Use soft distillation (EV-based probability targets instead of hard labels)
+    #[arg(long, default_value_t = false)]
+    soft: bool,
+
+    /// Temperature for soft target softmax (lower = harder, more peaked)
+    #[arg(long, default_value_t = 0.1)]
+    temperature: f64,
 }
 
 struct Sample {
-    features: Tensor,    // [19, 47]
-    position: usize,     // chosen position (0-18)
-    mask: Vec<f64>,      // legal move mask (0.0 or -inf)
-    weight: f64,         // score-based weight
+    features: Tensor,           // [19, 47]
+    position: usize,            // chosen position (0-18)
+    mask: Vec<f64>,             // legal move mask (0.0 or -inf)
+    weight: f64,                // score-based weight
+    soft_targets: Option<Vec<f64>>, // [19] probability distribution (soft distillation)
 }
 
 fn main() {
@@ -159,6 +168,11 @@ fn main() {
         "Strategy: GT Direct (t<{}) + {}-ply Expectimax (t>={})",
         args.min_turn, args.depth, args.min_turn
     );
+    if args.soft {
+        println!("Distillation: SOFT (temperature={}, EV-based targets)", args.temperature);
+    } else {
+        println!("Distillation: HARD (argmax targets)");
+    }
 
     // ── Load teacher models ──
     let mut teacher_policy_vs = nn::VarStore::new(device);
@@ -269,24 +283,43 @@ fn main() {
             let batch_end = (batch_start + args.batch_size).min(train_perm.len());
             let batch_idx = &train_perm[batch_start..batch_end];
 
-            let (features, targets, masks, weights) = prepare_batch(&samples, batch_idx, device);
+            if args.soft {
+                let (features, targets, masks, weights, soft_tgt) =
+                    prepare_soft_batch(&samples, batch_idx, device);
+                let logits = student_policy.forward(&features, true);
+                let masked_logits = logits + &masks;
+                let log_probs = masked_logits.log_softmax(-1, Kind::Float);
+                // Soft cross-entropy: -sum(soft_targets * log_probs) per sample
+                let per_sample_loss = -(&soft_tgt * &log_probs).sum_dim_intlist(
+                    &[-1i64][..], false, Kind::Float,
+                );
+                let weighted_loss =
+                    (&per_sample_loss * &weights).sum(Kind::Float) / weights.sum(Kind::Float);
+                opt.backward_step(&weighted_loss);
 
-            let logits = student_policy.forward(&features, true);
-            let masked_logits = logits + &masks;
-            let log_probs = masked_logits.log_softmax(-1, Kind::Float);
-            let per_sample_loss = -log_probs
-                .gather(1, &targets.unsqueeze(1), false)
-                .squeeze_dim(1);
-            let weighted_loss =
-                (&per_sample_loss * &weights).sum(Kind::Float) / weights.sum(Kind::Float);
-            opt.backward_step(&weighted_loss);
+                let n = batch_idx.len();
+                train_loss_sum += weighted_loss.double_value(&[]) * n as f64;
+                let preds = masked_logits.argmax(-1, false);
+                train_correct += preds.eq_tensor(&targets).sum(Kind::Int64).int64_value(&[]) as usize;
+                train_count += n;
+            } else {
+                let (features, targets, masks, weights) = prepare_batch(&samples, batch_idx, device);
+                let logits = student_policy.forward(&features, true);
+                let masked_logits = logits + &masks;
+                let log_probs = masked_logits.log_softmax(-1, Kind::Float);
+                let per_sample_loss = -log_probs
+                    .gather(1, &targets.unsqueeze(1), false)
+                    .squeeze_dim(1);
+                let weighted_loss =
+                    (&per_sample_loss * &weights).sum(Kind::Float) / weights.sum(Kind::Float);
+                opt.backward_step(&weighted_loss);
 
-            let n = batch_idx.len();
-            train_loss_sum += weighted_loss.double_value(&[]) * n as f64;
-
-            let preds = masked_logits.argmax(-1, false);
-            train_correct += preds.eq_tensor(&targets).sum(Kind::Int64).int64_value(&[]) as usize;
-            train_count += n;
+                let n = batch_idx.len();
+                train_loss_sum += weighted_loss.double_value(&[]) * n as f64;
+                let preds = masked_logits.argmax(-1, false);
+                train_correct += preds.eq_tensor(&targets).sum(Kind::Int64).int64_value(&[]) as usize;
+                train_count += n;
+            }
         }
 
         let train_loss = train_loss_sum / train_count as f64;
@@ -301,22 +334,38 @@ fn main() {
             let batch_end = (batch_start + args.batch_size).min(val_indices.len());
             let batch_idx = &val_indices[batch_start..batch_end];
 
-            let (features, targets, masks, weights) = prepare_batch(&samples, batch_idx, device);
+            if args.soft {
+                let (features, targets, masks, weights, soft_tgt) =
+                    prepare_soft_batch(&samples, batch_idx, device);
+                let logits = tch::no_grad(|| student_policy.forward(&features, false));
+                let masked_logits = &logits + &masks;
+                let log_probs = masked_logits.log_softmax(-1, Kind::Float);
+                let per_sample_loss = -(&soft_tgt * &log_probs).sum_dim_intlist(
+                    &[-1i64][..], false, Kind::Float,
+                );
+                let loss = (&per_sample_loss * &weights).sum(Kind::Float) / weights.sum(Kind::Float);
 
-            let logits = tch::no_grad(|| student_policy.forward(&features, false));
-            let masked_logits = &logits + &masks;
-            let log_probs = masked_logits.log_softmax(-1, Kind::Float);
-            let per_sample_loss = -log_probs
-                .gather(1, &targets.unsqueeze(1), false)
-                .squeeze_dim(1);
-            let loss = (&per_sample_loss * &weights).sum(Kind::Float) / weights.sum(Kind::Float);
+                let n = batch_idx.len();
+                val_loss_sum += loss.double_value(&[]) * n as f64;
+                let preds = masked_logits.argmax(-1, false);
+                val_correct += preds.eq_tensor(&targets).sum(Kind::Int64).int64_value(&[]) as usize;
+                val_count += n;
+            } else {
+                let (features, targets, masks, weights) = prepare_batch(&samples, batch_idx, device);
+                let logits = tch::no_grad(|| student_policy.forward(&features, false));
+                let masked_logits = &logits + &masks;
+                let log_probs = masked_logits.log_softmax(-1, Kind::Float);
+                let per_sample_loss = -log_probs
+                    .gather(1, &targets.unsqueeze(1), false)
+                    .squeeze_dim(1);
+                let loss = (&per_sample_loss * &weights).sum(Kind::Float) / weights.sum(Kind::Float);
 
-            let n = batch_idx.len();
-            val_loss_sum += loss.double_value(&[]) * n as f64;
-
-            let preds = masked_logits.argmax(-1, false);
-            val_correct += preds.eq_tensor(&targets).sum(Kind::Int64).int64_value(&[]) as usize;
-            val_count += n;
+                let n = batch_idx.len();
+                val_loss_sum += loss.double_value(&[]) * n as f64;
+                let preds = masked_logits.argmax(-1, false);
+                val_correct += preds.eq_tensor(&targets).sum(Kind::Int64).int64_value(&[]) as usize;
+                val_count += n;
+            }
         }
 
         let val_loss = val_loss_sum / val_count as f64;
@@ -450,7 +499,7 @@ fn generate_data(
     for game_idx in 0..args.num_games {
         let mut plateau = create_plateau_empty();
         let mut deck = create_deck();
-        let mut game_samples: Vec<(Tensor, usize, Vec<f64>)> = Vec::with_capacity(19);
+        let mut game_samples: Vec<(Tensor, usize, Vec<f64>, Option<Vec<f64>>)> = Vec::with_capacity(19);
 
         let tile_seq = random_tile_sequence(&mut rng);
 
@@ -471,15 +520,33 @@ fn generate_data(
             }
 
             // Choose position with hybrid strategy
-            let pos = if legal.len() == 1 {
-                legal[0]
+            let (pos, soft) = if legal.len() == 1 {
+                (legal[0], None)
+            } else if args.soft && args.depth >= 2 {
+                // Soft distillation: get EVs for all positions
+                let (best, evs) = expectimax_2ply_with_evs(
+                    &plateau, &tile, &deck, turn, policy_net, value_net, ex_config,
+                );
+                // Convert EVs to softmax probabilities with temperature
+                let mut soft_targets = vec![0.0f64; 19];
+                let max_ev = evs.iter().map(|&(_, ev)| ev).fold(f64::NEG_INFINITY, f64::max);
+                let mut sum_exp = 0.0f64;
+                for &(p, ev) in &evs {
+                    let e = ((ev - max_ev) / args.temperature).exp();
+                    soft_targets[p] = e;
+                    sum_exp += e;
+                }
+                for v in &mut soft_targets {
+                    *v /= sum_exp;
+                }
+                (best, Some(soft_targets))
             } else if args.depth >= 2 {
-                expectimax_2ply_select(&plateau, &tile, &deck, turn, policy_net, value_net, ex_config)
+                (expectimax_2ply_select(&plateau, &tile, &deck, turn, policy_net, value_net, ex_config), None)
             } else {
-                expectimax_select(&plateau, &tile, &deck, turn, policy_net, value_net, ex_config)
+                (expectimax_select(&plateau, &tile, &deck, turn, policy_net, value_net, ex_config), None)
             };
 
-            game_samples.push((feat, pos, mask));
+            game_samples.push((feat, pos, mask, soft));
             plateau.tiles[pos] = tile;
         }
 
@@ -487,12 +554,13 @@ fn generate_data(
         score_sum += final_score as i64;
         let weight = (final_score as f64 / 100.0).powf(args.weight_power);
 
-        for (feat, pos, mask) in game_samples {
+        for (feat, pos, mask, soft) in game_samples {
             samples.push(Sample {
                 features: feat,
                 position: pos,
                 mask,
                 weight,
+                soft_targets: soft,
             });
         }
 
@@ -531,6 +599,46 @@ fn prepare_batch(
         Tensor::from_slice(&weights)
             .to_kind(Kind::Float)
             .to_device(device),
+    )
+}
+
+/// Prepare a batch with soft targets (returns extra tensor).
+fn prepare_soft_batch(
+    samples: &[Sample],
+    indices: &[usize],
+    device: Device,
+) -> (Tensor, Tensor, Tensor, Tensor, Tensor) {
+    let features: Vec<Tensor> = indices
+        .iter()
+        .map(|&i| samples[i].features.shallow_clone())
+        .collect();
+    let targets: Vec<i64> = indices.iter().map(|&i| samples[i].position as i64).collect();
+    let masks: Vec<Tensor> = indices
+        .iter()
+        .map(|&i| Tensor::from_slice(&samples[i].mask))
+        .collect();
+    let weights: Vec<f64> = indices.iter().map(|&i| samples[i].weight).collect();
+
+    // Build soft targets: for samples with soft_targets, use them; otherwise one-hot
+    let soft: Vec<Tensor> = indices
+        .iter()
+        .map(|&i| {
+            if let Some(ref st) = samples[i].soft_targets {
+                Tensor::from_slice(st)
+            } else {
+                let mut one_hot = vec![0.0f64; 19];
+                one_hot[samples[i].position] = 1.0;
+                Tensor::from_slice(&one_hot)
+            }
+        })
+        .collect();
+
+    (
+        Tensor::stack(&features, 0).to_device(device),
+        Tensor::from_slice(&targets).to_device(device),
+        Tensor::stack(&masks, 0).to_kind(Kind::Float).to_device(device),
+        Tensor::from_slice(&weights).to_kind(Kind::Float).to_device(device),
+        Tensor::stack(&soft, 0).to_kind(Kind::Float).to_device(device),
     )
 }
 

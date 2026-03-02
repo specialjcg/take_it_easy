@@ -237,6 +237,179 @@ pub fn expectimax_2ply_select(
     best_pos
 }
 
+/// 2-ply expectimax returning EVs for all legal positions.
+///
+/// Returns `(best_pos, evs)` where `evs` is a Vec of `(position, expected_value)`.
+/// For turns before min_turn or degenerate cases, returns a single-entry EV list.
+pub fn expectimax_2ply_with_evs(
+    plateau: &Plateau,
+    tile: &Tile,
+    deck: &Deck,
+    turn: usize,
+    policy_net: &GraphTransformerPolicyNet,
+    value_net: &GraphTransformerValueNet,
+    config: &ExpectimaxConfig,
+) -> (usize, Vec<(usize, f64)>) {
+    let legal = get_legal_moves(plateau);
+    if legal.len() <= 1 {
+        let pos = legal.first().copied().unwrap_or(0);
+        return (pos, vec![(pos, 0.0)]);
+    }
+
+    // Before min_turn: GT Direct — return policy logits as proxy EVs
+    if turn < config.min_turn {
+        let pos = gt_direct_gpu(plateau, tile, deck, turn, policy_net, config);
+        let evs: Vec<(usize, f64)> = legal.iter().map(|&p| (p, if p == pos { 1.0 } else { 0.0 })).collect();
+        return (pos, evs);
+    }
+    // Last 2 turns: fall back to 1-ply EVs
+    if turn >= 17 {
+        return expectimax_1ply_with_evs(plateau, tile, deck, turn, policy_net, value_net, config);
+    }
+
+    let deck_after_1 = replace_tile_in_deck(deck, tile);
+    let future_tiles_1 = get_available_tiles(&deck_after_1);
+    if future_tiles_1.is_empty() {
+        let pos = gt_direct_gpu(plateau, tile, deck, turn, policy_net, config);
+        return (pos, vec![(pos, 0.0)]);
+    }
+
+    let n_p = legal.len();
+    let n_t1 = future_tiles_1.len();
+    let n_q = n_p - 1;
+
+    if n_q == 0 {
+        return expectimax_1ply_with_evs(plateau, tile, deck, turn, policy_net, value_net, config);
+    }
+
+    // Build all leaf features: [p][t1][q][t2]
+    let mut all_features: Vec<Tensor> = Vec::new();
+    let mut n_t2 = 0usize;
+
+    for &pos in &legal {
+        let mut plateau_1 = plateau.clone();
+        plateau_1.tiles[pos] = *tile;
+        let legal_2 = get_legal_moves(&plateau_1);
+
+        for ft1 in &future_tiles_1 {
+            let deck_after_2 = replace_tile_in_deck(&deck_after_1, ft1);
+            let future_tiles_2 = get_available_tiles(&deck_after_2);
+            if n_t2 == 0 { n_t2 = future_tiles_2.len(); }
+
+            for &pos2 in &legal_2 {
+                let mut plateau_2 = plateau_1.clone();
+                plateau_2.tiles[pos2] = *ft1;
+                for ft2 in &future_tiles_2 {
+                    all_features.push(convert_plateau_for_gat_47ch(
+                        &plateau_2, ft2, &deck_after_2, turn + 2, 19,
+                    ));
+                }
+            }
+        }
+    }
+
+    if n_t2 == 0 || all_features.is_empty() {
+        return expectimax_1ply_with_evs(plateau, tile, deck, turn, policy_net, value_net, config);
+    }
+
+    // Chunked GPU forward pass
+    let chunk_size = 8192;
+    let mut all_values: Vec<f64> = Vec::with_capacity(all_features.len());
+    for chunk in all_features.chunks(chunk_size) {
+        let batch = Tensor::stack(chunk, 0).to_device(config.device);
+        let values = tch::no_grad(|| value_net.forward(&batch, false))
+            .to_device(Device::Cpu);
+        let vals: Vec<f64> = Vec::<f64>::try_from(
+            &values.squeeze_dim(1).to_kind(Kind::Double),
+        ).unwrap();
+        all_values.extend(vals);
+    }
+
+    // Aggregate: [n_p][n_t1][n_q][n_t2] → EV per position
+    let mut evs: Vec<(usize, f64)> = Vec::with_capacity(n_p);
+    let mut best_pos = legal[0];
+    let mut best_ev = f64::NEG_INFINITY;
+
+    for (p_idx, &pos) in legal.iter().enumerate() {
+        let mut ev_p = 0.0;
+        for t1_idx in 0..n_t1 {
+            let mut best_q_val = f64::NEG_INFINITY;
+            for q_idx in 0..n_q {
+                let base = ((p_idx * n_t1 + t1_idx) * n_q + q_idx) * n_t2;
+                let avg_t2 = all_values[base..base + n_t2].iter().sum::<f64>() / n_t2 as f64;
+                if avg_t2 > best_q_val { best_q_val = avg_t2; }
+            }
+            ev_p += best_q_val;
+        }
+        ev_p /= n_t1 as f64;
+        evs.push((pos, ev_p));
+        if ev_p > best_ev { best_ev = ev_p; best_pos = pos; }
+    }
+
+    (best_pos, evs)
+}
+
+/// 1-ply expectimax returning EVs for all legal positions.
+fn expectimax_1ply_with_evs(
+    plateau: &Plateau,
+    tile: &Tile,
+    deck: &Deck,
+    turn: usize,
+    policy_net: &GraphTransformerPolicyNet,
+    value_net: &GraphTransformerValueNet,
+    config: &ExpectimaxConfig,
+) -> (usize, Vec<(usize, f64)>) {
+    let legal = get_legal_moves(plateau);
+    if legal.len() <= 1 {
+        let pos = legal.first().copied().unwrap_or(0);
+        return (pos, vec![(pos, 0.0)]);
+    }
+    if turn >= 18 {
+        let pos = gt_direct_gpu(plateau, tile, deck, turn, policy_net, config);
+        let evs = legal.iter().map(|&p| (p, if p == pos { 1.0 } else { 0.0 })).collect();
+        return (pos, evs);
+    }
+
+    let deck_after = replace_tile_in_deck(deck, tile);
+    let future_tiles = get_available_tiles(&deck_after);
+    if future_tiles.is_empty() {
+        let pos = gt_direct_gpu(plateau, tile, deck, turn, policy_net, config);
+        return (pos, vec![(pos, 0.0)]);
+    }
+
+    let mut all_features: Vec<Tensor> = Vec::with_capacity(legal.len() * future_tiles.len());
+    for &pos in &legal {
+        let mut new_plateau = plateau.clone();
+        new_plateau.tiles[pos] = *tile;
+        for future_tile in &future_tiles {
+            all_features.push(convert_plateau_for_gat_47ch(
+                &new_plateau, future_tile, &deck_after, turn + 1, 19,
+            ));
+        }
+    }
+
+    let batch = Tensor::stack(&all_features, 0).to_device(config.device);
+    let values = tch::no_grad(|| value_net.forward(&batch, false))
+        .to_device(Device::Cpu);
+    let values_flat: Vec<f64> = Vec::<f64>::try_from(
+        &values.squeeze_dim(1).to_kind(Kind::Double),
+    ).unwrap();
+
+    let n_future = future_tiles.len();
+    let mut evs: Vec<(usize, f64)> = Vec::with_capacity(legal.len());
+    let mut best_pos = legal[0];
+    let mut best_ev = f64::NEG_INFINITY;
+
+    for (i, &pos) in legal.iter().enumerate() {
+        let start = i * n_future;
+        let ev: f64 = values_flat[start..start + n_future].iter().sum::<f64>() / n_future as f64;
+        evs.push((pos, ev));
+        if ev > best_ev { best_ev = ev; best_pos = pos; }
+    }
+
+    (best_pos, evs)
+}
+
 /// GPU-aware GT Direct fallback: logits + line_boost → argmax.
 fn gt_direct_gpu(
     plateau: &Plateau,
