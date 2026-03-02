@@ -121,6 +121,14 @@ struct Args {
     /// Minimum score to include from CSV data
     #[arg(long, default_value_t = 0)]
     min_score: i32,
+
+    /// Data generation strategy: "gt" (default) or "2ply" (V-iteration)
+    #[arg(long, default_value = "gt")]
+    gen_strategy: String,
+
+    /// Path to existing value net for 2-ply data generation (V-iteration)
+    #[arg(long)]
+    gen_value_path: Option<String>,
 }
 
 struct Sample {
@@ -132,7 +140,7 @@ fn main() {
     let args = Args::parse();
 
     println!("================================================");
-    println!("  Value Network Training (GT Direct Self-Play)");
+    println!("  Value Network Training");
     println!("================================================\n");
 
     let device = match parse_device(&args.device) {
@@ -201,6 +209,23 @@ fn main() {
                 }
             })
             .collect::<Vec<_>>()
+    } else if args.gen_strategy == "2ply" {
+        // V-iteration: generate data with 2-ply expectimax using existing V₁
+        let gen_value_path = args.gen_value_path.as_deref()
+            .unwrap_or(&args.model_path);
+        println!(
+            "Generating {} games with 2-ply Expectimax (min_turn=8, V={})",
+            args.num_games, gen_value_path
+        );
+        let mut gen_value_vs = nn::VarStore::new(device);
+        let gen_value_net = GraphTransformerValueNet::new(
+            &gen_value_vs, 47, args.embed_dim, args.num_layers, args.num_heads, 0.0,
+        );
+        if let Err(e) = load_varstore(&mut gen_value_vs, gen_value_path) {
+            eprintln!("Error loading gen value net: {}", e);
+            return;
+        }
+        generate_data_2ply(&policy_net, &gen_value_net, device, &args)
     } else {
         println!("Generating {} games with GT Direct (boost={:.1})...", args.num_games, args.boost);
         generate_data(&policy_net, device, &args)
@@ -528,6 +553,71 @@ fn generate_data(
                 game_idx + 1,
                 args.num_games,
                 final_score
+            );
+        }
+    }
+
+    samples
+}
+
+/// Generate training data by playing games with 2-ply expectimax (V-iteration).
+fn generate_data_2ply(
+    policy_net: &GraphTransformerPolicyNet,
+    value_net: &GraphTransformerValueNet,
+    device: Device,
+    args: &Args,
+) -> Vec<Sample> {
+    let mut rng = StdRng::seed_from_u64(args.seed);
+    let mut samples = Vec::with_capacity(args.num_games * 19);
+    let mut score_sum = 0i64;
+
+    let ex_config = ExpectimaxConfig {
+        device,
+        boost: args.boost,
+        score_mean: args.score_mean,
+        score_std: args.score_std,
+        min_turn: 8,
+    };
+
+    for game_idx in 0..args.num_games {
+        let mut plateau = create_plateau_empty();
+        let mut deck = create_deck();
+        let mut game_features: Vec<Tensor> = Vec::with_capacity(19);
+
+        let tile_seq = random_tile_sequence(&mut rng);
+
+        for (turn, &tile) in tile_seq.iter().enumerate() {
+            deck = replace_tile_in_deck(&deck, &tile);
+
+            let feat = convert_plateau_for_gat_47ch(&plateau, &tile, &deck, turn, 19);
+            game_features.push(feat);
+
+            let legal = get_legal_moves(&plateau);
+            if legal.is_empty() {
+                break;
+            }
+
+            let pos = expectimax_2ply_select(
+                &plateau, &tile, &deck, turn, policy_net, value_net, &ex_config,
+            );
+            plateau.tiles[pos] = tile;
+        }
+
+        let final_score = result(&plateau);
+        score_sum += final_score as i64;
+
+        for feat in game_features {
+            samples.push(Sample {
+                features: feat,
+                final_score,
+            });
+        }
+
+        if (game_idx + 1) % 500 == 0 {
+            let avg = score_sum as f64 / (game_idx + 1) as f64;
+            println!(
+                "  Generated {}/{} games (avg: {:.1}, last: {})",
+                game_idx + 1, args.num_games, avg, final_score
             );
         }
     }
