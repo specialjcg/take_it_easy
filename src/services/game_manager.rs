@@ -358,8 +358,8 @@ pub async fn process_mcts_turn(
     Ok((game_state, mcts_move))
 }
 
-/// Process AI turn using V1Beam strategy (GT + line_boost + v1_row + beam rollouts)
-/// Achieves ~+2.35 pts over GT Direct (149.38 → ~152 pts) with ~100ms latency per move
+/// Process AI turn using GT Direct strategy (distilled expectimax policy, argmax)
+/// Achieves ~154 pts with distilled model, <10ms per move
 pub async fn process_ai_turn_direct(
     mut game_state: TakeItEasyGameState,
     policy_net: &Mutex<PolicyNet>,
@@ -383,31 +383,40 @@ pub async fn process_ai_turn_direct(
         return Err("NO_LEGAL_MOVES_FOR_AI".to_string());
     }
 
-    // V1Beam: GT logits + line_boost + v1_row_bonus with beam rollouts
+    // GT Direct: argmax over policy logits (distilled expectimax model)
     let t0 = std::time::Instant::now();
     let policy_locked = policy_net.lock().await;
     let gt_net = policy_locked
         .as_graph_transformer()
-        .ok_or("V1Beam requires GraphTransformer architecture")?;
+        .ok_or("GT Direct requires GraphTransformer architecture")?;
 
-    let mut rng = StdRng::from_rng(&mut thread_rng());
-    let best_position = gt_beam_v1_select(
+    let feat = convert_plateau_for_gat_47ch(
         ai_plateau,
         &current_tile,
         &game_state.deck,
         game_state.current_turn,
-        gt_net,
-        3.0,  // line_boost
-        4,    // beam_k (top-4 candidates)
-        10,   // num_rollouts per candidate
-        2.0,  // v1_bonus
-        &mut rng,
-    );
+        19,
+    )
+    .unsqueeze(0)
+    .to_device(tch::Device::Cpu);
+    let logits = tch::no_grad(|| gt_net.forward(&feat, false))
+        .squeeze_dim(0)
+        .to_device(tch::Device::Cpu);
+    let logit_values: Vec<f64> = Vec::<f64>::try_from(&logits).unwrap();
+
+    let mut best_position = legal_moves[0];
+    let mut best_val = f64::NEG_INFINITY;
+    for &pos in &legal_moves {
+        if logit_values[pos] > best_val {
+            best_val = logit_values[pos];
+            best_position = pos;
+        }
+    }
     drop(policy_locked);
     let elapsed = t0.elapsed();
 
     log::info!(
-        "🎯 AI V1Beam: tile {:?} → position {} (beam_k=4, rollouts=10) in {:.0?}",
+        "🎯 AI GT Direct: tile {:?} → position {} in {:.0?}",
         current_tile,
         best_position,
         elapsed,
@@ -444,9 +453,9 @@ pub async fn process_ai_turn_direct(
     let ai_move = MctsMove {
         position: best_position,
         tile: current_tile,
-        evaluation_score: 0.0,
-        search_depth: 10,        // V1Beam rollouts
-        variations_considered: 4, // beam_k candidates
+        evaluation_score: best_val as f32,
+        search_depth: 1,         // GT Direct (no search)
+        variations_considered: legal_moves.len(),
     };
 
     Ok((game_state, ai_move))
@@ -573,13 +582,8 @@ pub fn check_turn_completion(
                 "🏁 Jeu terminé! Scores finaux: {:?}",
                 game_state.scores
             );
-
-            // Finalize game recording
-            if let Some(recorder) = get_recorder() {
-                if let Err(e) = recorder.finalize_game(&game_state.session_id, game_state.scores.clone()) {
-                    log::error!("Failed to finalize game recording: {}", e);
-                }
-            }
+            // Note: finalize_game is called by the move handler (async_move_handler)
+            // AFTER the AI has placed its last tile, to ensure correct final scores.
         } else {
             // ✅ RETOUR À L'AUTOMATISME : Démarrer immédiatement le tour suivant
             game_state = start_new_turn(game_state)?;

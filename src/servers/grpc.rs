@@ -273,7 +273,7 @@ impl GrpcServer {
                 self.top_k, self.num_simulations
             )
         } else {
-            "V1Beam (GT + rollouts, ~152 pts)".to_string()
+            "GT Direct (distilled expectimax, ~154 pts)".to_string()
         };
 
         if self.single_player {

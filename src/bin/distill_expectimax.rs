@@ -28,7 +28,8 @@ use take_it_easy::neural::model_io::{load_varstore, save_varstore};
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
 use take_it_easy::strategy::expectimax::{
-    expectimax_select, expectimax_2ply_select, expectimax_2ply_with_evs, ExpectimaxConfig,
+    expectimax_select, expectimax_2ply_select, expectimax_2ply_with_evs,
+    expectimax_3ply_select, ExpectimaxConfig,
 };
 use take_it_easy::strategy::gt_boost::line_boost;
 
@@ -441,7 +442,9 @@ fn main() {
         let ex_scores: Vec<i32> = eval_sequences
             .iter()
             .map(|seq| {
-                if args.depth >= 2 {
+                if args.depth >= 3 {
+                    play_expectimax_3ply_game(&teacher_policy, &value_net, &ex_config, seq)
+                } else if args.depth >= 2 {
                     play_expectimax_2ply_game(&teacher_policy, &value_net, &ex_config, seq)
                 } else {
                     play_expectimax_game(&teacher_policy, &value_net, &ex_config, seq)
@@ -545,6 +548,8 @@ fn generate_data(
                     *v /= sum_exp;
                 }
                 (best, Some(soft_targets))
+            } else if args.depth >= 3 {
+                (expectimax_3ply_select(&plateau, &tile, &deck, turn, policy_net, value_net, ex_config), None)
             } else if args.depth >= 2 {
                 (expectimax_2ply_select(&plateau, &tile, &deck, turn, policy_net, value_net, ex_config), None)
             } else {
@@ -752,6 +757,31 @@ fn play_expectimax_2ply_game(
             break;
         }
         let pos = expectimax_2ply_select(
+            &plateau, &tile, &deck, turn, policy_net, value_net, config,
+        );
+        plateau.tiles[pos] = tile;
+    }
+
+    result(&plateau)
+}
+
+/// Play one game with 3-ply expectimax hybrid strategy.
+fn play_expectimax_3ply_game(
+    policy_net: &GraphTransformerPolicyNet,
+    value_net: &GraphTransformerValueNet,
+    config: &ExpectimaxConfig,
+    tile_sequence: &[Tile],
+) -> i32 {
+    let mut plateau = create_plateau_empty();
+    let mut deck = create_deck();
+
+    for (turn, &tile) in tile_sequence.iter().enumerate() {
+        deck = replace_tile_in_deck(&deck, &tile);
+        let legal = get_legal_moves(&plateau);
+        if legal.is_empty() {
+            break;
+        }
+        let pos = expectimax_3ply_select(
             &plateau, &tile, &deck, turn, policy_net, value_net, config,
         );
         plateau.tiles[pos] = tile;

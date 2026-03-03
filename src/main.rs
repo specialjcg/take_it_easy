@@ -300,7 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             } else {
-                log::info!("🎯 Mode V1Beam activé (GT + line_boost + v1_row + beam rollouts, ~152 pts)");
+                log::info!("🎯 Mode GT Direct activé (distilled expectimax policy, ~154 pts)");
                 None
             };
 
