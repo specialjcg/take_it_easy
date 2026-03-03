@@ -347,6 +347,8 @@ fn main() {
                 score_mean: 140.0,
                 score_std: 40.0,
                 min_turn: 0,
+                top_k_ply1: 3,
+                top_k_ply2: 2,
             };
 
             let start = Instant::now();

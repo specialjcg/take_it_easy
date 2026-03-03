@@ -204,6 +204,8 @@ fn main() {
         score_mean: args.score_mean,
         score_std: args.score_std,
         min_turn: args.min_turn,
+        top_k_ply1: 3,
+        top_k_ply2: 2,
     };
 
     let gen_start = Instant::now();

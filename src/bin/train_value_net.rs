@@ -31,7 +31,7 @@ use take_it_easy::neural::model_io::{load_varstore, save_varstore};
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
 use take_it_easy::strategy::expectimax::{
-    expectimax_select, expectimax_2ply_select, ExpectimaxConfig,
+    expectimax_select, expectimax_2ply_select, expectimax_3ply_select, ExpectimaxConfig,
 };
 
 #[derive(Parser, Debug)]
@@ -419,6 +419,8 @@ fn main() {
                 score_mean: args.score_mean,
                 score_std: args.score_std,
                 min_turn: mt,
+                top_k_ply1: 3,
+                top_k_ply2: 2,
             };
 
             let scores: Vec<i32> = eval_sequences
@@ -443,11 +445,39 @@ fn main() {
                 score_mean: args.score_mean,
                 score_std: args.score_std,
                 min_turn: mt,
+                top_k_ply1: 3,
+                top_k_ply2: 2,
             };
 
             let scores: Vec<i32> = eval_sequences
                 .iter()
                 .map(|seq| play_expectimax_2ply(&policy_net, &eval_value_net, &config, seq))
+                .collect();
+            let avg = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+            println!(" {:.1} pts ({:+.1})", avg, avg - gt_avg);
+            results.push((label, scores));
+        }
+
+        // 3-ply expectimax tests
+        let min_turns_3ply = [8, 10, 12];
+        for &mt in &min_turns_3ply {
+            let label = format!("3ply+Ex(t>={})", mt);
+            print!("  {}...", label);
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+
+            let config = ExpectimaxConfig {
+                device,
+                boost: args.boost,
+                score_mean: args.score_mean,
+                score_std: args.score_std,
+                min_turn: mt,
+                top_k_ply1: 3,
+                top_k_ply2: 2,
+            };
+
+            let scores: Vec<i32> = eval_sequences
+                .iter()
+                .map(|seq| play_expectimax_3ply(&policy_net, &eval_value_net, &config, seq))
                 .collect();
             let avg = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
             println!(" {:.1} pts ({:+.1})", avg, avg - gt_avg);
@@ -577,6 +607,8 @@ fn generate_data_2ply(
         score_mean: args.score_mean,
         score_std: args.score_std,
         min_turn: 8,
+        top_k_ply1: 3,
+        top_k_ply2: 2,
     };
 
     for game_idx in 0..args.num_games {
@@ -753,6 +785,30 @@ fn play_expectimax_2ply(
             break;
         }
         let pos = expectimax_2ply_select(
+            &plateau, &tile, &deck, turn, policy_net, value_net, config,
+        );
+        plateau.tiles[pos] = tile;
+    }
+
+    result(&plateau)
+}
+
+fn play_expectimax_3ply(
+    policy_net: &GraphTransformerPolicyNet,
+    value_net: &GraphTransformerValueNet,
+    config: &ExpectimaxConfig,
+    tile_sequence: &[Tile],
+) -> i32 {
+    let mut plateau = create_plateau_empty();
+    let mut deck = create_deck();
+
+    for (turn, &tile) in tile_sequence.iter().enumerate() {
+        deck = replace_tile_in_deck(&deck, &tile);
+        let legal = get_legal_moves(&plateau);
+        if legal.is_empty() {
+            break;
+        }
+        let pos = expectimax_3ply_select(
             &plateau, &tile, &deck, turn, policy_net, value_net, config,
         );
         plateau.tiles[pos] = tile;
