@@ -289,8 +289,10 @@ fn main() {
                 let logits = student_policy.forward(&features, true);
                 let masked_logits = logits + &masks;
                 let log_probs = masked_logits.log_softmax(-1, Kind::Float);
+                // Clamp to avoid 0 * (-inf) = NaN for masked positions
+                let safe_log_probs = log_probs.clamp_min(-100.0);
                 // Soft cross-entropy: -sum(soft_targets * log_probs) per sample
-                let per_sample_loss = -(&soft_tgt * &log_probs).sum_dim_intlist(
+                let per_sample_loss = -(&soft_tgt * &safe_log_probs).sum_dim_intlist(
                     &[-1i64][..], false, Kind::Float,
                 );
                 let weighted_loss =
@@ -340,7 +342,8 @@ fn main() {
                 let logits = tch::no_grad(|| student_policy.forward(&features, false));
                 let masked_logits = &logits + &masks;
                 let log_probs = masked_logits.log_softmax(-1, Kind::Float);
-                let per_sample_loss = -(&soft_tgt * &log_probs).sum_dim_intlist(
+                let safe_log_probs = log_probs.clamp_min(-100.0);
+                let per_sample_loss = -(&soft_tgt * &safe_log_probs).sum_dim_intlist(
                     &[-1i64][..], false, Kind::Float,
                 );
                 let loss = (&per_sample_loss * &weights).sum(Kind::Float) / weights.sum(Kind::Float);
