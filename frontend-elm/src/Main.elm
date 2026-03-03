@@ -12,6 +12,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Process
 import Task
+import Time
 import GameLogic
 import TileSvg exposing (parseTileFromPath, viewEmptyHexSvg, viewTileSvg)
 import Url
@@ -100,6 +101,21 @@ type alias GameState =
     }
 
 
+type alias ChallengeConfig =
+    { timerSeconds : Maybe Int
+    , totalGames : Maybe Int
+    }
+
+
+challengeOptions : List ( String, String, ChallengeConfig )
+challengeOptions =
+    [ ( "Chrono 3 min", "timer", { timerSeconds = Just 180, totalGames = Nothing } )
+    , ( "Chrono 5 min", "timer", { timerSeconds = Just 300, totalGames = Nothing } )
+    , ( "Match 5 parties", "trophy", { timerSeconds = Nothing, totalGames = Just 5 } )
+    , ( "Match 10 parties", "trophy", { timerSeconds = Nothing, totalGames = Just 10 } )
+    ]
+
+
 type View
     = LoginView
     | ModeSelectionView
@@ -168,6 +184,17 @@ type alias Model =
     , aiScore : Int
     , showAiBoard : Bool
 
+    -- Challenge Mode
+    , challengeConfig : Maybe ChallengeConfig
+    , timerRemaining : Int
+    , timerActive : Bool
+    , autoPlayMode : Bool
+    , seriesGameNumber : Int
+    , seriesTotalGames : Int
+    , seriesMyScores : List Int
+    , seriesAiScores : List Int
+    , showSeriesScreen : Bool
+
     -- End of game: all player boards (id, name, tiles)
     , allPlayerPlateaus : List ( String, String, List String )
 
@@ -235,6 +262,17 @@ initialModel key url =
     , isSoloMode = False
     , aiScore = 0
     , showAiBoard = False
+
+    -- Challenge Mode
+    , challengeConfig = Nothing
+    , timerRemaining = 0
+    , timerActive = False
+    , autoPlayMode = False
+    , seriesGameNumber = 0
+    , seriesTotalGames = 0
+    , seriesMyScores = []
+    , seriesAiScores = []
+    , showSeriesScreen = False
 
     -- End of game
     , allPlayerPlateaus = []
@@ -352,6 +390,12 @@ type Msg
       -- Scores & Leaderboard
     | MyScoresReceived (List GameHistoryEntry)
     | LeaderboardReceived (List LeaderboardEntry)
+      -- Challenge Mode
+    | TimerTick Time.Posix
+    | TimerExpired
+    | SelectChallenge ChallengeConfig
+    | ContinueSeries
+    | AbandonSeries
       -- JS Interop
     | ReceivedFromJs Decode.Value
 
@@ -387,6 +431,7 @@ toGameModel model =
         model.gameState
             |> Maybe.map (\gs -> gs.state == Finished)
             |> Maybe.withDefault False
+    , autoPlayMode = model.autoPlayMode
     }
 
 
@@ -737,6 +782,17 @@ update msg model =
                 , usedTiles = []
                 , realGameScore = 0
                 , pendingAiPosition = Nothing
+
+                -- Reset challenge state
+                , challengeConfig = Nothing
+                , timerRemaining = 0
+                , timerActive = False
+                , autoPlayMode = False
+                , seriesGameNumber = 0
+                , seriesTotalGames = 0
+                , seriesMyScores = []
+                , seriesAiScores = []
+                , showSeriesScreen = False
               }
             , if model.isAuthenticated then
                 fetchScoresAndLeaderboard
@@ -1124,19 +1180,51 @@ update msg model =
                             }
                         )
                         model.gameState
+
+                -- Start timer on first turn if challenge with timer
+                startTimer =
+                    turnNumber == 1 && model.challengeConfig /= Nothing
+
+                timerSec =
+                    model.challengeConfig
+                        |> Maybe.andThen .timerSeconds
+                        |> Maybe.withDefault 0
+
+                updatedModel =
+                    { model
+                        | currentTile = result.currentTile
+                        , currentTileImage = result.currentTileImage
+                        , currentTurnNumber = result.currentTurnNumber
+                        , availablePositions = result.availablePositions
+                        , myTurn = result.myTurn
+                        , loading = result.loading
+                        , gameState = updatedGameState
+                        , waitingForPlayers = result.waitingForPlayers
+                        , timerActive =
+                            if startTimer && timerSec > 0 then
+                                True
+
+                            else
+                                model.timerActive
+                        , timerRemaining =
+                            if startTimer && timerSec > 0 then
+                                timerSec
+
+                            else
+                                model.timerRemaining
+                    }
             in
-            ( { model
-                | currentTile = result.currentTile
-                , currentTileImage = result.currentTileImage
-                , currentTurnNumber = result.currentTurnNumber
-                , availablePositions = result.availablePositions
-                , myTurn = result.myTurn
-                , loading = result.loading
-                , gameState = updatedGameState
-                , waitingForPlayers = result.waitingForPlayers
-              }
-            , resolveCmdIntent result.cmdIntent
-            )
+            -- Auto-play if in autoPlayMode
+            if model.autoPlayMode && result.myTurn then
+                case List.head positions of
+                    Just pos ->
+                        update (PlayMove pos) updatedModel
+
+                    Nothing ->
+                        ( updatedModel, resolveCmdIntent result.cmdIntent )
+
+            else
+                ( updatedModel, resolveCmdIntent result.cmdIntent )
 
         MovePlayed position points aiTiles aiScore isGameOver ->
             let
@@ -1259,6 +1347,42 @@ update msg model =
                                         , ( "score", Encode.int myScore )
                                         , ( "won", Encode.bool didWin )
                                         ]
+                            -- Series: collect scores
+                            myId2 =
+                                model.session
+                                    |> Maybe.map .playerId
+                                    |> Maybe.withDefault ""
+
+                            myScore2 =
+                                mergedPlayers
+                                    |> List.filter (\p -> p.id == myId2)
+                                    |> List.head
+                                    |> Maybe.map .score
+                                    |> Maybe.withDefault 0
+
+                            aiScore2 =
+                                mergedPlayers
+                                    |> List.filter (\p -> p.id == "mcts_ai")
+                                    |> List.head
+                                    |> Maybe.map .score
+                                    |> Maybe.withDefault 0
+
+                            inSeries =
+                                model.seriesTotalGames > 0
+
+                            newSeriesMyScores =
+                                if inSeries then
+                                    model.seriesMyScores ++ [ myScore2 ]
+
+                                else
+                                    model.seriesMyScores
+
+                            newSeriesAiScores =
+                                if inSeries then
+                                    model.seriesAiScores ++ [ aiScore2 ]
+
+                                else
+                                    model.seriesAiScores
                         in
                         ( { model
                             | gameState = newGameState
@@ -1269,6 +1393,11 @@ update msg model =
                             , error = ""
                             , myTurn = result.myTurn
                             , waitingForPlayers = result.waitingForPlayers
+                            , timerActive = False
+                            , autoPlayMode = False
+                            , seriesMyScores = newSeriesMyScores
+                            , seriesAiScores = newSeriesAiScores
+                            , showSeriesScreen = inSeries
                           }
                         , recordCmd
                         )
@@ -1285,6 +1414,123 @@ update msg model =
 
         PollTurn ->
             ( model, resolveCmdIntent (GameLogic.handlePollTurnPure (toGameModel model)) )
+
+        -- Challenge Mode
+        SelectChallenge config ->
+            let
+                challengeMode =
+                    { id = "single-player-challenge"
+                    , name = "Challenge"
+                    , description = "Challenge"
+                    , icon = "🏆"
+                    , simulations = Nothing
+                    , difficulty = Nothing
+                    }
+
+                seriesN =
+                    config.totalGames |> Maybe.withDefault 0
+
+                baseModel =
+                    { model
+                        | challengeConfig = Just config
+                        , selectedGameMode = Just challengeMode
+                        , timerRemaining = config.timerSeconds |> Maybe.withDefault 0
+                        , timerActive = False
+                        , autoPlayMode = False
+                        , seriesGameNumber =
+                            if seriesN > 0 then
+                                1
+
+                            else
+                                0
+                        , seriesTotalGames = seriesN
+                        , seriesMyScores = []
+                        , seriesAiScores = []
+                        , showSeriesScreen = False
+                    }
+            in
+            update StartGame baseModel
+
+        TimerTick _ ->
+            let
+                newRemaining =
+                    model.timerRemaining - 1
+            in
+            if newRemaining <= 0 then
+                update TimerExpired { model | timerRemaining = 0 }
+
+            else
+                ( { model | timerRemaining = newRemaining }, Cmd.none )
+
+        TimerExpired ->
+            let
+                newModel =
+                    { model | autoPlayMode = True, timerActive = False }
+
+                firstAvail =
+                    List.head model.availablePositions
+            in
+            case firstAvail of
+                Just pos ->
+                    if model.myTurn && model.currentTile /= Nothing then
+                        update (PlayMove pos) newModel
+
+                    else
+                        ( newModel, Cmd.none )
+
+                Nothing ->
+                    ( newModel, Cmd.none )
+
+        ContinueSeries ->
+            let
+                gameMode =
+                    model.selectedGameMode
+                        |> Maybe.map .id
+                        |> Maybe.withDefault "single-player-challenge"
+
+                name =
+                    if model.playerName == "" then
+                        "Joueur"
+
+                    else
+                        model.playerName
+
+                timerSec =
+                    model.challengeConfig
+                        |> Maybe.andThen .timerSeconds
+                        |> Maybe.withDefault 0
+            in
+            ( { model
+                | session = Nothing
+                , gameState = Nothing
+                , plateauTiles = List.repeat 19 ""
+                , aiPlateauTiles = List.repeat 19 ""
+                , availablePositions = List.range 0 18
+                , currentTurnNumber = 0
+                , currentTile = Nothing
+                , currentTileImage = Nothing
+                , aiScore = 0
+                , showAiBoard = False
+                , allPlayerPlateaus = []
+                , loading = True
+                , error = ""
+                , statusMessage = ""
+                , seriesGameNumber = model.seriesGameNumber + 1
+                , showSeriesScreen = False
+                , timerRemaining = timerSec
+                , timerActive = False
+                , autoPlayMode = False
+              }
+            , sendToJs <|
+                Encode.object
+                    [ ( "type", Encode.string "createSession" )
+                    , ( "playerName", Encode.string name )
+                    , ( "gameMode", Encode.string gameMode )
+                    ]
+            )
+
+        AbandonSeries ->
+            update BackToModeSelection model
 
         -- JS Interop
         ReceivedFromJs value ->
@@ -2272,6 +2518,9 @@ viewModeSelection model =
             ]
         , div [ class "modes-grid" ]
             (List.map (viewModeCard model.selectedGameMode) model.gameModes)
+        , h2 [ class "section-title challenge-title" ] [ text "Challenges" ]
+        , div [ class "challenge-grid" ]
+            (List.map viewChallengeCard challengeOptions)
         , viewScoresSection model
         , case model.selectedGameMode of
             Just mode ->
@@ -2386,6 +2635,9 @@ gameModeLabel mode =
         "single-player" ->
             "Solo"
 
+        "single-player-challenge" ->
+            "Challenge"
+
         "real-game" ->
             "Compagnon"
 
@@ -2454,6 +2706,37 @@ viewModeCard selectedMode mode =
         , div [ class "mode-icon" ] [ text mode.icon ]
         , h3 [] [ text mode.name ]
         , p [ class "mode-description" ] [ text mode.description ]
+        ]
+
+
+viewChallengeCard : ( String, String, ChallengeConfig ) -> Html Msg
+viewChallengeCard ( name, iconType, config ) =
+    let
+        icon =
+            if iconType == "timer" then
+                "⏱️"
+
+            else
+                "🏆"
+
+        desc =
+            case ( config.timerSeconds, config.totalGames ) of
+                ( Just sec, _ ) ->
+                    "Placez vos tuiles en " ++ String.fromInt (sec // 60) ++ " min"
+
+                ( _, Just n ) ->
+                    "Score cumulé sur " ++ String.fromInt n ++ " parties vs IA"
+
+                _ ->
+                    ""
+    in
+    div
+        [ class "mode-card challenge-card"
+        , onClick (SelectChallenge config)
+        ]
+        [ div [ class "mode-icon" ] [ text icon ]
+        , h3 [] [ text name ]
+        , p [ class "mode-description" ] [ text desc ]
         ]
 
 
@@ -2704,24 +2987,30 @@ viewInProgressState model session gameState =
                 [ ul []
                     (List.map (viewPlayer session.playerId) gameState.players)
                 ]
-            , -- Solo mode: Toggle button to show AI board
-              if model.isSoloMode then
-                div [ style "margin-top" "15px", style "text-align" "center" ]
-                    [ button
-                        [ class "toggle-ai-board-button"
-                        , onClick ToggleAiBoard
-                        , style "padding" "8px 16px"
-                        , style "border-radius" "8px"
-                        , style "border" "none"
-                        , style "background" "rgba(255,255,255,0.2)"
-                        , style "cursor" "pointer"
-                        ]
-                        [ text
-                            (if model.showAiBoard then
-                                "🤖 Masquer plateau IA"
+            , -- Overlay top-center: timer (challenge mode)
+              if model.challengeConfig /= Nothing && (model.timerActive || model.timerRemaining > 0) then
+                let
+                    minutes =
+                        model.timerRemaining // 60
 
-                             else
-                                "🤖 Voir plateau IA"
+                    seconds =
+                        modBy 60 model.timerRemaining
+
+                    timerClass =
+                        "timer-display board-overlay"
+                            ++ (if model.timerRemaining <= 30 then
+                                    " timer-low"
+
+                                else
+                                    ""
+                               )
+                in
+                div [ class timerClass ]
+                    [ span [ class "timer-text" ]
+                        [ text
+                            (String.padLeft 2 '0' (String.fromInt minutes)
+                                ++ ":"
+                                ++ String.padLeft 2 '0' (String.fromInt seconds)
                             )
                         ]
                     ]
@@ -2729,9 +3018,40 @@ viewInProgressState model session gameState =
               else
                 text ""
             ]
-        , -- Show AI board if toggled
+        , -- Series indicator
+          if model.seriesTotalGames > 0 then
+            div [ class "series-indicator" ]
+                [ text ("Partie " ++ String.fromInt model.seriesGameNumber ++ "/" ++ String.fromInt model.seriesTotalGames) ]
+
+          else
+            text ""
+        , -- Solo mode: Toggle button to show AI board (below player board)
+          if model.isSoloMode then
+            div [ style "text-align" "center", style "margin-top" "10px" ]
+                [ button
+                    [ class "toggle-ai-board-button"
+                    , onClick ToggleAiBoard
+                    , style "padding" "8px 16px"
+                    , style "border-radius" "8px"
+                    , style "border" "none"
+                    , style "background" "rgba(255,255,255,0.2)"
+                    , style "cursor" "pointer"
+                    ]
+                    [ text
+                        (if model.showAiBoard then
+                            "🤖 Masquer plateau IA"
+
+                         else
+                            "🤖 Voir plateau IA"
+                        )
+                    ]
+                ]
+
+          else
+            text ""
+        , -- Show AI board if toggled (below toggle button)
           if model.isSoloMode && model.showAiBoard then
-            div [ class "ai-board-container glass-container", style "margin-top" "20px" ]
+            div [ class "ai-board-container glass-container", style "margin-top" "10px" ]
                 [ h3 [] [ text ("🤖 Plateau IA - " ++ String.fromInt model.aiScore ++ " pts") ]
                 , viewAiHexBoard model.aiPlateauTiles
                 ]
@@ -3102,6 +3422,15 @@ viewAiHexBoard tiles =
 
 viewFinishedState : Model -> GameState -> Html Msg
 viewFinishedState model gameState =
+    if model.showSeriesScreen then
+        viewSeriesScreen model gameState
+
+    else
+        viewNormalFinishedState model gameState
+
+
+viewNormalFinishedState : Model -> GameState -> Html Msg
+viewNormalFinishedState model gameState =
     let
         sortedPlayers =
             List.sortBy (\p -> -p.score) gameState.players
@@ -3206,6 +3535,118 @@ viewFinishedState model gameState =
 
           else
             button [ class "play-again-button", onClick BackToModeSelection ] [ text "Rejouer" ]
+        ]
+
+
+viewSeriesScreen : Model -> GameState -> Html Msg
+viewSeriesScreen model gameState =
+    let
+        totalMyScore =
+            List.sum model.seriesMyScores
+
+        totalAiScore =
+            List.sum model.seriesAiScores
+
+        seriesFinished =
+            List.length model.seriesMyScores >= model.seriesTotalGames
+
+        lastGamePlayers =
+            List.sortBy (\p -> -p.score) gameState.players
+
+        lastWinner =
+            List.head lastGamePlayers
+    in
+    div [ class "finished-state" ]
+        [ div [ class "series-intermediate glass-container" ]
+            [ if seriesFinished then
+                h2 [] [ text "🏆 Match terminé !" ]
+
+              else
+                h2 []
+                    [ text
+                        ("Partie "
+                            ++ String.fromInt (List.length model.seriesMyScores)
+                            ++ "/"
+                            ++ String.fromInt model.seriesTotalGames
+                            ++ " terminée"
+                        )
+                    ]
+            , -- Last game result
+              case lastWinner of
+                Just w ->
+                    p [ class "series-last-result" ]
+                        [ text (w.name ++ " gagne avec " ++ String.fromInt w.score ++ " pts") ]
+
+                Nothing ->
+                    text ""
+            , -- Cumulative score
+              div [ class "series-cumulative" ]
+                [ div [ class "series-score-big" ]
+                    [ span [ class "series-player-score" ] [ text (String.fromInt totalMyScore) ]
+                    , span [ class "series-vs" ] [ text " - " ]
+                    , span [ class "series-ai-score" ] [ text (String.fromInt totalAiScore) ]
+                    ]
+                , p [ class "series-score-label" ] [ text "Joueur vs IA" ]
+                ]
+            , -- Detail table
+              table [ class "series-table" ]
+                [ thead []
+                    [ tr []
+                        [ th [] [ text "#" ]
+                        , th [] [ text "Joueur" ]
+                        , th [] [ text "IA" ]
+                        ]
+                    ]
+                , tbody []
+                    (List.indexedMap
+                        (\i ( myS, aiS ) ->
+                            tr
+                                [ class
+                                    (if myS > aiS then
+                                        "series-row-win"
+
+                                     else if myS < aiS then
+                                        "series-row-loss"
+
+                                     else
+                                        ""
+                                    )
+                                ]
+                                [ td [] [ text (String.fromInt (i + 1)) ]
+                                , td [ class "score-cell" ] [ text (String.fromInt myS) ]
+                                , td [ class "score-cell" ] [ text (String.fromInt aiS) ]
+                                ]
+                        )
+                        (List.map2 Tuple.pair model.seriesMyScores model.seriesAiScores)
+                    )
+                ]
+            , -- Buttons
+              if seriesFinished then
+                div [ class "series-buttons" ]
+                    [ div [ class "series-final-result" ]
+                        [ text
+                            (if totalMyScore > totalAiScore then
+                                "🎉 Victoire !"
+
+                             else if totalMyScore < totalAiScore then
+                                "L'IA l'emporte"
+
+                             else
+                                "Egalité !"
+                            )
+                        ]
+                    , button [ class "play-again-button", onClick BackToModeSelection ]
+                        [ text "Retour au menu" ]
+                    ]
+
+              else
+                div [ class "series-buttons" ]
+                    [ button [ class "play-again-button", onClick ContinueSeries ]
+                        [ text ("Partie suivante →") ]
+                    , button [ class "abandon-button", onClick AbandonSeries ]
+                        [ text "Abandonner la série" ]
+                    ]
+            ]
         ]
 
 
@@ -3622,8 +4063,15 @@ viewAiRealGameBoard model =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
-    receiveFromJs ReceivedFromJs
+subscriptions model =
+    Sub.batch
+        [ receiveFromJs ReceivedFromJs
+        , if model.timerActive && model.timerRemaining > 0 then
+            Time.every 1000 TimerTick
+
+          else
+            Sub.none
+        ]
 
 
 

@@ -58,15 +58,18 @@ where
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
+            const ALLOWED_ORIGIN: &str = "https://takeitasy.mooo.com";
+
             if req.method() == Method::OPTIONS {
                 let response = http::Response::builder()
                     .status(StatusCode::OK)
-                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN)
                     .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS")
                     .header(
                         header::ACCESS_CONTROL_ALLOW_HEADERS,
                         "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding, authorization",
                     )
+                    .header(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, "true")
                     .header(header::ACCESS_CONTROL_MAX_AGE, "86400")
                     .body(TonicBody::empty())
                     .expect("CORS preflight response construction should never fail with valid static headers");
@@ -77,7 +80,7 @@ where
             let headers = response.headers_mut();
             headers.insert(
                 header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                header::HeaderValue::from_static("*"),
+                header::HeaderValue::from_static(ALLOWED_ORIGIN),
             );
             headers.insert(
                 header::ACCESS_CONTROL_ALLOW_METHODS,
@@ -88,6 +91,10 @@ where
                 header::HeaderValue::from_static(
                     "content-type, x-grpc-web, x-user-agent, grpc-timeout, grpc-accept-encoding, authorization",
                 ),
+            );
+            headers.insert(
+                header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                header::HeaderValue::from_static("true"),
             );
             headers.insert(
                 header::ACCESS_CONTROL_EXPOSE_HEADERS,

@@ -32,6 +32,7 @@ pub fn get_simulations_for_mode(game_mode: &str) -> usize {
         "single-player-easy" | "solo-rapide" => 50,
         "single-player-medium" | "solo-normal" => 300,
         "single-player-hard" | "solo-expert" => 1000,
+        "single-player-challenge" => 200,
         "multiplayer" => 150,
         "training" => 100,
         _ => 200, // Default fallback

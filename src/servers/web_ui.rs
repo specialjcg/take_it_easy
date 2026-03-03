@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
 
 use crate::auth::{auth_router, AuthState};
@@ -120,9 +120,19 @@ impl WebUiServer {
             .fallback_service(ServeDir::new("web"))
             .layer(
                 CorsLayer::new()
-                    .allow_origin(Any)
-                    .allow_methods(Any)
-                    .allow_headers(Any),
+                    .allow_origin(AllowOrigin::exact(
+                        "https://takeitasy.mooo.com".parse().unwrap(),
+                    ))
+                    .allow_methods([
+                        http::Method::GET,
+                        http::Method::POST,
+                        http::Method::OPTIONS,
+                    ])
+                    .allow_headers([
+                        http::header::CONTENT_TYPE,
+                        http::header::AUTHORIZATION,
+                    ])
+                    .allow_credentials(true),
             )
     }
 }

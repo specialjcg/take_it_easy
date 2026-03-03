@@ -784,11 +784,11 @@ function _Debug_crash_UNUSED(identifier, fact1, fact2, fact3, fact4)
 
 function _Debug_regionToString(region)
 {
-	if (region.bh.aL === region.bz.aL)
+	if (region.br.aV === region.bJ.aV)
 	{
-		return 'on line ' + region.bh.aL;
+		return 'on line ' + region.br.aV;
 	}
-	return 'on lines ' + region.bh.aL + ' through ' + region.bz.aL;
+	return 'on lines ' + region.br.aV + ' through ' + region.bJ.aV;
 }
 
 
@@ -1861,9 +1861,9 @@ var _Platform_worker = F4(function(impl, flagDecoder, debugMetadata, args)
 	return _Platform_initialize(
 		flagDecoder,
 		args,
-		impl.cS,
-		impl.dm,
-		impl.dh,
+		impl.c1,
+		impl.dx,
+		impl.ds,
 		function() { return function() {} }
 	);
 });
@@ -2727,9 +2727,9 @@ var _VirtualDom_mapEventTuple = F2(function(func, tuple)
 var _VirtualDom_mapEventRecord = F2(function(func, record)
 {
 	return {
-		aa: func(record.aa),
-		bi: record.bi,
-		be: record.be
+		ai: func(record.ai),
+		bs: record.bs,
+		bo: record.bo
 	}
 });
 
@@ -2997,11 +2997,11 @@ function _VirtualDom_makeCallback(eventNode, initialHandler)
 		// 3 = Custom
 
 		var value = result.a;
-		var message = !tag ? value : tag < 3 ? value.a : value.aa;
-		var stopPropagation = tag == 1 ? value.b : tag == 3 && value.bi;
+		var message = !tag ? value : tag < 3 ? value.a : value.ai;
+		var stopPropagation = tag == 1 ? value.b : tag == 3 && value.bs;
 		var currentEventNode = (
 			stopPropagation && event.stopPropagation(),
-			(tag == 2 ? value.b : tag == 3 && value.be) && event.preventDefault(),
+			(tag == 2 ? value.b : tag == 3 && value.bo) && event.preventDefault(),
 			eventNode
 		);
 		var tagger;
@@ -3951,11 +3951,11 @@ var _Browser_element = _Debugger_element || F4(function(impl, flagDecoder, debug
 	return _Platform_initialize(
 		flagDecoder,
 		args,
-		impl.cS,
-		impl.dm,
-		impl.dh,
+		impl.c1,
+		impl.dx,
+		impl.ds,
 		function(sendToApp, initialModel) {
-			var view = impl.dq;
+			var view = impl.dB;
 			/**/
 			var domNode = args['node'];
 			//*/
@@ -3987,12 +3987,12 @@ var _Browser_document = _Debugger_document || F4(function(impl, flagDecoder, deb
 	return _Platform_initialize(
 		flagDecoder,
 		args,
-		impl.cS,
-		impl.dm,
-		impl.dh,
+		impl.c1,
+		impl.dx,
+		impl.ds,
 		function(sendToApp, initialModel) {
-			var divertHrefToApp = impl.bg && impl.bg(sendToApp)
-			var view = impl.dq;
+			var divertHrefToApp = impl.bq && impl.bq(sendToApp)
+			var view = impl.dB;
 			var title = _VirtualDom_doc.title;
 			var bodyNode = _VirtualDom_doc.body;
 			var currNode = _VirtualDom_virtualize(bodyNode);
@@ -4000,12 +4000,12 @@ var _Browser_document = _Debugger_document || F4(function(impl, flagDecoder, deb
 			{
 				_VirtualDom_divertHrefToApp = divertHrefToApp;
 				var doc = view(model);
-				var nextNode = _VirtualDom_node('body')(_List_Nil)(doc.cv);
+				var nextNode = _VirtualDom_node('body')(_List_Nil)(doc.cG);
 				var patches = _VirtualDom_diff(currNode, nextNode);
 				bodyNode = _VirtualDom_applyPatches(bodyNode, currNode, patches, sendToApp);
 				currNode = nextNode;
 				_VirtualDom_divertHrefToApp = 0;
-				(title !== doc.dk) && (_VirtualDom_doc.title = title = doc.dk);
+				(title !== doc.dv) && (_VirtualDom_doc.title = title = doc.dv);
 			});
 		}
 	);
@@ -4061,12 +4061,12 @@ function _Browser_makeAnimator(model, draw)
 
 function _Browser_application(impl)
 {
-	var onUrlChange = impl.c7;
-	var onUrlRequest = impl.c8;
+	var onUrlChange = impl.di;
+	var onUrlRequest = impl.dj;
 	var key = function() { key.a(onUrlChange(_Browser_getUrl())); };
 
 	return _Browser_document({
-		bg: function(sendToApp)
+		bq: function(sendToApp)
 		{
 			key.a = sendToApp;
 			_Browser_window.addEventListener('popstate', key);
@@ -4082,9 +4082,9 @@ function _Browser_application(impl)
 					var next = $elm$url$Url$fromString(href).a;
 					sendToApp(onUrlRequest(
 						(next
-							&& curr.b4 === next.b4
-							&& curr.bJ === next.bJ
-							&& curr.b0.a === next.b0.a
+							&& curr.ce === next.ce
+							&& curr.bT === next.bT
+							&& curr.ca.a === next.ca.a
 						)
 							? $elm$browser$Browser$Internal(next)
 							: $elm$browser$Browser$External(href)
@@ -4092,13 +4092,13 @@ function _Browser_application(impl)
 				}
 			});
 		},
-		cS: function(flags)
+		c1: function(flags)
 		{
-			return A3(impl.cS, flags, _Browser_getUrl(), key);
+			return A3(impl.c1, flags, _Browser_getUrl(), key);
 		},
-		dq: impl.dq,
-		dm: impl.dm,
-		dh: impl.dh
+		dB: impl.dB,
+		dx: impl.dx,
+		ds: impl.ds
 	});
 }
 
@@ -4164,17 +4164,17 @@ var _Browser_decodeEvent = F2(function(decoder, event)
 function _Browser_visibilityInfo()
 {
 	return (typeof _VirtualDom_doc.hidden !== 'undefined')
-		? { cO: 'hidden', cy: 'visibilitychange' }
+		? { cZ: 'hidden', cJ: 'visibilitychange' }
 		:
 	(typeof _VirtualDom_doc.mozHidden !== 'undefined')
-		? { cO: 'mozHidden', cy: 'mozvisibilitychange' }
+		? { cZ: 'mozHidden', cJ: 'mozvisibilitychange' }
 		:
 	(typeof _VirtualDom_doc.msHidden !== 'undefined')
-		? { cO: 'msHidden', cy: 'msvisibilitychange' }
+		? { cZ: 'msHidden', cJ: 'msvisibilitychange' }
 		:
 	(typeof _VirtualDom_doc.webkitHidden !== 'undefined')
-		? { cO: 'webkitHidden', cy: 'webkitvisibilitychange' }
-		: { cO: 'hidden', cy: 'visibilitychange' };
+		? { cZ: 'webkitHidden', cJ: 'webkitvisibilitychange' }
+		: { cZ: 'hidden', cJ: 'visibilitychange' };
 }
 
 
@@ -4255,12 +4255,12 @@ var _Browser_call = F2(function(functionName, id)
 function _Browser_getViewport()
 {
 	return {
-		b8: _Browser_getScene(),
-		ck: {
-			cn: _Browser_window.pageXOffset,
-			co: _Browser_window.pageYOffset,
-			cm: _Browser_doc.documentElement.clientWidth,
-			bI: _Browser_doc.documentElement.clientHeight
+		ci: _Browser_getScene(),
+		cu: {
+			cx: _Browser_window.pageXOffset,
+			cy: _Browser_window.pageYOffset,
+			cw: _Browser_doc.documentElement.clientWidth,
+			bS: _Browser_doc.documentElement.clientHeight
 		}
 	};
 }
@@ -4270,8 +4270,8 @@ function _Browser_getScene()
 	var body = _Browser_doc.body;
 	var elem = _Browser_doc.documentElement;
 	return {
-		cm: Math.max(body.scrollWidth, body.offsetWidth, elem.scrollWidth, elem.offsetWidth, elem.clientWidth),
-		bI: Math.max(body.scrollHeight, body.offsetHeight, elem.scrollHeight, elem.offsetHeight, elem.clientHeight)
+		cw: Math.max(body.scrollWidth, body.offsetWidth, elem.scrollWidth, elem.offsetWidth, elem.clientWidth),
+		bS: Math.max(body.scrollHeight, body.offsetHeight, elem.scrollHeight, elem.offsetHeight, elem.clientHeight)
 	};
 }
 
@@ -4294,15 +4294,15 @@ function _Browser_getViewportOf(id)
 	return _Browser_withNode(id, function(node)
 	{
 		return {
-			b8: {
-				cm: node.scrollWidth,
-				bI: node.scrollHeight
+			ci: {
+				cw: node.scrollWidth,
+				bS: node.scrollHeight
 			},
-			ck: {
-				cn: node.scrollLeft,
-				co: node.scrollTop,
-				cm: node.clientWidth,
-				bI: node.clientHeight
+			cu: {
+				cx: node.scrollLeft,
+				cy: node.scrollTop,
+				cw: node.clientWidth,
+				bS: node.clientHeight
 			}
 		};
 	});
@@ -4332,18 +4332,18 @@ function _Browser_getElement(id)
 		var x = _Browser_window.pageXOffset;
 		var y = _Browser_window.pageYOffset;
 		return {
-			b8: _Browser_getScene(),
-			ck: {
-				cn: x,
-				co: y,
-				cm: _Browser_doc.documentElement.clientWidth,
-				bI: _Browser_doc.documentElement.clientHeight
+			ci: _Browser_getScene(),
+			cu: {
+				cx: x,
+				cy: y,
+				cw: _Browser_doc.documentElement.clientWidth,
+				bS: _Browser_doc.documentElement.clientHeight
 			},
-			cF: {
-				cn: x + rect.left,
-				co: y + rect.top,
-				cm: rect.width,
-				bI: rect.height
+			cQ: {
+				cx: x + rect.left,
+				cy: y + rect.top,
+				cw: rect.width,
+				bS: rect.height
 			}
 		};
 	});
@@ -4378,6 +4378,89 @@ function _Browser_load(url)
 		}
 	}));
 }
+
+
+
+function _Time_now(millisToPosix)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		callback(_Scheduler_succeed(millisToPosix(Date.now())));
+	});
+}
+
+var _Time_setInterval = F2(function(interval, task)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		var id = setInterval(function() { _Scheduler_rawSpawn(task); }, interval);
+		return function() { clearInterval(id); };
+	});
+});
+
+function _Time_here()
+{
+	return _Scheduler_binding(function(callback)
+	{
+		callback(_Scheduler_succeed(
+			A2($elm$time$Time$customZone, -(new Date().getTimezoneOffset()), _List_Nil)
+		));
+	});
+}
+
+
+function _Time_getZoneName()
+{
+	return _Scheduler_binding(function(callback)
+	{
+		try
+		{
+			var name = $elm$time$Time$Name(Intl.DateTimeFormat().resolvedOptions().timeZone);
+		}
+		catch (e)
+		{
+			var name = $elm$time$Time$Offset(new Date().getTimezoneOffset());
+		}
+		callback(_Scheduler_succeed(name));
+	});
+}
+
+
+
+var _Bitwise_and = F2(function(a, b)
+{
+	return a & b;
+});
+
+var _Bitwise_or = F2(function(a, b)
+{
+	return a | b;
+});
+
+var _Bitwise_xor = F2(function(a, b)
+{
+	return a ^ b;
+});
+
+function _Bitwise_complement(a)
+{
+	return ~a;
+};
+
+var _Bitwise_shiftLeftBy = F2(function(offset, a)
+{
+	return a << offset;
+});
+
+var _Bitwise_shiftRightBy = F2(function(offset, a)
+{
+	return a >> offset;
+});
+
+var _Bitwise_shiftRightZfBy = F2(function(offset, a)
+{
+	return a >>> offset;
+});
 var $author$project$Main$UrlChanged = function (a) {
 	return {$: 1, a: a};
 };
@@ -4790,7 +4873,7 @@ var $elm$core$Array$treeFromBuilder = F2(
 	});
 var $elm$core$Array$builderToArray = F2(
 	function (reverseNodeList, builder) {
-		if (!builder.i) {
+		if (!builder.j) {
 			return A4(
 				$elm$core$Array$Array_elm_builtin,
 				$elm$core$Elm$JsArray$length(builder.m),
@@ -4798,11 +4881,11 @@ var $elm$core$Array$builderToArray = F2(
 				$elm$core$Elm$JsArray$empty,
 				builder.m);
 		} else {
-			var treeLen = builder.i * $elm$core$Array$branchFactor;
+			var treeLen = builder.j * $elm$core$Array$branchFactor;
 			var depth = $elm$core$Basics$floor(
 				A2($elm$core$Basics$logBase, $elm$core$Array$branchFactor, treeLen - 1));
 			var correctNodeList = reverseNodeList ? $elm$core$List$reverse(builder.n) : builder.n;
-			var tree = A2($elm$core$Array$treeFromBuilder, correctNodeList, builder.i);
+			var tree = A2($elm$core$Array$treeFromBuilder, correctNodeList, builder.j);
 			return A4(
 				$elm$core$Array$Array_elm_builtin,
 				$elm$core$Elm$JsArray$length(builder.m) + treeLen,
@@ -4821,7 +4904,7 @@ var $elm$core$Array$initializeHelp = F5(
 				return A2(
 					$elm$core$Array$builderToArray,
 					false,
-					{n: nodeList, i: (len / $elm$core$Array$branchFactor) | 0, m: tail});
+					{n: nodeList, j: (len / $elm$core$Array$branchFactor) | 0, m: tail});
 			} else {
 				var leaf = $elm$core$Array$Leaf(
 					A3($elm$core$Elm$JsArray$initialize, $elm$core$Array$branchFactor, fromIndex, fn));
@@ -4888,7 +4971,7 @@ var $elm$url$Url$Http = 0;
 var $elm$url$Url$Https = 1;
 var $elm$url$Url$Url = F6(
 	function (protocol, host, port_, path, query, fragment) {
-		return {bB: fragment, bJ: host, bV: path, b0: port_, b4: protocol, db: query};
+		return {bL: fragment, bT: host, b3: path, ca: port_, ce: protocol, dm: query};
 	});
 var $elm$core$String$contains = _String_contains;
 var $elm$core$String$length = _String_length;
@@ -5239,9 +5322,9 @@ var $author$project$Main$LoginView = 0;
 var $author$project$Main$Welcome = 0;
 var $author$project$Main$defaultGameModes = _List_fromArray(
 	[
-		{au: 'Affrontez l\'IA Graph Transformer (149 pts)', aI: $elm$core$Maybe$Nothing, ak: '🤖', cP: 'single-player', c_: 'Solo', a_: $elm$core$Maybe$Nothing},
-		{au: 'Accompagnez votre partie physique — comparez-vous à l\'IA', aI: $elm$core$Maybe$Nothing, ak: '🎲', cP: 'real-game', c_: 'Compagnon', a_: $elm$core$Maybe$Nothing},
-		{au: 'Jouez contre d\'autres joueurs en ligne', aI: $elm$core$Maybe$Nothing, ak: '👥', cP: 'multiplayer', c_: 'Multijoueur', a_: $elm$core$Maybe$Nothing}
+		{aq: 'Affrontez l\'IA Graph Transformer (149 pts)', aF: $elm$core$Maybe$Nothing, ag: '🤖', c_: 'single-player', c9: 'Solo', a_: $elm$core$Maybe$Nothing},
+		{aq: 'Accompagnez votre partie physique — comparez-vous à l\'IA', aF: $elm$core$Maybe$Nothing, ag: '🎲', c_: 'real-game', c9: 'Compagnon', a_: $elm$core$Maybe$Nothing},
+		{aq: 'Jouez contre d\'autres joueurs en ligne', aF: $elm$core$Maybe$Nothing, ag: '👥', c_: 'multiplayer', c9: 'Multijoueur', a_: $elm$core$Maybe$Nothing}
 	]);
 var $elm$core$List$repeatHelp = F3(
 	function (result, n, value) {
@@ -5267,56 +5350,65 @@ var $elm$core$List$repeat = F2(
 var $author$project$Main$initialModel = F2(
 	function (key, url) {
 		return {
-			B: A2($elm$core$List$repeat, 19, ''),
-			cr: 0,
-			br: _List_Nil,
+			D: A2($elm$core$List$repeat, 19, ''),
+			cB: 0,
+			bB: _List_Nil,
 			g: '',
 			c: false,
-			j: 0,
-			G: A2($elm$core$List$range, 0, 18),
-			U: '',
-			C: $elm$core$Maybe$Nothing,
-			H: $elm$core$Maybe$Nothing,
-			ah: 0,
-			p: 0,
-			O: '',
-			D: '',
-			a5: $author$project$Main$defaultGameModes,
-			k: $elm$core$Maybe$Nothing,
-			J: false,
-			bM: false,
-			cU: false,
-			a9: key,
-			ax: _List_Nil,
-			aM: false,
-			ay: _List_Nil,
-			K: false,
-			x: '',
-			ab: $elm$core$Maybe$Nothing,
-			W: A2($elm$core$List$repeat, 19, ''),
-			t: '',
-			aO: 0,
-			an: '',
-			aP: '',
-			z: $elm$core$Maybe$Nothing,
-			f: $elm$core$Maybe$Nothing,
-			M: '',
-			N: false,
-			ao: false,
-			T: '',
-			aq: $elm$core$Maybe$Nothing,
-			bl: url,
-			a1: _List_Nil,
-			ae: $elm$core$Maybe$Nothing,
-			aA: '',
-			aU: _List_Nil
+			k: 0,
+			cD: false,
+			I: A2($elm$core$List$range, 0, 18),
+			af: $elm$core$Maybe$Nothing,
+			X: '',
+			E: $elm$core$Maybe$Nothing,
+			J: $elm$core$Maybe$Nothing,
+			ap: 0,
+			r: 0,
+			R: '',
+			y: '',
+			bf: $author$project$Main$defaultGameModes,
+			i: $elm$core$Maybe$Nothing,
+			L: false,
+			bW: false,
+			c3: false,
+			bj: key,
+			aI: _List_Nil,
+			aW: false,
+			aJ: _List_Nil,
+			M: false,
+			B: '',
+			aj: $elm$core$Maybe$Nothing,
+			Z: A2($elm$core$List$repeat, 19, ''),
+			o: '',
+			aY: 0,
+			av: '',
+			aZ: '',
+			v: $elm$core$Maybe$Nothing,
+			_: _List_Nil,
+			aw: 0,
+			O: _List_Nil,
+			aa: 0,
+			e: $elm$core$Maybe$Nothing,
+			P: '',
+			H: false,
+			ax: false,
+			ay: false,
+			W: '',
+			Q: false,
+			w: 0,
+			aA: $elm$core$Maybe$Nothing,
+			bv: url,
+			bb: _List_Nil,
+			am: $elm$core$Maybe$Nothing,
+			aL: '',
+			a3: _List_Nil
 		};
 	});
 var $author$project$Main$init = F3(
 	function (_v0, url, key) {
 		var baseModel = A2($author$project$Main$initialModel, key, url);
 		var modelWithResetToken = function () {
-			var _v1 = url.db;
+			var _v1 = url.dm;
 			if (!_v1.$) {
 				var query = _v1.a;
 				var _v2 = $author$project$Main$extractResetToken(query);
@@ -5324,7 +5416,7 @@ var $author$project$Main$init = F3(
 					var token = _v2.a;
 					return _Utils_update(
 						baseModel,
-						{j: 4, aP: token});
+						{k: 4, aZ: token});
 				} else {
 					return baseModel;
 				}
@@ -5349,17 +5441,441 @@ var $author$project$Main$init = F3(
 					])));
 	});
 var $author$project$Main$ReceivedFromJs = function (a) {
+	return {$: 63, a: a};
+};
+var $author$project$Main$TimerTick = function (a) {
 	return {$: 58, a: a};
 };
+var $elm$core$Platform$Sub$batch = _Platform_batch;
+var $elm$time$Time$Every = F2(
+	function (a, b) {
+		return {$: 0, a: a, b: b};
+	});
+var $elm$time$Time$State = F2(
+	function (taggers, processes) {
+		return {cd: processes, cp: taggers};
+	});
+var $elm$core$Dict$RBEmpty_elm_builtin = {$: -2};
+var $elm$core$Dict$empty = $elm$core$Dict$RBEmpty_elm_builtin;
+var $elm$time$Time$init = $elm$core$Task$succeed(
+	A2($elm$time$Time$State, $elm$core$Dict$empty, $elm$core$Dict$empty));
+var $elm$core$Basics$compare = _Utils_compare;
+var $elm$core$Dict$get = F2(
+	function (targetKey, dict) {
+		get:
+		while (true) {
+			if (dict.$ === -2) {
+				return $elm$core$Maybe$Nothing;
+			} else {
+				var key = dict.b;
+				var value = dict.c;
+				var left = dict.d;
+				var right = dict.e;
+				var _v1 = A2($elm$core$Basics$compare, targetKey, key);
+				switch (_v1) {
+					case 0:
+						var $temp$targetKey = targetKey,
+							$temp$dict = left;
+						targetKey = $temp$targetKey;
+						dict = $temp$dict;
+						continue get;
+					case 1:
+						return $elm$core$Maybe$Just(value);
+					default:
+						var $temp$targetKey = targetKey,
+							$temp$dict = right;
+						targetKey = $temp$targetKey;
+						dict = $temp$dict;
+						continue get;
+				}
+			}
+		}
+	});
+var $elm$core$Dict$Black = 1;
+var $elm$core$Dict$RBNode_elm_builtin = F5(
+	function (a, b, c, d, e) {
+		return {$: -1, a: a, b: b, c: c, d: d, e: e};
+	});
+var $elm$core$Dict$Red = 0;
+var $elm$core$Dict$balance = F5(
+	function (color, key, value, left, right) {
+		if ((right.$ === -1) && (!right.a)) {
+			var _v1 = right.a;
+			var rK = right.b;
+			var rV = right.c;
+			var rLeft = right.d;
+			var rRight = right.e;
+			if ((left.$ === -1) && (!left.a)) {
+				var _v3 = left.a;
+				var lK = left.b;
+				var lV = left.c;
+				var lLeft = left.d;
+				var lRight = left.e;
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					0,
+					key,
+					value,
+					A5($elm$core$Dict$RBNode_elm_builtin, 1, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, 1, rK, rV, rLeft, rRight));
+			} else {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					color,
+					rK,
+					rV,
+					A5($elm$core$Dict$RBNode_elm_builtin, 0, key, value, left, rLeft),
+					rRight);
+			}
+		} else {
+			if ((((left.$ === -1) && (!left.a)) && (left.d.$ === -1)) && (!left.d.a)) {
+				var _v5 = left.a;
+				var lK = left.b;
+				var lV = left.c;
+				var _v6 = left.d;
+				var _v7 = _v6.a;
+				var llK = _v6.b;
+				var llV = _v6.c;
+				var llLeft = _v6.d;
+				var llRight = _v6.e;
+				var lRight = left.e;
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					0,
+					lK,
+					lV,
+					A5($elm$core$Dict$RBNode_elm_builtin, 1, llK, llV, llLeft, llRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, 1, key, value, lRight, right));
+			} else {
+				return A5($elm$core$Dict$RBNode_elm_builtin, color, key, value, left, right);
+			}
+		}
+	});
+var $elm$core$Dict$insertHelp = F3(
+	function (key, value, dict) {
+		if (dict.$ === -2) {
+			return A5($elm$core$Dict$RBNode_elm_builtin, 0, key, value, $elm$core$Dict$RBEmpty_elm_builtin, $elm$core$Dict$RBEmpty_elm_builtin);
+		} else {
+			var nColor = dict.a;
+			var nKey = dict.b;
+			var nValue = dict.c;
+			var nLeft = dict.d;
+			var nRight = dict.e;
+			var _v1 = A2($elm$core$Basics$compare, key, nKey);
+			switch (_v1) {
+				case 0:
+					return A5(
+						$elm$core$Dict$balance,
+						nColor,
+						nKey,
+						nValue,
+						A3($elm$core$Dict$insertHelp, key, value, nLeft),
+						nRight);
+				case 1:
+					return A5($elm$core$Dict$RBNode_elm_builtin, nColor, nKey, value, nLeft, nRight);
+				default:
+					return A5(
+						$elm$core$Dict$balance,
+						nColor,
+						nKey,
+						nValue,
+						nLeft,
+						A3($elm$core$Dict$insertHelp, key, value, nRight));
+			}
+		}
+	});
+var $elm$core$Dict$insert = F3(
+	function (key, value, dict) {
+		var _v0 = A3($elm$core$Dict$insertHelp, key, value, dict);
+		if ((_v0.$ === -1) && (!_v0.a)) {
+			var _v1 = _v0.a;
+			var k = _v0.b;
+			var v = _v0.c;
+			var l = _v0.d;
+			var r = _v0.e;
+			return A5($elm$core$Dict$RBNode_elm_builtin, 1, k, v, l, r);
+		} else {
+			var x = _v0;
+			return x;
+		}
+	});
+var $elm$time$Time$addMySub = F2(
+	function (_v0, state) {
+		var interval = _v0.a;
+		var tagger = _v0.b;
+		var _v1 = A2($elm$core$Dict$get, interval, state);
+		if (_v1.$ === 1) {
+			return A3(
+				$elm$core$Dict$insert,
+				interval,
+				_List_fromArray(
+					[tagger]),
+				state);
+		} else {
+			var taggers = _v1.a;
+			return A3(
+				$elm$core$Dict$insert,
+				interval,
+				A2($elm$core$List$cons, tagger, taggers),
+				state);
+		}
+	});
+var $elm$core$Process$kill = _Scheduler_kill;
+var $elm$core$Dict$foldl = F3(
+	function (func, acc, dict) {
+		foldl:
+		while (true) {
+			if (dict.$ === -2) {
+				return acc;
+			} else {
+				var key = dict.b;
+				var value = dict.c;
+				var left = dict.d;
+				var right = dict.e;
+				var $temp$func = func,
+					$temp$acc = A3(
+					func,
+					key,
+					value,
+					A3($elm$core$Dict$foldl, func, acc, left)),
+					$temp$dict = right;
+				func = $temp$func;
+				acc = $temp$acc;
+				dict = $temp$dict;
+				continue foldl;
+			}
+		}
+	});
+var $elm$core$Dict$merge = F6(
+	function (leftStep, bothStep, rightStep, leftDict, rightDict, initialResult) {
+		var stepState = F3(
+			function (rKey, rValue, _v0) {
+				stepState:
+				while (true) {
+					var list = _v0.a;
+					var result = _v0.b;
+					if (!list.b) {
+						return _Utils_Tuple2(
+							list,
+							A3(rightStep, rKey, rValue, result));
+					} else {
+						var _v2 = list.a;
+						var lKey = _v2.a;
+						var lValue = _v2.b;
+						var rest = list.b;
+						if (_Utils_cmp(lKey, rKey) < 0) {
+							var $temp$rKey = rKey,
+								$temp$rValue = rValue,
+								$temp$_v0 = _Utils_Tuple2(
+								rest,
+								A3(leftStep, lKey, lValue, result));
+							rKey = $temp$rKey;
+							rValue = $temp$rValue;
+							_v0 = $temp$_v0;
+							continue stepState;
+						} else {
+							if (_Utils_cmp(lKey, rKey) > 0) {
+								return _Utils_Tuple2(
+									list,
+									A3(rightStep, rKey, rValue, result));
+							} else {
+								return _Utils_Tuple2(
+									rest,
+									A4(bothStep, lKey, lValue, rValue, result));
+							}
+						}
+					}
+				}
+			});
+		var _v3 = A3(
+			$elm$core$Dict$foldl,
+			stepState,
+			_Utils_Tuple2(
+				$elm$core$Dict$toList(leftDict),
+				initialResult),
+			rightDict);
+		var leftovers = _v3.a;
+		var intermediateResult = _v3.b;
+		return A3(
+			$elm$core$List$foldl,
+			F2(
+				function (_v4, result) {
+					var k = _v4.a;
+					var v = _v4.b;
+					return A3(leftStep, k, v, result);
+				}),
+			intermediateResult,
+			leftovers);
+	});
+var $elm$core$Platform$sendToSelf = _Platform_sendToSelf;
+var $elm$time$Time$Name = function (a) {
+	return {$: 0, a: a};
+};
+var $elm$time$Time$Offset = function (a) {
+	return {$: 1, a: a};
+};
+var $elm$time$Time$Zone = F2(
+	function (a, b) {
+		return {$: 0, a: a, b: b};
+	});
+var $elm$time$Time$customZone = $elm$time$Time$Zone;
+var $elm$time$Time$setInterval = _Time_setInterval;
+var $elm$core$Process$spawn = _Scheduler_spawn;
+var $elm$time$Time$spawnHelp = F3(
+	function (router, intervals, processes) {
+		if (!intervals.b) {
+			return $elm$core$Task$succeed(processes);
+		} else {
+			var interval = intervals.a;
+			var rest = intervals.b;
+			var spawnTimer = $elm$core$Process$spawn(
+				A2(
+					$elm$time$Time$setInterval,
+					interval,
+					A2($elm$core$Platform$sendToSelf, router, interval)));
+			var spawnRest = function (id) {
+				return A3(
+					$elm$time$Time$spawnHelp,
+					router,
+					rest,
+					A3($elm$core$Dict$insert, interval, id, processes));
+			};
+			return A2($elm$core$Task$andThen, spawnRest, spawnTimer);
+		}
+	});
+var $elm$time$Time$onEffects = F3(
+	function (router, subs, _v0) {
+		var processes = _v0.cd;
+		var rightStep = F3(
+			function (_v6, id, _v7) {
+				var spawns = _v7.a;
+				var existing = _v7.b;
+				var kills = _v7.c;
+				return _Utils_Tuple3(
+					spawns,
+					existing,
+					A2(
+						$elm$core$Task$andThen,
+						function (_v5) {
+							return kills;
+						},
+						$elm$core$Process$kill(id)));
+			});
+		var newTaggers = A3($elm$core$List$foldl, $elm$time$Time$addMySub, $elm$core$Dict$empty, subs);
+		var leftStep = F3(
+			function (interval, taggers, _v4) {
+				var spawns = _v4.a;
+				var existing = _v4.b;
+				var kills = _v4.c;
+				return _Utils_Tuple3(
+					A2($elm$core$List$cons, interval, spawns),
+					existing,
+					kills);
+			});
+		var bothStep = F4(
+			function (interval, taggers, id, _v3) {
+				var spawns = _v3.a;
+				var existing = _v3.b;
+				var kills = _v3.c;
+				return _Utils_Tuple3(
+					spawns,
+					A3($elm$core$Dict$insert, interval, id, existing),
+					kills);
+			});
+		var _v1 = A6(
+			$elm$core$Dict$merge,
+			leftStep,
+			bothStep,
+			rightStep,
+			newTaggers,
+			processes,
+			_Utils_Tuple3(
+				_List_Nil,
+				$elm$core$Dict$empty,
+				$elm$core$Task$succeed(0)));
+		var spawnList = _v1.a;
+		var existingDict = _v1.b;
+		var killTask = _v1.c;
+		return A2(
+			$elm$core$Task$andThen,
+			function (newProcesses) {
+				return $elm$core$Task$succeed(
+					A2($elm$time$Time$State, newTaggers, newProcesses));
+			},
+			A2(
+				$elm$core$Task$andThen,
+				function (_v2) {
+					return A3($elm$time$Time$spawnHelp, router, spawnList, existingDict);
+				},
+				killTask));
+	});
+var $elm$time$Time$Posix = $elm$core$Basics$identity;
+var $elm$time$Time$millisToPosix = $elm$core$Basics$identity;
+var $elm$time$Time$now = _Time_now($elm$time$Time$millisToPosix);
+var $elm$time$Time$onSelfMsg = F3(
+	function (router, interval, state) {
+		var _v0 = A2($elm$core$Dict$get, interval, state.cp);
+		if (_v0.$ === 1) {
+			return $elm$core$Task$succeed(state);
+		} else {
+			var taggers = _v0.a;
+			var tellTaggers = function (time) {
+				return $elm$core$Task$sequence(
+					A2(
+						$elm$core$List$map,
+						function (tagger) {
+							return A2(
+								$elm$core$Platform$sendToApp,
+								router,
+								tagger(time));
+						},
+						taggers));
+			};
+			return A2(
+				$elm$core$Task$andThen,
+				function (_v1) {
+					return $elm$core$Task$succeed(state);
+				},
+				A2($elm$core$Task$andThen, tellTaggers, $elm$time$Time$now));
+		}
+	});
+var $elm$core$Basics$composeL = F3(
+	function (g, f, x) {
+		return g(
+			f(x));
+	});
+var $elm$time$Time$subMap = F2(
+	function (f, _v0) {
+		var interval = _v0.a;
+		var tagger = _v0.b;
+		return A2(
+			$elm$time$Time$Every,
+			interval,
+			A2($elm$core$Basics$composeL, f, tagger));
+	});
+_Platform_effectManagers['Time'] = _Platform_createManager($elm$time$Time$init, $elm$time$Time$onEffects, $elm$time$Time$onSelfMsg, 0, $elm$time$Time$subMap);
+var $elm$time$Time$subscription = _Platform_leaf('Time');
+var $elm$time$Time$every = F2(
+	function (interval, tagger) {
+		return $elm$time$Time$subscription(
+			A2($elm$time$Time$Every, interval, tagger));
+	});
+var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
 var $elm$json$Json$Decode$value = _Json_decodeValue;
 var $author$project$Main$receiveFromJs = _Platform_incomingPort('receiveFromJs', $elm$json$Json$Decode$value);
-var $author$project$Main$subscriptions = function (_v0) {
-	return $author$project$Main$receiveFromJs($author$project$Main$ReceivedFromJs);
+var $author$project$Main$subscriptions = function (model) {
+	return $elm$core$Platform$Sub$batch(
+		_List_fromArray(
+			[
+				$author$project$Main$receiveFromJs($author$project$Main$ReceivedFromJs),
+				(model.Q && (model.w > 0)) ? A2($elm$time$Time$every, 1000, $author$project$Main$TimerTick) : $elm$core$Platform$Sub$none
+			]));
 };
 var $author$project$Main$AiMoveResult = F2(
 	function (a, b) {
 		return {$: 49, a: a, b: b};
 	});
+var $author$project$Main$BackToModeSelection = {$: 27};
 var $author$project$Main$CheckAuthFailure = {$: 24};
 var $author$project$Main$CheckAuthSuccess = F2(
 	function (a, b) {
@@ -5403,6 +5919,9 @@ var $author$project$Main$MovePlayed = F5(
 var $author$project$Main$MyScoresReceived = function (a) {
 	return {$: 56, a: a};
 };
+var $author$project$Main$PlayMove = function (a) {
+	return {$: 44, a: a};
+};
 var $author$project$Main$PollSession = {$: 41};
 var $author$project$Main$PollTurn = {$: 52};
 var $author$project$Main$ReadySet = function (a) {
@@ -5437,6 +5956,7 @@ var $author$project$Main$SessionPolled = function (a) {
 	return {$: 42, a: a};
 };
 var $author$project$Main$StartGame = {$: 26};
+var $author$project$Main$TimerExpired = {$: 59};
 var $author$project$Main$TurnStarted = F6(
 	function (a, b, c, d, e, f) {
 		return {$: 50, a: a, b: b, c: c, d: d, e: e, f: f};
@@ -5462,11 +5982,6 @@ var $elm$core$List$any = F2(
 			}
 		}
 	});
-var $elm$core$Basics$composeL = F3(
-	function (g, f, x) {
-		return g(
-			f(x));
-	});
 var $elm$core$Basics$not = _Basics_not;
 var $elm$core$List$all = F2(
 	function (isOkay, list) {
@@ -5474,6 +5989,15 @@ var $elm$core$List$all = F2(
 			$elm$core$List$any,
 			A2($elm$core$Basics$composeL, $elm$core$Basics$not, isOkay),
 			list);
+	});
+var $elm$core$Maybe$andThen = F2(
+	function (callback, maybeValue) {
+		if (!maybeValue.$) {
+			var value = maybeValue.a;
+			return callback(value);
+		} else {
+			return $elm$core$Maybe$Nothing;
+		}
 	});
 var $elm$json$Json$Encode$bool = _Json_wrap;
 var $elm$json$Json$Decode$decodeValue = _Json_run;
@@ -5506,9 +6030,9 @@ var $elm$core$Basics$neq = _Utils_notEqual;
 var $author$project$GameLogic$handleAiMoveResultPure = F2(
 	function (position, errorMsg) {
 		return ((position >= 0) && (position < 19)) ? {
-			ab: $elm$core$Maybe$Just(position),
-			T: (errorMsg !== '') ? ('IA: ' + errorMsg) : ''
-		} : {ab: $elm$core$Maybe$Nothing, T: 'IA: position invalide'};
+			aj: $elm$core$Maybe$Just(position),
+			W: (errorMsg !== '') ? ('IA: ' + errorMsg) : ''
+		} : {aj: $elm$core$Maybe$Nothing, W: 'IA: position invalide'};
 	});
 var $elm$core$Maybe$map = F2(
 	function (f, maybe) {
@@ -5541,19 +6065,19 @@ var $author$project$GameLogic$handleGameFinishedPure = function (input) {
 				A2(
 					$elm$core$Maybe$map,
 					function ($) {
-						return $.c_;
+						return $.c9;
 					},
 					$elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
 							function (p) {
-								return _Utils_eq(p.cP, id);
+								return _Utils_eq(p.c_, id);
 							},
-							input.b_))));
+							input.b8))));
 			return _Utils_Tuple3(id, name, tiles);
 		},
-		input.bq);
-	return {B: input.aE, br: resolvedPlateaus, aJ: true, K: false, W: input.bZ, T: 'Partie terminée!', aU: _List_Nil};
+		input.bA);
+	return {D: input.aP, bB: resolvedPlateaus, aT: true, M: false, Z: input.b7, W: 'Partie terminée!', a3: _List_Nil};
 };
 var $author$project$GameLogic$BatchCmds = function (a) {
 	return {$: 4, a: a};
@@ -5585,27 +6109,27 @@ var $author$project$GameLogic$handleMovePlayedPure = F2(
 			$elm$core$List$indexedMap,
 			F2(
 				function (i, tile) {
-					return _Utils_eq(i, input.bd) ? A2(
+					return _Utils_eq(i, input.bn) ? A2(
 						$elm$core$Maybe$withDefault,
 						tile,
 						A2(
 							$elm$core$Maybe$map,
 							A2($elm$core$String$replace, '../', ''),
-							model.H)) : tile;
+							model.J)) : tile;
 				}),
-			model.W);
+			model.Z);
 		var newAvailablePositions = A2(
 			$elm$core$List$filter,
 			function (p) {
-				return !_Utils_eq(p, input.bd);
+				return !_Utils_eq(p, input.bn);
 			},
-			model.G);
-		var newAiPlateauTiles = $elm$core$List$isEmpty(input.aE) ? model.B : input.aE;
+			model.I);
+		var newAiPlateauTiles = $elm$core$List$isEmpty(input.aP) ? model.D : input.aP;
 		var cmdIntent = function () {
-			if (input.bL) {
+			if (input.bV) {
 				return $author$project$GameLogic$NoCmd;
 			} else {
-				var _v0 = model.bf;
+				var _v0 = model.bp;
 				if (!_v0.$) {
 					var sid = _v0.a;
 					return $author$project$GameLogic$BatchCmds(
@@ -5620,36 +6144,36 @@ var $author$project$GameLogic$handleMovePlayedPure = F2(
 			}
 		}();
 		return {
-			B: newAiPlateauTiles,
-			G: newAvailablePositions,
-			at: cmdIntent,
-			C: $elm$core$Maybe$Nothing,
-			H: $elm$core$Maybe$Nothing,
-			aM: false,
-			K: false,
-			W: newPlateauTiles,
-			T: '+' + ($elm$core$String$fromInt(input.b$) + ' points')
+			D: newAiPlateauTiles,
+			I: newAvailablePositions,
+			aE: cmdIntent,
+			E: $elm$core$Maybe$Nothing,
+			J: $elm$core$Maybe$Nothing,
+			aW: false,
+			M: false,
+			Z: newPlateauTiles,
+			W: '+' + ($elm$core$String$fromInt(input.b9) + ' points')
 		};
 	});
 var $author$project$GameLogic$handlePlaceRealTilePure = F2(
 	function (model, position) {
-		var tileImage = A2($elm$core$Maybe$withDefault, '', model.H);
-		var newTurnNumber = model.ah + 1;
+		var tileImage = A2($elm$core$Maybe$withDefault, '', model.J);
+		var newTurnNumber = model.ap + 1;
 		var newPlateauTiles = A2(
 			$elm$core$List$indexedMap,
 			F2(
 				function (i, tile) {
 					return _Utils_eq(i, position) ? tileImage : tile;
 				}),
-			model.W);
+			model.Z);
 		var newAvailablePositions = A2(
 			$elm$core$List$filter,
 			function (p) {
 				return !_Utils_eq(p, position);
 			},
-			model.G);
+			model.I);
 		var newAiPlateauTiles = function () {
-			var _v1 = model.ab;
+			var _v1 = model.aj;
 			if (!_v1.$) {
 				var aiPos = _v1.a;
 				return A2(
@@ -5658,14 +6182,14 @@ var $author$project$GameLogic$handlePlaceRealTilePure = F2(
 						function (i, tile) {
 							return _Utils_eq(i, aiPos) ? tileImage : tile;
 						}),
-					model.B);
+					model.D);
 			} else {
-				return model.B;
+				return model.D;
 			}
 		}();
 		var isGameOver = newTurnNumber >= 19;
 		var aiMessage = function () {
-			var _v0 = model.ab;
+			var _v0 = model.aj;
 			if (!_v0.$) {
 				var aiPos = _v0.a;
 				return 'IA joue en position ' + $elm$core$String$fromInt(aiPos);
@@ -5674,22 +6198,22 @@ var $author$project$GameLogic$handlePlaceRealTilePure = F2(
 			}
 		}();
 		return {
-			B: newAiPlateauTiles,
-			G: newAvailablePositions,
-			C: $elm$core$Maybe$Nothing,
-			H: $elm$core$Maybe$Nothing,
-			ah: newTurnNumber,
-			ab: $elm$core$Maybe$Nothing,
-			W: newPlateauTiles,
-			ao: !isGameOver,
-			T: isGameOver ? 'Partie terminée! Calculez votre score.' : aiMessage
+			D: newAiPlateauTiles,
+			I: newAvailablePositions,
+			E: $elm$core$Maybe$Nothing,
+			J: $elm$core$Maybe$Nothing,
+			ap: newTurnNumber,
+			aj: $elm$core$Maybe$Nothing,
+			Z: newPlateauTiles,
+			ay: !isGameOver,
+			W: isGameOver ? 'Partie terminée! Calculez votre score.' : aiMessage
 		};
 	});
 var $author$project$GameLogic$handlePollTurnPure = function (model) {
-	var _v0 = model.bf;
+	var _v0 = model.bp;
 	if (!_v0.$) {
 		var sid = _v0.a;
-		return (!model.K) ? $author$project$GameLogic$SendStartTurn(sid) : $author$project$GameLogic$NoCmd;
+		return (!model.M) ? $author$project$GameLogic$SendStartTurn(sid) : $author$project$GameLogic$NoCmd;
 	} else {
 		return $author$project$GameLogic$NoCmd;
 	}
@@ -5715,13 +6239,13 @@ var $author$project$GameLogic$handleSelectRealTilePure = F2(
 						function (i, tile) {
 							return _Utils_Tuple2(i, tile);
 						}),
-					model.B)));
+					model.D)));
 		return {
-			at: A4($author$project$GameLogic$SendGetAiMove, tileCode, model.B, aiAvailablePositions, model.ah),
-			C: $elm$core$Maybe$Just(tileCode),
-			H: $elm$core$Maybe$Just('image/' + (tileCode + '.png')),
-			ao: false,
-			a1: A2($elm$core$List$cons, tileCode, model.a1)
+			aE: A4($author$project$GameLogic$SendGetAiMove, tileCode, model.D, aiAvailablePositions, model.ap),
+			E: $elm$core$Maybe$Just(tileCode),
+			J: $elm$core$Maybe$Just('image/' + (tileCode + '.png')),
+			ay: false,
+			bb: A2($elm$core$List$cons, tileCode, model.bb)
 		};
 	});
 var $elm$core$List$member = F2(
@@ -5735,18 +6259,18 @@ var $elm$core$List$member = F2(
 	});
 var $author$project$GameLogic$handleTurnStartedPure = F2(
 	function (model, input) {
-		var playerId = A2($elm$core$Maybe$withDefault, '', model.bY);
-		var isMyTurn = A2($elm$core$List$member, playerId, input.bm);
+		var playerId = A2($elm$core$Maybe$withDefault, '', model.b6);
+		var isMyTurn = A2($elm$core$List$member, playerId, input.bw);
 		var pollCmd = (!isMyTurn) ? $author$project$GameLogic$SchedulePollTurn(2000) : $author$project$GameLogic$NoCmd;
 		return {
-			G: input.b1,
-			at: pollCmd,
-			C: isMyTurn ? $elm$core$Maybe$Just(input.cg) : $elm$core$Maybe$Nothing,
-			H: isMyTurn ? $elm$core$Maybe$Just(input.ch) : $elm$core$Maybe$Nothing,
-			ah: input.cj,
-			aM: false,
-			K: isMyTurn,
-			aU: input.bm
+			I: input.cb,
+			aE: pollCmd,
+			E: isMyTurn ? $elm$core$Maybe$Just(input.cq) : $elm$core$Maybe$Nothing,
+			J: isMyTurn ? $elm$core$Maybe$Just(input.cr) : $elm$core$Maybe$Nothing,
+			ap: input.ct,
+			aW: false,
+			M: isMyTurn,
+			a3: input.bw
 		};
 	});
 var $elm$json$Json$Encode$int = _Json_wrap;
@@ -5837,7 +6361,7 @@ var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $elm$json$Json$Decode$fail = _Json_fail;
 var $author$project$Main$GameHistoryEntry = F4(
 	function (score, gameMode, won, playedAt) {
-		return {bC: gameMode, bX: playedAt, y: score, bn: won};
+		return {bM: gameMode, b5: playedAt, p: score, bx: won};
 	});
 var $elm$json$Json$Decode$int = _Json_decodeInt;
 var $elm$json$Json$Decode$map4 = _Json_map4;
@@ -5851,7 +6375,7 @@ var $author$project$Main$gameHistoryEntryDecoder = A5(
 	A2($elm$json$Json$Decode$field, 'played_at', $elm$json$Json$Decode$string));
 var $author$project$Main$GameState = F4(
 	function (sessionCode, state, players, currentTurn) {
-		return {cA: currentTurn, b_: players, M: sessionCode, X: state};
+		return {cL: currentTurn, b8: players, P: sessionCode, ab: state};
 	});
 var $elm$json$Json$Decode$list = _Json_decodeList;
 var $elm$json$Json$Decode$oneOf = _Json_oneOf;
@@ -5865,7 +6389,7 @@ var $elm$json$Json$Decode$maybe = function (decoder) {
 };
 var $author$project$Main$Player = F5(
 	function (id, name, score, isReady, isConnected) {
-		return {cP: id, cT: isConnected, a8: isReady, c_: name, y: score};
+		return {c_: id, c2: isConnected, bi: isReady, c9: name, p: score};
 	});
 var $elm$json$Json$Decode$map5 = _Json_map5;
 var $author$project$Main$playerDecoder = A6(
@@ -5909,7 +6433,7 @@ var $author$project$Main$gameStateDecoder = A5(
 var $elm$json$Json$Decode$keyValuePairs = _Json_decodeKeyValuePairs;
 var $author$project$Main$LeaderboardEntry = F4(
 	function (username, bestScore, gamesPlayed, gamesWon) {
-		return {a2: bestScore, a6: gamesPlayed, cN: gamesWon, af: username};
+		return {bc: bestScore, bg: gamesPlayed, cY: gamesWon, an: username};
 	});
 var $author$project$Main$leaderboardEntryDecoder = A5(
 	$elm$json$Json$Decode$map4,
@@ -5925,7 +6449,7 @@ var $elm$core$Tuple$second = function (_v0) {
 };
 var $author$project$Main$Session = F3(
 	function (sessionId, playerId, sessionCode) {
-		return {bY: playerId, M: sessionCode, bf: sessionId};
+		return {b6: playerId, P: sessionCode, bp: sessionId};
 	});
 var $elm$json$Json$Decode$map3 = _Json_map3;
 var $author$project$Main$sessionDecoder = A4(
@@ -5936,7 +6460,7 @@ var $author$project$Main$sessionDecoder = A4(
 	A2($elm$json$Json$Decode$field, 'sessionCode', $elm$json$Json$Decode$string));
 var $author$project$Main$User = F4(
 	function (id, email, username, emailVerified) {
-		return {cG: email, cH: emailVerified, cP: id, af: username};
+		return {cR: email, cS: emailVerified, c_: id, an: username};
 	});
 var $author$project$Main$userDecoder = A5(
 	$elm$json$Json$Decode$map4,
@@ -6265,44 +6789,45 @@ var $author$project$Main$resolveCmdIntent = function (intent) {
 };
 var $author$project$Main$toGameModel = function (model) {
 	return {
-		B: model.B,
-		G: model.G,
-		C: model.C,
-		H: model.H,
-		ah: model.ah,
-		aJ: A2(
+		D: model.D,
+		cD: model.cD,
+		I: model.I,
+		E: model.E,
+		J: model.J,
+		ap: model.ap,
+		aT: A2(
 			$elm$core$Maybe$withDefault,
 			false,
 			A2(
 				$elm$core$Maybe$map,
 				function (gs) {
-					return gs.X === 2;
+					return gs.ab === 2;
 				},
-				model.k)),
-		bG: !_Utils_eq(model.k, $elm$core$Maybe$Nothing),
-		bH: !_Utils_eq(model.f, $elm$core$Maybe$Nothing),
-		bM: model.bM,
-		cU: model.cU,
-		aM: model.aM,
-		K: model.K,
-		ab: model.ab,
+				model.i)),
+		bQ: !_Utils_eq(model.i, $elm$core$Maybe$Nothing),
+		bR: !_Utils_eq(model.e, $elm$core$Maybe$Nothing),
+		bW: model.bW,
+		c3: model.c3,
+		aW: model.aW,
+		M: model.M,
+		aj: model.aj,
+		Z: model.Z,
+		b6: A2(
+			$elm$core$Maybe$map,
+			function ($) {
+				return $.b6;
+			},
+			model.e),
+		bp: A2(
+			$elm$core$Maybe$map,
+			function ($) {
+				return $.bp;
+			},
+			model.e),
+		ay: model.ay,
 		W: model.W,
-		bY: A2(
-			$elm$core$Maybe$map,
-			function ($) {
-				return $.bY;
-			},
-			model.f),
-		bf: A2(
-			$elm$core$Maybe$map,
-			function ($) {
-				return $.bf;
-			},
-			model.f),
-		ao: model.ao,
-		T: model.T,
-		a1: model.a1,
-		aU: model.aU
+		bb: model.bb,
+		a3: model.a3
 	};
 };
 var $elm$url$Url$addPort = F2(
@@ -6327,7 +6852,7 @@ var $elm$url$Url$addPrefixed = F3(
 	});
 var $elm$url$Url$toString = function (url) {
 	var http = function () {
-		var _v0 = url.b4;
+		var _v0 = url.ce;
 		if (!_v0) {
 			return 'http://';
 		} else {
@@ -6337,23 +6862,23 @@ var $elm$url$Url$toString = function (url) {
 	return A3(
 		$elm$url$Url$addPrefixed,
 		'#',
-		url.bB,
+		url.bL,
 		A3(
 			$elm$url$Url$addPrefixed,
 			'?',
-			url.db,
+			url.dm,
 			_Utils_ap(
 				A2(
 					$elm$url$Url$addPort,
-					url.b0,
-					_Utils_ap(http, url.bJ)),
-				url.bV)));
+					url.ca,
+					_Utils_ap(http, url.bT)),
+				url.b3)));
 };
 var $author$project$Main$handleJsMessage = F2(
 	function (value, model) {
-		var _v20 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$jsMessageDecoder, value);
-		if (!_v20.$) {
-			var jsMsg = _v20.a;
+		var _v22 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$jsMessageDecoder, value);
+		if (!_v22.$) {
+			var jsMsg = _v22.a;
 			switch (jsMsg.$) {
 				case 0:
 					var user = jsMsg.a;
@@ -6527,7 +7052,7 @@ var $author$project$Main$update = F2(
 							model,
 							A2(
 								$elm$browser$Browser$Navigation$pushUrl,
-								model.a9,
+								model.bj,
 								$elm$url$Url$toString(url)));
 					} else {
 						var href = urlRequest.a;
@@ -6540,54 +7065,54 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{bl: url}),
+							{bv: url}),
 						$elm$core$Platform$Cmd$none);
 				case 2:
 					var email = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{O: email}),
+							{R: email}),
 						$elm$core$Platform$Cmd$none);
 				case 3:
 					var username = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{aA: username}),
+							{aL: username}),
 						$elm$core$Platform$Cmd$none);
 				case 4:
 					var password = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{x: password}),
+							{B: password}),
 						$elm$core$Platform$Cmd$none);
 				case 5:
 					var password = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{U: password}),
+							{X: password}),
 						$elm$core$Platform$Cmd$none);
 				case 6:
 					var newAuthView = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{g: '', j: newAuthView, U: '', O: '', x: '', aA: ''}),
+							{g: '', k: newAuthView, X: '', R: '', B: '', aL: ''}),
 						$elm$core$Platform$Cmd$none);
 				case 7:
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{p: 1, J: false}),
+							{r: 1, L: false}),
 						$author$project$Main$fetchLeaderboard);
 				case 8:
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{g: '', j: 1, p: 0, O: '', x: ''}),
+							{g: '', k: 1, r: 0, R: '', B: ''}),
 						$elm$core$Platform$Cmd$none);
 				case 9:
 					return _Utils_Tuple2(
@@ -6603,13 +7128,13 @@ var $author$project$Main$update = F2(
 										$elm$json$Json$Encode$string('login')),
 										_Utils_Tuple2(
 										'email',
-										$elm$json$Json$Encode$string(model.O)),
+										$elm$json$Json$Encode$string(model.R)),
 										_Utils_Tuple2(
 										'password',
-										$elm$json$Json$Encode$string(model.x))
+										$elm$json$Json$Encode$string(model.B))
 									]))));
 				case 10:
-					return (!_Utils_eq(model.x, model.U)) ? _Utils_Tuple2(
+					return (!_Utils_eq(model.B, model.X)) ? _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{g: 'Les mots de passe ne correspondent pas'}),
@@ -6626,19 +7151,19 @@ var $author$project$Main$update = F2(
 										$elm$json$Json$Encode$string('register')),
 										_Utils_Tuple2(
 										'email',
-										$elm$json$Json$Encode$string(model.O)),
+										$elm$json$Json$Encode$string(model.R)),
 										_Utils_Tuple2(
 										'username',
-										$elm$json$Json$Encode$string(model.aA)),
+										$elm$json$Json$Encode$string(model.aL)),
 										_Utils_Tuple2(
 										'password',
-										$elm$json$Json$Encode$string(model.x))
+										$elm$json$Json$Encode$string(model.B))
 									]))));
 				case 11:
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{g: '', c: true, an: ''}),
+							{g: '', c: true, av: ''}),
 						$author$project$Main$sendToJs(
 							$elm$json$Json$Encode$object(
 								_List_fromArray(
@@ -6648,10 +7173,10 @@ var $author$project$Main$update = F2(
 										$elm$json$Json$Encode$string('forgotPassword')),
 										_Utils_Tuple2(
 										'email',
-										$elm$json$Json$Encode$string(model.O))
+										$elm$json$Json$Encode$string(model.R))
 									]))));
 				case 12:
-					return (!_Utils_eq(model.x, model.U)) ? _Utils_Tuple2(
+					return (!_Utils_eq(model.B, model.X)) ? _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{g: 'Les mots de passe ne correspondent pas'}),
@@ -6668,16 +7193,16 @@ var $author$project$Main$update = F2(
 										$elm$json$Json$Encode$string('resetPassword')),
 										_Utils_Tuple2(
 										'token',
-										$elm$json$Json$Encode$string(model.aP)),
+										$elm$json$Json$Encode$string(model.aZ)),
 										_Utils_Tuple2(
 										'newPassword',
-										$elm$json$Json$Encode$string(model.x))
+										$elm$json$Json$Encode$string(model.B))
 									]))));
 				case 13:
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{j: 0, p: 0, J: false, aq: $elm$core$Maybe$Nothing, ae: $elm$core$Maybe$Nothing}),
+							{k: 0, r: 0, L: false, aA: $elm$core$Maybe$Nothing, am: $elm$core$Maybe$Nothing}),
 						$author$project$Main$sendToJs(
 							$elm$json$Json$Encode$object(
 								_List_fromArray(
@@ -6706,11 +7231,11 @@ var $author$project$Main$update = F2(
 							{
 								g: '',
 								c: false,
-								p: 1,
-								J: true,
-								t: user.af,
-								aq: $elm$core$Maybe$Just(token),
-								ae: $elm$core$Maybe$Just(user)
+								r: 1,
+								L: true,
+								o: user.an,
+								aA: $elm$core$Maybe$Just(token),
+								am: $elm$core$Maybe$Just(user)
 							}),
 						$author$project$Main$fetchScoresAndLeaderboard);
 				case 16:
@@ -6729,11 +7254,11 @@ var $author$project$Main$update = F2(
 							{
 								g: '',
 								c: false,
-								p: 1,
-								J: true,
-								t: user.af,
-								aq: $elm$core$Maybe$Just(token),
-								ae: $elm$core$Maybe$Just(user)
+								r: 1,
+								L: true,
+								o: user.an,
+								aA: $elm$core$Maybe$Just(token),
+								am: $elm$core$Maybe$Just(user)
 							}),
 						$author$project$Main$fetchScoresAndLeaderboard);
 				case 18:
@@ -6748,7 +7273,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{g: '', c: false, an: message}),
+							{g: '', c: false, av: message}),
 						$elm$core$Platform$Cmd$none);
 				case 20:
 					var error = msg.a;
@@ -6762,7 +7287,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{g: '', c: false, j: 1, U: '', x: '', an: message, aP: ''}),
+							{g: '', c: false, k: 1, X: '', B: '', av: message, aZ: ''}),
 						$elm$core$Platform$Cmd$none);
 				case 22:
 					var error = msg.a;
@@ -6778,27 +7303,27 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{
-								p: 1,
-								J: true,
-								t: user.af,
-								aq: $elm$core$Maybe$Just(token),
-								ae: $elm$core$Maybe$Just(user)
+								r: 1,
+								L: true,
+								o: user.an,
+								aA: $elm$core$Maybe$Just(token),
+								am: $elm$core$Maybe$Just(user)
 							}),
 						$author$project$Main$fetchScoresAndLeaderboard);
 				case 24:
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{J: false, aq: $elm$core$Maybe$Nothing, ae: $elm$core$Maybe$Nothing}),
+							{L: false, aA: $elm$core$Maybe$Nothing, am: $elm$core$Maybe$Nothing}),
 						$elm$core$Platform$Cmd$none);
 				case 25:
 					var mode = msg.a;
-					if (A2($elm$core$String$startsWith, 'single-player', mode.cP)) {
+					if (A2($elm$core$String$startsWith, 'single-player', mode.c_)) {
 						var $temp$msg = $author$project$Main$StartGame,
 							$temp$model = _Utils_update(
 							model,
 							{
-								z: $elm$core$Maybe$Just(mode)
+								v: $elm$core$Maybe$Just(mode)
 							});
 						msg = $temp$msg;
 						model = $temp$model;
@@ -6808,52 +7333,52 @@ var $author$project$Main$update = F2(
 							_Utils_update(
 								model,
 								{
-									z: $elm$core$Maybe$Just(mode)
+									v: $elm$core$Maybe$Just(mode)
 								}),
 							$elm$core$Platform$Cmd$none);
 					}
 				case 26:
-					var _v2 = model.z;
+					var _v2 = model.v;
 					if (!_v2.$) {
 						var mode = _v2.a;
-						if (mode.cP === 'real-game') {
+						if (mode.c_ === 'real-game') {
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
 									{
-										G: A2($elm$core$List$range, 0, 18),
-										C: $elm$core$Maybe$Nothing,
-										H: $elm$core$Maybe$Nothing,
-										ah: 0,
-										p: 2,
-										bM: true,
-										K: true,
-										W: A2($elm$core$List$repeat, 19, ''),
-										aO: 0,
-										ao: true,
-										a1: _List_Nil
+										I: A2($elm$core$List$range, 0, 18),
+										E: $elm$core$Maybe$Nothing,
+										J: $elm$core$Maybe$Nothing,
+										ap: 0,
+										r: 2,
+										bW: true,
+										M: true,
+										Z: A2($elm$core$List$repeat, 19, ''),
+										aY: 0,
+										ay: true,
+										bb: _List_Nil
 									}),
 								$elm$core$Platform$Cmd$none);
 						} else {
-							if (A2($elm$core$String$startsWith, 'single-player', mode.cP)) {
-								var name = (model.t === '') ? 'Joueur' : model.t;
+							if (A2($elm$core$String$startsWith, 'single-player', mode.c_)) {
+								var name = (model.o === '') ? 'Joueur' : model.o;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
 										{
-											B: A2($elm$core$List$repeat, 19, ''),
-											cr: 0,
-											br: _List_Nil,
-											G: A2($elm$core$List$range, 0, 18),
-											C: $elm$core$Maybe$Nothing,
-											H: $elm$core$Maybe$Nothing,
-											ah: 0,
-											p: 2,
-											D: '',
-											bM: false,
-											aM: true,
-											W: A2($elm$core$List$repeat, 19, ''),
-											N: false
+											D: A2($elm$core$List$repeat, 19, ''),
+											cB: 0,
+											bB: _List_Nil,
+											I: A2($elm$core$List$range, 0, 18),
+											E: $elm$core$Maybe$Nothing,
+											J: $elm$core$Maybe$Nothing,
+											ap: 0,
+											r: 2,
+											y: '',
+											bW: false,
+											aW: true,
+											Z: A2($elm$core$List$repeat, 19, ''),
+											H: false
 										}),
 									$author$project$Main$sendToJs(
 										$elm$json$Json$Encode$object(
@@ -6867,24 +7392,24 @@ var $author$project$Main$update = F2(
 													$elm$json$Json$Encode$string(name)),
 													_Utils_Tuple2(
 													'gameMode',
-													$elm$json$Json$Encode$string(mode.cP))
+													$elm$json$Json$Encode$string(mode.c_))
 												]))));
 							} else {
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
 										{
-											B: A2($elm$core$List$repeat, 19, ''),
-											cr: 0,
-											br: _List_Nil,
-											G: A2($elm$core$List$range, 0, 18),
-											C: $elm$core$Maybe$Nothing,
-											H: $elm$core$Maybe$Nothing,
-											ah: 0,
-											p: 2,
-											bM: false,
-											W: A2($elm$core$List$repeat, 19, ''),
-											N: false
+											D: A2($elm$core$List$repeat, 19, ''),
+											cB: 0,
+											bB: _List_Nil,
+											I: A2($elm$core$List$range, 0, 18),
+											E: $elm$core$Maybe$Nothing,
+											J: $elm$core$Maybe$Nothing,
+											ap: 0,
+											r: 2,
+											bW: false,
+											Z: A2($elm$core$List$repeat, 19, ''),
+											H: false
 										}),
 									$elm$core$Platform$Cmd$none);
 							}
@@ -6897,36 +7422,45 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{
-								B: A2($elm$core$List$repeat, 19, ''),
-								cr: 0,
-								br: _List_Nil,
-								G: A2($elm$core$List$range, 0, 18),
-								C: $elm$core$Maybe$Nothing,
-								H: $elm$core$Maybe$Nothing,
-								ah: 0,
-								p: 1,
-								D: '',
-								k: $elm$core$Maybe$Nothing,
-								bM: false,
-								aM: false,
-								K: false,
-								ab: $elm$core$Maybe$Nothing,
-								W: A2($elm$core$List$repeat, 19, ''),
-								aO: 0,
-								z: $elm$core$Maybe$Nothing,
-								f: $elm$core$Maybe$Nothing,
-								N: false,
-								ao: false,
-								T: '',
-								a1: _List_Nil,
-								aU: _List_Nil
+								D: A2($elm$core$List$repeat, 19, ''),
+								cB: 0,
+								bB: _List_Nil,
+								cD: false,
+								I: A2($elm$core$List$range, 0, 18),
+								af: $elm$core$Maybe$Nothing,
+								E: $elm$core$Maybe$Nothing,
+								J: $elm$core$Maybe$Nothing,
+								ap: 0,
+								r: 1,
+								y: '',
+								i: $elm$core$Maybe$Nothing,
+								bW: false,
+								aW: false,
+								M: false,
+								aj: $elm$core$Maybe$Nothing,
+								Z: A2($elm$core$List$repeat, 19, ''),
+								aY: 0,
+								v: $elm$core$Maybe$Nothing,
+								_: _List_Nil,
+								aw: 0,
+								O: _List_Nil,
+								aa: 0,
+								e: $elm$core$Maybe$Nothing,
+								H: false,
+								ax: false,
+								ay: false,
+								W: '',
+								Q: false,
+								w: 0,
+								bb: _List_Nil,
+								a3: _List_Nil
 							}),
-						model.J ? $author$project$Main$fetchScoresAndLeaderboard : $author$project$Main$fetchLeaderboard);
+						model.L ? $author$project$Main$fetchScoresAndLeaderboard : $author$project$Main$fetchLeaderboard);
 				case 28:
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{N: !model.N}),
+							{H: !model.H}),
 						$elm$core$Platform$Cmd$none);
 				case 29:
 					var gameMode = A2(
@@ -6935,27 +7469,27 @@ var $author$project$Main$update = F2(
 						A2(
 							$elm$core$Maybe$map,
 							function ($) {
-								return $.cP;
+								return $.c_;
 							},
-							model.z));
+							model.v));
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
-								B: A2($elm$core$List$repeat, 19, ''),
-								cr: 0,
-								br: _List_Nil,
-								G: A2($elm$core$List$range, 0, 18),
-								C: $elm$core$Maybe$Nothing,
-								H: $elm$core$Maybe$Nothing,
-								ah: 0,
-								D: '',
-								k: $elm$core$Maybe$Nothing,
-								aM: true,
-								W: A2($elm$core$List$repeat, 19, ''),
-								f: $elm$core$Maybe$Nothing,
-								N: false,
-								T: ''
+								D: A2($elm$core$List$repeat, 19, ''),
+								cB: 0,
+								bB: _List_Nil,
+								I: A2($elm$core$List$range, 0, 18),
+								E: $elm$core$Maybe$Nothing,
+								J: $elm$core$Maybe$Nothing,
+								ap: 0,
+								y: '',
+								i: $elm$core$Maybe$Nothing,
+								aW: true,
+								Z: A2($elm$core$List$repeat, 19, ''),
+								e: $elm$core$Maybe$Nothing,
+								H: false,
+								W: ''
 							}),
 						$author$project$Main$sendToJs(
 							$elm$json$Json$Encode$object(
@@ -6966,7 +7500,7 @@ var $author$project$Main$update = F2(
 										$elm$json$Json$Encode$string('createSession')),
 										_Utils_Tuple2(
 										'playerName',
-										$elm$json$Json$Encode$string(model.t)),
+										$elm$json$Json$Encode$string(model.o)),
 										_Utils_Tuple2(
 										'gameMode',
 										$elm$json$Json$Encode$string(gameMode))
@@ -6976,20 +7510,20 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{t: name}),
+							{o: name}),
 						$elm$core$Platform$Cmd$none);
 				case 31:
 					var code = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{M: code}),
+							{P: code}),
 						$elm$core$Platform$Cmd$none);
 				case 32:
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{D: '', aM: true}),
+							{y: '', aW: true}),
 						$author$project$Main$sendToJs(
 							$elm$json$Json$Encode$object(
 								_List_fromArray(
@@ -6999,7 +7533,7 @@ var $author$project$Main$update = F2(
 										$elm$json$Json$Encode$string('createSession')),
 										_Utils_Tuple2(
 										'playerName',
-										$elm$json$Json$Encode$string(model.t)),
+										$elm$json$Json$Encode$string(model.o)),
 										_Utils_Tuple2(
 										'gameMode',
 										$elm$json$Json$Encode$string(
@@ -7009,15 +7543,15 @@ var $author$project$Main$update = F2(
 												A2(
 													$elm$core$Maybe$map,
 													function ($) {
-														return $.cP;
+														return $.c_;
 													},
-													model.z))))
+													model.v))))
 									]))));
 				case 33:
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{D: '', aM: true}),
+							{y: '', aW: true}),
 						$author$project$Main$sendToJs(
 							$elm$json$Json$Encode$object(
 								_List_fromArray(
@@ -7027,19 +7561,19 @@ var $author$project$Main$update = F2(
 										$elm$json$Json$Encode$string('joinSession')),
 										_Utils_Tuple2(
 										'sessionCode',
-										$elm$json$Json$Encode$string(model.M)),
+										$elm$json$Json$Encode$string(model.P)),
 										_Utils_Tuple2(
 										'playerName',
-										$elm$json$Json$Encode$string(model.t))
+										$elm$json$Json$Encode$string(model.o))
 									]))));
 				case 34:
-					var _v3 = model.f;
+					var _v3 = model.e;
 					if (!_v3.$) {
 						var session = _v3.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
-								{aM: true}),
+								{aW: true}),
 							$author$project$Main$sendToJs(
 								$elm$json$Json$Encode$object(
 									_List_fromArray(
@@ -7049,22 +7583,22 @@ var $author$project$Main$update = F2(
 											$elm$json$Json$Encode$string('leaveSession')),
 											_Utils_Tuple2(
 											'sessionId',
-											$elm$json$Json$Encode$string(session.bf)),
+											$elm$json$Json$Encode$string(session.bp)),
 											_Utils_Tuple2(
 											'playerId',
-											$elm$json$Json$Encode$string(session.bY))
+											$elm$json$Json$Encode$string(session.b6))
 										]))));
 					} else {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					}
 				case 35:
-					var _v4 = model.f;
+					var _v4 = model.e;
 					if (!_v4.$) {
 						var session = _v4.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
-								{aM: true}),
+								{aW: true}),
 							$author$project$Main$sendToJs(
 								$elm$json$Json$Encode$object(
 									_List_fromArray(
@@ -7074,10 +7608,10 @@ var $author$project$Main$update = F2(
 											$elm$json$Json$Encode$string('setReady')),
 											_Utils_Tuple2(
 											'sessionId',
-											$elm$json$Json$Encode$string(session.bf)),
+											$elm$json$Json$Encode$string(session.bp)),
 											_Utils_Tuple2(
 											'playerId',
-											$elm$json$Json$Encode$string(session.bY))
+											$elm$json$Json$Encode$string(session.b6))
 										]))));
 					} else {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
@@ -7086,10 +7620,10 @@ var $author$project$Main$update = F2(
 					var session = msg.a;
 					var gameState = msg.b;
 					var isSoloMode = function () {
-						var _v7 = model.z;
+						var _v7 = model.v;
 						if (!_v7.$) {
 							var mode = _v7.a;
-							return A2($elm$core$String$startsWith, 'single-player', mode.cP);
+							return A2($elm$core$String$startsWith, 'single-player', mode.c_);
 						} else {
 							return false;
 						}
@@ -7106,10 +7640,10 @@ var $author$project$Main$update = F2(
 											$elm$json$Json$Encode$string('setReady')),
 											_Utils_Tuple2(
 											'sessionId',
-											$elm$json$Json$Encode$string(session.bf)),
+											$elm$json$Json$Encode$string(session.bp)),
 											_Utils_Tuple2(
 											'playerId',
-											$elm$json$Json$Encode$string(session.bY))
+											$elm$json$Json$Encode$string(session.b6))
 										]))),
 								A2(
 								$elm$core$Task$perform,
@@ -7127,11 +7661,11 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{
-								k: $elm$core$Maybe$Just(gameState),
-								cU: isSoloMode,
-								aM: isSoloMode,
-								f: $elm$core$Maybe$Just(session),
-								T: 'Session créée: ' + session.M
+								i: $elm$core$Maybe$Just(gameState),
+								c3: isSoloMode,
+								aW: isSoloMode,
+								e: $elm$core$Maybe$Just(session),
+								W: 'Session créée: ' + session.P
 							}),
 						cmd);
 				case 37:
@@ -7141,10 +7675,10 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{
-								k: $elm$core$Maybe$Just(gameState),
-								aM: false,
-								f: $elm$core$Maybe$Just(session),
-								T: 'Rejoint la session: ' + session.M
+								i: $elm$core$Maybe$Just(gameState),
+								aW: false,
+								e: $elm$core$Maybe$Just(session),
+								W: 'Rejoint la session: ' + session.P
 							}),
 						A2(
 							$elm$core$Task$perform,
@@ -7157,21 +7691,21 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{
-								B: A2($elm$core$List$repeat, 19, ''),
-								cr: 0,
-								br: _List_Nil,
-								G: A2($elm$core$List$range, 0, 18),
-								C: $elm$core$Maybe$Nothing,
-								H: $elm$core$Maybe$Nothing,
-								ah: 0,
-								p: 1,
-								k: $elm$core$Maybe$Nothing,
-								aM: false,
-								K: false,
-								W: A2($elm$core$List$repeat, 19, ''),
-								f: $elm$core$Maybe$Nothing,
-								N: false,
-								aU: _List_Nil
+								D: A2($elm$core$List$repeat, 19, ''),
+								cB: 0,
+								bB: _List_Nil,
+								I: A2($elm$core$List$range, 0, 18),
+								E: $elm$core$Maybe$Nothing,
+								J: $elm$core$Maybe$Nothing,
+								ap: 0,
+								r: 1,
+								i: $elm$core$Maybe$Nothing,
+								aW: false,
+								M: false,
+								Z: A2($elm$core$List$repeat, 19, ''),
+								e: $elm$core$Maybe$Nothing,
+								H: false,
+								a3: _List_Nil
 							}),
 						$elm$core$Platform$Cmd$none);
 				case 39:
@@ -7181,7 +7715,7 @@ var $author$project$Main$update = F2(
 						_List_fromArray(
 							[
 								function () {
-								var _v9 = model.f;
+								var _v9 = model.e;
 								if (!_v9.$) {
 									var session = _v9.a;
 									return $author$project$Main$sendToJs(
@@ -7193,7 +7727,7 @@ var $author$project$Main$update = F2(
 													$elm$json$Json$Encode$string('startTurn')),
 													_Utils_Tuple2(
 													'sessionId',
-													$elm$json$Json$Encode$string(session.bf))
+													$elm$json$Json$Encode$string(session.bp))
 												])));
 								} else {
 									return $elm$core$Platform$Cmd$none;
@@ -7214,17 +7748,17 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{aM: gameStarted, T: newStatusMessage}),
+							{aW: gameStarted, W: newStatusMessage}),
 						cmd);
 				case 40:
 					var error = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{D: error, aM: false}),
+							{y: error, aW: false}),
 						$elm$core$Platform$Cmd$none);
 				case 41:
-					var _v12 = model.f;
+					var _v12 = model.e;
 					if (!_v12.$) {
 						var session = _v12.a;
 						return _Utils_Tuple2(
@@ -7238,19 +7772,19 @@ var $author$project$Main$update = F2(
 											$elm$json$Json$Encode$string('pollSession')),
 											_Utils_Tuple2(
 											'sessionId',
-											$elm$json$Json$Encode$string(session.bf))
+											$elm$json$Json$Encode$string(session.bp))
 										]))));
 					} else {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					}
 				case 42:
 					var gameState = msg.a;
-					var gameStarted = gameState.X === 1;
+					var gameStarted = gameState.ab === 1;
 					var autoStartCmd = gameStarted ? $elm$core$Platform$Cmd$batch(
 						_List_fromArray(
 							[
 								function () {
-								var _v13 = model.f;
+								var _v13 = model.e;
 								if (!_v13.$) {
 									var session = _v13.a;
 									return $author$project$Main$sendToJs(
@@ -7262,7 +7796,7 @@ var $author$project$Main$update = F2(
 													$elm$json$Json$Encode$string('startTurn')),
 													_Utils_Tuple2(
 													'sessionId',
-													$elm$json$Json$Encode$string(session.bf))
+													$elm$json$Json$Encode$string(session.bp))
 												])));
 								} else {
 									return $elm$core$Platform$Cmd$none;
@@ -7284,18 +7818,18 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{
-								k: $elm$core$Maybe$Just(gameState),
-								aM: gameStarted
+								i: $elm$core$Maybe$Just(gameState),
+								aW: gameStarted
 							}),
 						autoStartCmd);
 				case 43:
-					var _v16 = model.f;
+					var _v16 = model.e;
 					if (!_v16.$) {
 						var session = _v16.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
-								{aM: true}),
+								{aW: true}),
 							$author$project$Main$sendToJs(
 								$elm$json$Json$Encode$object(
 									_List_fromArray(
@@ -7305,23 +7839,23 @@ var $author$project$Main$update = F2(
 											$elm$json$Json$Encode$string('startTurn')),
 											_Utils_Tuple2(
 											'sessionId',
-											$elm$json$Json$Encode$string(session.bf))
+											$elm$json$Json$Encode$string(session.bp))
 										]))));
 					} else {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					}
 				case 44:
 					var position = msg.a;
-					if (model.aM) {
+					if (model.aW) {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var _v17 = model.f;
+						var _v17 = model.e;
 						if (!_v17.$) {
 							var session = _v17.a;
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
-									{aM: true}),
+									{aW: true}),
 								$author$project$Main$sendToJs(
 									$elm$json$Json$Encode$object(
 										_List_fromArray(
@@ -7331,10 +7865,10 @@ var $author$project$Main$update = F2(
 												$elm$json$Json$Encode$string('playMove')),
 												_Utils_Tuple2(
 												'sessionId',
-												$elm$json$Json$Encode$string(session.bf)),
+												$elm$json$Json$Encode$string(session.bp)),
 												_Utils_Tuple2(
 												'playerId',
-												$elm$json$Json$Encode$string(session.bY)),
+												$elm$json$Json$Encode$string(session.b6)),
 												_Utils_Tuple2(
 												'position',
 												$elm$json$Json$Encode$int(position))
@@ -7347,7 +7881,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{ao: true}),
+							{ay: true}),
 						$elm$core$Platform$Cmd$none);
 				case 46:
 					var tileCode = msg.a;
@@ -7358,8 +7892,8 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{C: result.C, H: result.H, ao: result.ao, a1: result.a1}),
-						$author$project$Main$resolveCmdIntent(result.at));
+							{E: result.E, J: result.J, ay: result.ay, bb: result.bb}),
+						$author$project$Main$resolveCmdIntent(result.aE));
 				case 47:
 					var position = msg.a;
 					var result = A2(
@@ -7369,24 +7903,24 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{B: result.B, G: result.G, C: result.C, H: result.H, ah: result.ah, ab: result.ab, W: result.W, ao: result.ao, T: result.T}),
+							{D: result.D, I: result.I, E: result.E, J: result.J, ap: result.ap, aj: result.aj, Z: result.Z, ay: result.ay, W: result.W}),
 						$elm$core$Platform$Cmd$none);
 				case 48:
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
-								B: A2($elm$core$List$repeat, 19, ''),
-								G: A2($elm$core$List$range, 0, 18),
-								C: $elm$core$Maybe$Nothing,
-								H: $elm$core$Maybe$Nothing,
-								ah: 0,
-								ab: $elm$core$Maybe$Nothing,
-								W: A2($elm$core$List$repeat, 19, ''),
-								aO: 0,
-								ao: true,
-								T: '',
-								a1: _List_Nil
+								D: A2($elm$core$List$repeat, 19, ''),
+								I: A2($elm$core$List$range, 0, 18),
+								E: $elm$core$Maybe$Nothing,
+								J: $elm$core$Maybe$Nothing,
+								ap: 0,
+								aj: $elm$core$Maybe$Nothing,
+								Z: A2($elm$core$List$repeat, 19, ''),
+								aY: 0,
+								ay: true,
+								W: '',
+								bb: _List_Nil
 							}),
 						$elm$core$Platform$Cmd$none);
 				case 49:
@@ -7396,7 +7930,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{ab: result.ab, T: result.T}),
+							{aj: result.aj, W: result.W}),
 						$elm$core$Platform$Cmd$none);
 				case 50:
 					var tile = msg.a;
@@ -7411,20 +7945,58 @@ var $author$project$Main$update = F2(
 							return _Utils_update(
 								gs,
 								{
-									b_: $elm$core$List$isEmpty(players) ? gs.b_ : players,
-									X: 1
+									b8: $elm$core$List$isEmpty(players) ? gs.b8 : players,
+									ab: 1
 								});
 						},
-						model.k);
+						model.i);
+					var timerSec = A2(
+						$elm$core$Maybe$withDefault,
+						0,
+						A2(
+							$elm$core$Maybe$andThen,
+							function ($) {
+								return $.ac;
+							},
+							model.af));
+					var startTimer = (turnNumber === 1) && (!_Utils_eq(model.af, $elm$core$Maybe$Nothing));
 					var result = A2(
 						$author$project$GameLogic$handleTurnStartedPure,
 						$author$project$Main$toGameModel(model),
-						{b1: positions, cg: tile, ch: tileImage, cj: turnNumber, bm: waiting});
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{G: result.G, C: result.C, H: result.H, ah: result.ah, k: updatedGameState, aM: result.aM, K: result.K, aU: result.aU}),
-						$author$project$Main$resolveCmdIntent(result.at));
+						{cb: positions, cq: tile, cr: tileImage, ct: turnNumber, bw: waiting});
+					var updatedModel = _Utils_update(
+						model,
+						{
+							I: result.I,
+							E: result.E,
+							J: result.J,
+							ap: result.ap,
+							i: updatedGameState,
+							aW: result.aW,
+							M: result.M,
+							Q: (startTimer && (timerSec > 0)) ? true : model.Q,
+							w: (startTimer && (timerSec > 0)) ? timerSec : model.w,
+							a3: result.a3
+						});
+					if (model.cD && result.M) {
+						var _v18 = $elm$core$List$head(positions);
+						if (!_v18.$) {
+							var pos = _v18.a;
+							var $temp$msg = $author$project$Main$PlayMove(pos),
+								$temp$model = updatedModel;
+							msg = $temp$msg;
+							model = $temp$model;
+							continue update;
+						} else {
+							return _Utils_Tuple2(
+								updatedModel,
+								$author$project$Main$resolveCmdIntent(result.aE));
+						}
+					} else {
+						return _Utils_Tuple2(
+							updatedModel,
+							$author$project$Main$resolveCmdIntent(result.aE));
+					}
 				case 51:
 					var position = msg.a;
 					var points = msg.b;
@@ -7434,19 +8006,19 @@ var $author$project$Main$update = F2(
 					var result = A2(
 						$author$project$GameLogic$handleMovePlayedPure,
 						$author$project$Main$toGameModel(model),
-						{cr: aiScore, aE: aiTiles, bL: isGameOver, b$: points, bd: position});
+						{cB: aiScore, aP: aiTiles, bV: isGameOver, b9: points, bn: position});
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{B: result.B, cr: aiScore, G: result.G, C: result.C, H: result.H, aM: result.aM, K: result.K, W: result.W, T: result.T}),
-						$author$project$Main$resolveCmdIntent(result.at));
+							{D: result.D, cB: aiScore, I: result.I, E: result.E, J: result.J, aW: result.aW, M: result.M, Z: result.Z, W: result.W}),
+						$author$project$Main$resolveCmdIntent(result.aE));
 				case 53:
 					var gameState = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
-								k: $elm$core$Maybe$Just(gameState)
+								i: $elm$core$Maybe$Just(gameState)
 							}),
 						$elm$core$Platform$Cmd$none);
 				case 54:
@@ -7454,14 +8026,23 @@ var $author$project$Main$update = F2(
 					var playerTiles = msg.b;
 					var aiTiles = msg.c;
 					var allPlateaus = msg.d;
-					var _v18 = model.k;
-					if (_v18.$ === 1) {
+					var _v19 = model.i;
+					if (_v19.$ === 1) {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var gs = _v18.a;
-						if (gs.X === 2) {
+						var gs = _v19.a;
+						if (gs.ab === 2) {
 							return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 						} else {
+							var myId2 = A2(
+								$elm$core$Maybe$withDefault,
+								'',
+								A2(
+									$elm$core$Maybe$map,
+									function ($) {
+										return $.b6;
+									},
+									model.e));
 							var mergePlayerScores = F2(
 								function (existingPlayers, newPlayers) {
 									return A2(
@@ -7469,30 +8050,45 @@ var $author$project$Main$update = F2(
 										function (newP) {
 											var existingName = A2(
 												$elm$core$Maybe$withDefault,
-												newP.c_,
+												newP.c9,
 												A2(
 													$elm$core$Maybe$map,
 													function ($) {
-														return $.c_;
+														return $.c9;
 													},
 													$elm$core$List$head(
 														A2(
 															$elm$core$List$filter,
 															function (p) {
-																return _Utils_eq(p.cP, newP.cP);
+																return _Utils_eq(p.c_, newP.c_);
 															},
 															existingPlayers))));
 											return _Utils_update(
 												newP,
-												{c_: existingName});
+												{c9: existingName});
 										},
 										newPlayers);
 								});
-							var mergedPlayers = A2(mergePlayerScores, gs.b_, players);
+							var mergedPlayers = A2(mergePlayerScores, gs.b8, players);
+							var myScore2 = A2(
+								$elm$core$Maybe$withDefault,
+								0,
+								A2(
+									$elm$core$Maybe$map,
+									function ($) {
+										return $.p;
+									},
+									$elm$core$List$head(
+										A2(
+											$elm$core$List$filter,
+											function (p) {
+												return _Utils_eq(p.c_, myId2);
+											},
+											mergedPlayers))));
 							var newGameState = $elm$core$Maybe$Just(
 								_Utils_update(
 									gs,
-									{b_: mergedPlayers, X: 2}));
+									{b8: mergedPlayers, ab: 2}));
 							var recordCmd = function () {
 								var myId = A2(
 									$elm$core$Maybe$withDefault,
@@ -7500,14 +8096,14 @@ var $author$project$Main$update = F2(
 									A2(
 										$elm$core$Maybe$map,
 										function ($) {
-											return $.bY;
+											return $.b6;
 										},
-										model.f));
+										model.e));
 								var myPlayer = $elm$core$List$head(
 									A2(
 										$elm$core$List$filter,
 										function (p) {
-											return _Utils_eq(p.cP, myId);
+											return _Utils_eq(p.c_, myId);
 										},
 										mergedPlayers));
 								var myScore = A2(
@@ -7516,7 +8112,7 @@ var $author$project$Main$update = F2(
 									A2(
 										$elm$core$Maybe$map,
 										function ($) {
-											return $.y;
+											return $.p;
 										},
 										myPlayer));
 								var gameMode = A2(
@@ -7525,25 +8121,25 @@ var $author$project$Main$update = F2(
 									A2(
 										$elm$core$Maybe$map,
 										function ($) {
-											return $.cP;
+											return $.c_;
 										},
-										model.z));
+										model.v));
 								var aiPlayer = $elm$core$List$head(
 									A2(
 										$elm$core$List$filter,
 										function (p) {
-											return p.cP === 'mcts_ai';
+											return p.c_ === 'mcts_ai';
 										},
 										mergedPlayers));
 								var didWin = function () {
 									if (!aiPlayer.$) {
 										var ai = aiPlayer.a;
-										return _Utils_cmp(myScore, ai.y) > 0;
+										return _Utils_cmp(myScore, ai.p) > 0;
 									} else {
 										return A2(
 											$elm$core$List$all,
 											function (p) {
-												return _Utils_cmp(p.y, myScore) < 1;
+												return _Utils_cmp(p.p, myScore) < 1;
 											},
 											mergedPlayers);
 									}
@@ -7569,15 +8165,39 @@ var $author$project$Main$update = F2(
 							var simplePlayers = A2(
 								$elm$core$List$map,
 								function (p) {
-									return {cP: p.cP, c_: p.c_, y: p.y};
+									return {c_: p.c_, c9: p.c9, p: p.p};
 								},
 								mergedPlayers);
 							var result = $author$project$GameLogic$handleGameFinishedPure(
-								{aE: aiTiles, bq: allPlateaus, bZ: playerTiles, b_: simplePlayers});
+								{aP: aiTiles, bA: allPlateaus, b7: playerTiles, b8: simplePlayers});
+							var inSeries = model.aa > 0;
+							var newSeriesMyScores = inSeries ? _Utils_ap(
+								model.O,
+								_List_fromArray(
+									[myScore2])) : model.O;
+							var aiScore2 = A2(
+								$elm$core$Maybe$withDefault,
+								0,
+								A2(
+									$elm$core$Maybe$map,
+									function ($) {
+										return $.p;
+									},
+									$elm$core$List$head(
+										A2(
+											$elm$core$List$filter,
+											function (p) {
+												return p.c_ === 'mcts_ai';
+											},
+											mergedPlayers))));
+							var newSeriesAiScores = inSeries ? _Utils_ap(
+								model._,
+								_List_fromArray(
+									[aiScore2])) : model._;
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
-									{B: result.B, br: result.br, D: '', k: newGameState, K: result.K, W: result.W, T: result.T, aU: result.aU}),
+									{D: result.D, bB: result.bB, cD: false, y: '', i: newGameState, M: result.M, Z: result.Z, _: newSeriesAiScores, O: newSeriesMyScores, ax: inSeries, W: result.W, Q: false, a3: result.a3}),
 								recordCmd);
 						}
 					}
@@ -7586,21 +8206,21 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{ay: scores}),
+							{aJ: scores}),
 						$elm$core$Platform$Cmd$none);
 				case 57:
 					var lb = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{ax: lb}),
+							{aI: lb}),
 						$elm$core$Platform$Cmd$none);
 				case 55:
 					var error = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{D: error, aM: false}),
+							{y: error, aW: false}),
 						$elm$core$Platform$Cmd$none);
 				case 52:
 					return _Utils_Tuple2(
@@ -7608,6 +8228,129 @@ var $author$project$Main$update = F2(
 						$author$project$Main$resolveCmdIntent(
 							$author$project$GameLogic$handlePollTurnPure(
 								$author$project$Main$toGameModel(model))));
+				case 60:
+					var config = msg.a;
+					var seriesN = A2($elm$core$Maybe$withDefault, 0, config.aB);
+					var challengeMode = {aq: 'Challenge', aF: $elm$core$Maybe$Nothing, ag: '🏆', c_: 'single-player-challenge', c9: 'Challenge', a_: $elm$core$Maybe$Nothing};
+					var baseModel = _Utils_update(
+						model,
+						{
+							cD: false,
+							af: $elm$core$Maybe$Just(config),
+							v: $elm$core$Maybe$Just(challengeMode),
+							_: _List_Nil,
+							aw: (seriesN > 0) ? 1 : 0,
+							O: _List_Nil,
+							aa: seriesN,
+							ax: false,
+							Q: false,
+							w: A2($elm$core$Maybe$withDefault, 0, config.ac)
+						});
+					var $temp$msg = $author$project$Main$StartGame,
+						$temp$model = baseModel;
+					msg = $temp$msg;
+					model = $temp$model;
+					continue update;
+				case 58:
+					var newRemaining = model.w - 1;
+					if (newRemaining <= 0) {
+						var $temp$msg = $author$project$Main$TimerExpired,
+							$temp$model = _Utils_update(
+							model,
+							{w: 0});
+						msg = $temp$msg;
+						model = $temp$model;
+						continue update;
+					} else {
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{w: newRemaining}),
+							$elm$core$Platform$Cmd$none);
+					}
+				case 59:
+					var newModel = _Utils_update(
+						model,
+						{cD: true, Q: false});
+					var firstAvail = $elm$core$List$head(model.I);
+					if (!firstAvail.$) {
+						var pos = firstAvail.a;
+						if (model.M && (!_Utils_eq(model.E, $elm$core$Maybe$Nothing))) {
+							var $temp$msg = $author$project$Main$PlayMove(pos),
+								$temp$model = newModel;
+							msg = $temp$msg;
+							model = $temp$model;
+							continue update;
+						} else {
+							return _Utils_Tuple2(newModel, $elm$core$Platform$Cmd$none);
+						}
+					} else {
+						return _Utils_Tuple2(newModel, $elm$core$Platform$Cmd$none);
+					}
+				case 61:
+					var timerSec = A2(
+						$elm$core$Maybe$withDefault,
+						0,
+						A2(
+							$elm$core$Maybe$andThen,
+							function ($) {
+								return $.ac;
+							},
+							model.af));
+					var name = (model.o === '') ? 'Joueur' : model.o;
+					var gameMode = A2(
+						$elm$core$Maybe$withDefault,
+						'single-player-challenge',
+						A2(
+							$elm$core$Maybe$map,
+							function ($) {
+								return $.c_;
+							},
+							model.v));
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								D: A2($elm$core$List$repeat, 19, ''),
+								cB: 0,
+								bB: _List_Nil,
+								cD: false,
+								I: A2($elm$core$List$range, 0, 18),
+								E: $elm$core$Maybe$Nothing,
+								J: $elm$core$Maybe$Nothing,
+								ap: 0,
+								y: '',
+								i: $elm$core$Maybe$Nothing,
+								aW: true,
+								Z: A2($elm$core$List$repeat, 19, ''),
+								aw: model.aw + 1,
+								e: $elm$core$Maybe$Nothing,
+								H: false,
+								ax: false,
+								W: '',
+								Q: false,
+								w: timerSec
+							}),
+						$author$project$Main$sendToJs(
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'type',
+										$elm$json$Json$Encode$string('createSession')),
+										_Utils_Tuple2(
+										'playerName',
+										$elm$json$Json$Encode$string(name)),
+										_Utils_Tuple2(
+										'gameMode',
+										$elm$json$Json$Encode$string(gameMode))
+									]))));
+				case 62:
+					var $temp$msg = $author$project$Main$BackToModeSelection,
+						$temp$model = model;
+					msg = $temp$msg;
+					model = $temp$model;
+					continue update;
 				default:
 					var value = msg.a;
 					return A2($author$project$Main$handleJsMessage, value, model);
@@ -7624,11 +8367,11 @@ var $elm$html$Html$Attributes$stringProperty = F2(
 var $elm$html$Html$Attributes$class = $elm$html$Html$Attributes$stringProperty('className');
 var $elm$html$Html$div = _VirtualDom_node('div');
 var $author$project$Main$isInProgressLayout = function (model) {
-	return (model.p === 2) && ((!model.bM) && function () {
-		var _v0 = model.k;
+	return (model.r === 2) && ((!model.bW) && function () {
+		var _v0 = model.i;
 		if (!_v0.$) {
 			var gs = _v0.a;
-			return gs.X === 1;
+			return gs.ab === 1;
 		} else {
 			return false;
 		}
@@ -7685,13 +8428,13 @@ var $elm$html$Html$Events$onClick = function (msg) {
 };
 var $elm$html$Html$Attributes$type_ = $elm$html$Html$Attributes$stringProperty('type');
 var $author$project$Main$viewAuthFooter = function (model) {
-	return (!model.j) ? $elm$html$Html$text('') : A2(
+	return (!model.k) ? $elm$html$Html$text('') : A2(
 		$elm$html$Html$div,
 		_List_Nil,
 		_List_fromArray(
 			[
 				function () {
-				var _v0 = model.j;
+				var _v0 = model.k;
 				switch (_v0) {
 					case 1:
 						return A2(
@@ -7874,7 +8617,7 @@ var $author$project$Main$viewForgotPasswordForm = function (model) {
 							[
 								$elm$html$Html$Attributes$type_('email'),
 								$elm$html$Html$Attributes$id('email'),
-								$elm$html$Html$Attributes$value(model.O),
+								$elm$html$Html$Attributes$value(model.R),
 								$elm$html$Html$Events$onInput($author$project$Main$SetEmailInput),
 								$elm$html$Html$Attributes$placeholder(''),
 								$elm$html$Html$Attributes$required(true),
@@ -7963,7 +8706,7 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 		_List_fromArray(
 			[
 				$author$project$Main$onSubmitPreventDefault(
-				(model.j === 1) ? $author$project$Main$SubmitLogin : $author$project$Main$SubmitRegister),
+				(model.k === 1) ? $author$project$Main$SubmitLogin : $author$project$Main$SubmitRegister),
 				$elm$html$Html$Attributes$class('auth-form')
 			]),
 		_List_fromArray(
@@ -7992,7 +8735,7 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 							[
 								$elm$html$Html$Attributes$type_('email'),
 								$elm$html$Html$Attributes$id('email'),
-								$elm$html$Html$Attributes$value(model.O),
+								$elm$html$Html$Attributes$value(model.R),
 								$elm$html$Html$Events$onInput($author$project$Main$SetEmailInput),
 								$elm$html$Html$Attributes$placeholder(''),
 								$elm$html$Html$Attributes$required(true),
@@ -8000,7 +8743,7 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 							]),
 						_List_Nil)
 					])),
-				(model.j === 2) ? A2(
+				(model.k === 2) ? A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
@@ -8024,7 +8767,7 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 							[
 								$elm$html$Html$Attributes$type_('text'),
 								$elm$html$Html$Attributes$id('username'),
-								$elm$html$Html$Attributes$value(model.aA),
+								$elm$html$Html$Attributes$value(model.aL),
 								$elm$html$Html$Events$onInput($author$project$Main$SetUsernameInput),
 								$elm$html$Html$Attributes$placeholder(''),
 								$elm$html$Html$Attributes$required(true),
@@ -8058,7 +8801,7 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 							[
 								$elm$html$Html$Attributes$type_('password'),
 								$elm$html$Html$Attributes$id('password'),
-								$elm$html$Html$Attributes$value(model.x),
+								$elm$html$Html$Attributes$value(model.B),
 								$elm$html$Html$Events$onInput($author$project$Main$SetPasswordInput),
 								$elm$html$Html$Attributes$placeholder(''),
 								$elm$html$Html$Attributes$required(true),
@@ -8067,11 +8810,11 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 								A2(
 								$elm$html$Html$Attributes$attribute,
 								'autocomplete',
-								(model.j === 2) ? 'new-password' : 'current-password')
+								(model.k === 2) ? 'new-password' : 'current-password')
 							]),
 						_List_Nil)
 					])),
-				(model.j === 2) ? A2(
+				(model.k === 2) ? A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
@@ -8095,7 +8838,7 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 							[
 								$elm$html$Html$Attributes$type_('password'),
 								$elm$html$Html$Attributes$id('confirmPassword'),
-								$elm$html$Html$Attributes$value(model.U),
+								$elm$html$Html$Attributes$value(model.X),
 								$elm$html$Html$Events$onInput($author$project$Main$SetConfirmPasswordInput),
 								$elm$html$Html$Attributes$placeholder(''),
 								$elm$html$Html$Attributes$required(true),
@@ -8112,7 +8855,7 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 						$elm$html$Html$Attributes$class('auth-submit-button'),
 						$elm$html$Html$Attributes$disabled(model.c),
 						$elm$html$Html$Events$onClick(
-						(model.j === 1) ? $author$project$Main$SubmitLogin : $author$project$Main$SubmitRegister)
+						(model.k === 1) ? $author$project$Main$SubmitLogin : $author$project$Main$SubmitRegister)
 					]),
 				_List_fromArray(
 					[
@@ -8123,9 +8866,9 @@ var $author$project$Main$viewLoginRegisterForm = function (model) {
 								$elm$html$Html$Attributes$class('loading-spinner')
 							]),
 						_List_Nil) : $elm$html$Html$text(
-						(model.j === 1) ? 'Se connecter' : 'Créer mon compte')
+						(model.k === 1) ? 'Se connecter' : 'Créer mon compte')
 					])),
-				(model.j === 1) ? A2(
+				(model.k === 1) ? A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
@@ -8184,7 +8927,7 @@ var $author$project$Main$viewResetPasswordForm = function (model) {
 							[
 								$elm$html$Html$Attributes$type_('password'),
 								$elm$html$Html$Attributes$id('password'),
-								$elm$html$Html$Attributes$value(model.x),
+								$elm$html$Html$Attributes$value(model.B),
 								$elm$html$Html$Events$onInput($author$project$Main$SetPasswordInput),
 								$elm$html$Html$Attributes$placeholder(''),
 								$elm$html$Html$Attributes$required(true),
@@ -8218,7 +8961,7 @@ var $author$project$Main$viewResetPasswordForm = function (model) {
 							[
 								$elm$html$Html$Attributes$type_('password'),
 								$elm$html$Html$Attributes$id('confirmPassword'),
-								$elm$html$Html$Attributes$value(model.U),
+								$elm$html$Html$Attributes$value(model.X),
 								$elm$html$Html$Events$onInput($author$project$Main$SetConfirmPasswordInput),
 								$elm$html$Html$Attributes$placeholder(''),
 								$elm$html$Html$Attributes$required(true),
@@ -8251,7 +8994,7 @@ var $author$project$Main$viewResetPasswordForm = function (model) {
 var $elm$core$String$fromFloat = _String_fromNumber;
 var $author$project$TileSvg$Tile = F3(
 	function (v1, v2, v3) {
-		return {dn: v1, $7: v2, dp: v3};
+		return {dy: v1, dz: v2, dA: v3};
 	});
 var $elm$core$String$cons = _String_cons;
 var $elm$core$String$fromChar = function (_char) {
@@ -8538,28 +9281,28 @@ var $author$project$TileSvg$viewTileSvg = function (tile) {
 					]),
 				_List_fromArray(
 					[
-						A2($author$project$TileSvg$viewDiagonalBandRight, tile.$7, bandWidth),
-						A2($author$project$TileSvg$viewDiagonalBandLeft, tile.dp, bandWidth),
-						A2($author$project$TileSvg$viewVerticalBand, tile.dn, bandWidth)
+						A2($author$project$TileSvg$viewDiagonalBandRight, tile.dz, bandWidth),
+						A2($author$project$TileSvg$viewDiagonalBandLeft, tile.dA, bandWidth),
+						A2($author$project$TileSvg$viewVerticalBand, tile.dy, bandWidth)
 					])),
 				A4(
 				$author$project$TileSvg$viewNumber,
-				tile.dn,
+				tile.dy,
 				50,
 				18,
-				$author$project$TileSvg$colorForValue(tile.dn)),
+				$author$project$TileSvg$colorForValue(tile.dy)),
 				A4(
 				$author$project$TileSvg$viewNumber,
-				tile.$7,
+				tile.dz,
 				22,
 				62,
-				$author$project$TileSvg$colorForValue(tile.$7)),
+				$author$project$TileSvg$colorForValue(tile.dz)),
 				A4(
 				$author$project$TileSvg$viewNumber,
-				tile.dp,
+				tile.dA,
 				78,
 				62,
-				$author$project$TileSvg$colorForValue(tile.dp))
+				$author$project$TileSvg$colorForValue(tile.dA))
 			]));
 };
 var $author$project$Main$viewWelcomeBoard = function () {
@@ -9101,7 +9844,7 @@ var $author$project$Main$viewWelcomeLeaderboard = function (entries) {
 												_List_Nil,
 												_List_fromArray(
 													[
-														$elm$html$Html$text(entry.af)
+														$elm$html$Html$text(entry.an)
 													])),
 												A2(
 												$elm$html$Html$td,
@@ -9112,7 +9855,7 @@ var $author$project$Main$viewWelcomeLeaderboard = function (entries) {
 												_List_fromArray(
 													[
 														$elm$html$Html$text(
-														$elm$core$String$fromInt(entry.a2))
+														$elm$core$String$fromInt(entry.bc))
 													])),
 												A2(
 												$elm$html$Html$td,
@@ -9120,7 +9863,7 @@ var $author$project$Main$viewWelcomeLeaderboard = function (entries) {
 												_List_fromArray(
 													[
 														$elm$html$Html$text(
-														$elm$core$String$fromInt(entry.a6))
+														$elm$core$String$fromInt(entry.bg))
 													]))
 											]));
 								}),
@@ -9205,7 +9948,7 @@ var $author$project$Main$viewWelcome = function (model) {
 								$elm$html$Html$text('Cr\u00E9er un compte')
 							]))
 					])),
-				$author$project$Main$viewWelcomeLeaderboard(model.ax)
+				$author$project$Main$viewWelcomeLeaderboard(model.aI)
 			]));
 };
 var $author$project$Main$viewAuth = function (model) {
@@ -9249,7 +9992,7 @@ var $author$project$Main$viewAuth = function (model) {
 								_List_fromArray(
 									[
 										$elm$html$Html$text(
-										$author$project$Main$authSubtitle(model.j))
+										$author$project$Main$authSubtitle(model.k))
 									]))
 							])),
 						(model.g !== '') ? A2(
@@ -9261,7 +10004,7 @@ var $author$project$Main$viewAuth = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(model.g)
-							])) : ((model.an !== '') ? A2(
+							])) : ((model.av !== '') ? A2(
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
@@ -9269,10 +10012,10 @@ var $author$project$Main$viewAuth = function (model) {
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text(model.an)
+								$elm$html$Html$text(model.av)
 							])) : $elm$html$Html$text('')),
 						function () {
-						var _v0 = model.j;
+						var _v0 = model.k;
 						switch (_v0) {
 							case 0:
 								return $author$project$Main$viewWelcome(model);
@@ -9288,7 +10031,6 @@ var $author$project$Main$viewAuth = function (model) {
 					]))
 			]));
 };
-var $author$project$Main$BackToModeSelection = {$: 27};
 var $author$project$Main$CreateSession = {$: 32};
 var $author$project$Main$JoinSession = {$: 33};
 var $author$project$Main$SetPlayerName = function (a) {
@@ -9338,10 +10080,10 @@ var $author$project$Main$viewConnectionInterface = function (model) {
 							[
 								$elm$html$Html$Attributes$type_('text'),
 								$elm$html$Html$Attributes$id('playerName'),
-								$elm$html$Html$Attributes$value(model.t),
+								$elm$html$Html$Attributes$value(model.o),
 								$elm$html$Html$Events$onInput($author$project$Main$SetPlayerName),
 								$elm$html$Html$Attributes$placeholder('Entrez votre nom'),
-								$elm$html$Html$Attributes$disabled(model.aM)
+								$elm$html$Html$Attributes$disabled(model.aW)
 							]),
 						_List_Nil)
 					])),
@@ -9359,7 +10101,7 @@ var $author$project$Main$viewConnectionInterface = function (model) {
 							[
 								$elm$html$Html$Attributes$class('create-button'),
 								$elm$html$Html$Events$onClick($author$project$Main$CreateSession),
-								$elm$html$Html$Attributes$disabled(model.aM || (model.t === ''))
+								$elm$html$Html$Attributes$disabled(model.aW || (model.o === ''))
 							]),
 						_List_fromArray(
 							[
@@ -9394,10 +10136,10 @@ var $author$project$Main$viewConnectionInterface = function (model) {
 								_List_fromArray(
 									[
 										$elm$html$Html$Attributes$type_('text'),
-										$elm$html$Html$Attributes$value(model.M),
+										$elm$html$Html$Attributes$value(model.P),
 										$elm$html$Html$Events$onInput($author$project$Main$SetSessionCode),
 										$elm$html$Html$Attributes$placeholder('Code de session'),
-										$elm$html$Html$Attributes$disabled(model.aM)
+										$elm$html$Html$Attributes$disabled(model.aW)
 									]),
 								_List_Nil)
 							])),
@@ -9407,7 +10149,7 @@ var $author$project$Main$viewConnectionInterface = function (model) {
 							[
 								$elm$html$Html$Attributes$class('join-button'),
 								$elm$html$Html$Events$onClick($author$project$Main$JoinSession),
-								$elm$html$Html$Attributes$disabled(model.aM || ((model.t === '') || (model.M === '')))
+								$elm$html$Html$Attributes$disabled(model.aW || ((model.o === '') || (model.P === '')))
 							]),
 						_List_fromArray(
 							[
@@ -9606,14 +10348,14 @@ var $author$project$Main$viewFinalHexBoard = function (tiles) {
 				}),
 			hexPositions));
 };
-var $author$project$Main$viewFinishedState = F2(
+var $author$project$Main$viewNormalFinishedState = F2(
 	function (model, gameState) {
 		var sortedPlayers = A2(
 			$elm$core$List$sortBy,
 			function (p) {
-				return -p.y;
+				return -p.p;
 			},
-			gameState.b_);
+			gameState.b8);
 		var winner = $elm$core$List$head(sortedPlayers);
 		return A2(
 			$elm$html$Html$div,
@@ -9650,7 +10392,7 @@ var $author$project$Main$viewFinishedState = F2(
 									_List_fromArray(
 										[
 											$elm$html$Html$text(
-											'🏆 Gagnant: ' + (w.c_ + (' avec ' + ($elm$core$String$fromInt(w.y) + ' points!'))))
+											'🏆 Gagnant: ' + (w.c9 + (' avec ' + ($elm$core$String$fromInt(w.p) + ' points!'))))
 										]));
 							} else {
 								return $elm$html$Html$text('');
@@ -9715,7 +10457,7 @@ var $author$project$Main$viewFinishedState = F2(
 															_List_fromArray(
 																[
 																	$elm$html$Html$text(
-																	(p.cP === 'mcts_ai') ? '🤖 IA' : ('👤 ' + p.c_))
+																	(p.c_ === 'mcts_ai') ? '🤖 IA' : ('👤 ' + p.c9))
 																])),
 															A2(
 															$elm$html$Html$span,
@@ -9726,7 +10468,7 @@ var $author$project$Main$viewFinishedState = F2(
 															_List_fromArray(
 																[
 																	$elm$html$Html$text(
-																	$elm$core$String$fromInt(p.y) + ' pts')
+																	$elm$core$String$fromInt(p.p) + ' pts')
 																]))
 														]));
 											}),
@@ -9734,16 +10476,16 @@ var $author$project$Main$viewFinishedState = F2(
 								]))
 						])),
 					function () {
-					if ($elm$core$List$length(model.br) > 2) {
+					if ($elm$core$List$length(model.bB) > 2) {
 						var myId = A2(
 							$elm$core$Maybe$withDefault,
 							'',
 							A2(
 								$elm$core$Maybe$map,
 								function ($) {
-									return $.bY;
+									return $.b6;
 								},
-								model.f));
+								model.e));
 						return A2(
 							$elm$html$Html$div,
 							_List_fromArray(
@@ -9778,7 +10520,7 @@ var $author$project$Main$viewFinishedState = F2(
 												$author$project$Main$viewFinalHexBoard(tiles)
 											]));
 								},
-								model.br));
+								model.bB));
 					} else {
 						return A2(
 							$elm$html$Html$div,
@@ -9803,7 +10545,7 @@ var $author$project$Main$viewFinishedState = F2(
 												[
 													$elm$html$Html$text('👤 Votre plateau')
 												])),
-											$author$project$Main$viewFinalHexBoard(model.W)
+											$author$project$Main$viewFinalHexBoard(model.Z)
 										])),
 									A2(
 									$elm$html$Html$div,
@@ -9820,12 +10562,12 @@ var $author$project$Main$viewFinishedState = F2(
 												[
 													$elm$html$Html$text('🤖 Plateau IA')
 												])),
-											$author$project$Main$viewFinalHexBoard(model.B)
+											$author$project$Main$viewFinalHexBoard(model.D)
 										]))
 								]));
 					}
 				}(),
-					model.cU ? A2(
+					model.c3 ? A2(
 					$elm$html$Html$button,
 					_List_fromArray(
 						[
@@ -9848,7 +10590,324 @@ var $author$project$Main$viewFinishedState = F2(
 						]))
 				]));
 	});
+var $author$project$Main$AbandonSeries = {$: 62};
+var $author$project$Main$ContinueSeries = {$: 61};
+var $elm$core$Tuple$pair = F2(
+	function (a, b) {
+		return _Utils_Tuple2(a, b);
+	});
+var $elm$core$List$sum = function (numbers) {
+	return A3($elm$core$List$foldl, $elm$core$Basics$add, 0, numbers);
+};
+var $author$project$Main$viewSeriesScreen = F2(
+	function (model, gameState) {
+		var totalMyScore = $elm$core$List$sum(model.O);
+		var totalAiScore = $elm$core$List$sum(model._);
+		var seriesFinished = _Utils_cmp(
+			$elm$core$List$length(model.O),
+			model.aa) > -1;
+		var lastGamePlayers = A2(
+			$elm$core$List$sortBy,
+			function (p) {
+				return -p.p;
+			},
+			gameState.b8);
+		var lastWinner = $elm$core$List$head(lastGamePlayers);
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('finished-state')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('series-intermediate glass-container')
+						]),
+					_List_fromArray(
+						[
+							seriesFinished ? A2(
+							$elm$html$Html$h2,
+							_List_Nil,
+							_List_fromArray(
+								[
+									$elm$html$Html$text('🏆 Match terminé !')
+								])) : A2(
+							$elm$html$Html$h2,
+							_List_Nil,
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									'Partie ' + ($elm$core$String$fromInt(
+										$elm$core$List$length(model.O)) + ('/' + ($elm$core$String$fromInt(model.aa) + ' terminée'))))
+								])),
+							function () {
+							if (!lastWinner.$) {
+								var w = lastWinner.a;
+								return A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('series-last-result')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											w.c9 + (' gagne avec ' + ($elm$core$String$fromInt(w.p) + ' pts')))
+										]));
+							} else {
+								return $elm$html$Html$text('');
+							}
+						}(),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('series-cumulative')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('series-score-big')
+										]),
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$span,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('series-player-score')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(
+													$elm$core$String$fromInt(totalMyScore))
+												])),
+											A2(
+											$elm$html$Html$span,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('series-vs')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(' - ')
+												])),
+											A2(
+											$elm$html$Html$span,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('series-ai-score')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(
+													$elm$core$String$fromInt(totalAiScore))
+												]))
+										])),
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('series-score-label')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Joueur vs IA')
+										]))
+								])),
+							A2(
+							$elm$html$Html$table,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('series-table')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$thead,
+									_List_Nil,
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$tr,
+											_List_Nil,
+											_List_fromArray(
+												[
+													A2(
+													$elm$html$Html$th,
+													_List_Nil,
+													_List_fromArray(
+														[
+															$elm$html$Html$text('#')
+														])),
+													A2(
+													$elm$html$Html$th,
+													_List_Nil,
+													_List_fromArray(
+														[
+															$elm$html$Html$text('Joueur')
+														])),
+													A2(
+													$elm$html$Html$th,
+													_List_Nil,
+													_List_fromArray(
+														[
+															$elm$html$Html$text('IA')
+														]))
+												]))
+										])),
+									A2(
+									$elm$html$Html$tbody,
+									_List_Nil,
+									A2(
+										$elm$core$List$indexedMap,
+										F2(
+											function (i, _v1) {
+												var myS = _v1.a;
+												var aiS = _v1.b;
+												return A2(
+													$elm$html$Html$tr,
+													_List_fromArray(
+														[
+															$elm$html$Html$Attributes$class(
+															(_Utils_cmp(myS, aiS) > 0) ? 'series-row-win' : ((_Utils_cmp(myS, aiS) < 0) ? 'series-row-loss' : ''))
+														]),
+													_List_fromArray(
+														[
+															A2(
+															$elm$html$Html$td,
+															_List_Nil,
+															_List_fromArray(
+																[
+																	$elm$html$Html$text(
+																	$elm$core$String$fromInt(i + 1))
+																])),
+															A2(
+															$elm$html$Html$td,
+															_List_fromArray(
+																[
+																	$elm$html$Html$Attributes$class('score-cell')
+																]),
+															_List_fromArray(
+																[
+																	$elm$html$Html$text(
+																	$elm$core$String$fromInt(myS))
+																])),
+															A2(
+															$elm$html$Html$td,
+															_List_fromArray(
+																[
+																	$elm$html$Html$Attributes$class('score-cell')
+																]),
+															_List_fromArray(
+																[
+																	$elm$html$Html$text(
+																	$elm$core$String$fromInt(aiS))
+																]))
+														]));
+											}),
+										A3($elm$core$List$map2, $elm$core$Tuple$pair, model.O, model._)))
+								])),
+							seriesFinished ? A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('series-buttons')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('series-final-result')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											(_Utils_cmp(totalMyScore, totalAiScore) > 0) ? '🎉 Victoire !' : ((_Utils_cmp(totalMyScore, totalAiScore) < 0) ? 'L\'IA l\'emporte' : 'Egalité !'))
+										])),
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('play-again-button'),
+											$elm$html$Html$Events$onClick($author$project$Main$BackToModeSelection)
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Retour au menu')
+										]))
+								])) : A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('series-buttons')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('play-again-button'),
+											$elm$html$Html$Events$onClick($author$project$Main$ContinueSeries)
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Partie suivante →')
+										])),
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('abandon-button'),
+											$elm$html$Html$Events$onClick($author$project$Main$AbandonSeries)
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Abandonner la série')
+										]))
+								]))
+						]))
+				]));
+	});
+var $author$project$Main$viewFinishedState = F2(
+	function (model, gameState) {
+		return model.ax ? A2($author$project$Main$viewSeriesScreen, model, gameState) : A2($author$project$Main$viewNormalFinishedState, model, gameState);
+	});
 var $author$project$Main$ToggleAiBoard = {$: 28};
+var $elm$core$Basics$modBy = _Basics_modBy;
+var $elm$core$Bitwise$and = _Bitwise_and;
+var $elm$core$Bitwise$shiftRightBy = _Bitwise_shiftRightBy;
+var $elm$core$String$repeatHelp = F3(
+	function (n, chunk, result) {
+		return (n <= 0) ? result : A3(
+			$elm$core$String$repeatHelp,
+			n >> 1,
+			_Utils_ap(chunk, chunk),
+			(!(n & 1)) ? result : _Utils_ap(result, chunk));
+	});
+var $elm$core$String$repeat = F2(
+	function (n, chunk) {
+		return A3($elm$core$String$repeatHelp, n, chunk, '');
+	});
+var $elm$core$String$padLeft = F3(
+	function (n, _char, string) {
+		return _Utils_ap(
+			A2(
+				$elm$core$String$repeat,
+				n - $elm$core$String$length(string),
+				$elm$core$String$fromChar(_char)),
+			string);
+	});
 var $author$project$Main$viewAiHexBoard = function (tiles) {
 	var hexRadius = 40;
 	var hexWidth = 2 * hexRadius;
@@ -9960,9 +11019,6 @@ var $author$project$Main$viewAiHexBoard = function (tiles) {
 				}),
 			hexPositions));
 };
-var $author$project$Main$PlayMove = function (a) {
-	return {$: 44, a: a};
-};
 var $author$project$Main$viewHexBoard = function (model) {
 	var hexRadius = 60;
 	var hexWidth = 2 * hexRadius;
@@ -10015,9 +11071,9 @@ var $author$project$Main$viewHexBoard = function (model) {
 						$elm$core$Maybe$withDefault,
 						'',
 						$elm$core$List$head(
-							A2($elm$core$List$drop, index, model.W)));
-					var isAvailable = A2($elm$core$List$member, index, model.G);
-					var canClick = isAvailable && ((!_Utils_eq(model.C, $elm$core$Maybe$Nothing)) && model.K);
+							A2($elm$core$List$drop, index, model.Z)));
+					var isAvailable = A2($elm$core$List$member, index, model.I);
+					var canClick = isAvailable && ((!_Utils_eq(model.E, $elm$core$Maybe$Nothing)) && model.M);
 					return A2(
 						$elm$html$Html$div,
 						_List_fromArray(
@@ -10085,7 +11141,7 @@ var $author$project$Main$viewPlayer = F2(
 			_List_fromArray(
 				[
 					$elm$html$Html$Attributes$class(
-					'player-item' + (_Utils_eq(player.cP, myPlayerId) ? ' self' : ((player.cP === 'mcts_ai') ? ' ai' : '')))
+					'player-item' + (_Utils_eq(player.c_, myPlayerId) ? ' self' : ((player.c_ === 'mcts_ai') ? ' ai' : '')))
 				]),
 			_List_fromArray(
 				[
@@ -10098,7 +11154,7 @@ var $author$project$Main$viewPlayer = F2(
 					_List_fromArray(
 						[
 							$elm$html$Html$text(
-							(player.cP === 'mcts_ai') ? '🤖 IA' : ('👤 ' + player.c_))
+							(player.c_ === 'mcts_ai') ? '🤖 IA' : ('👤 ' + player.c9))
 						])),
 					A2(
 					$elm$html$Html$span,
@@ -10109,9 +11165,9 @@ var $author$project$Main$viewPlayer = F2(
 					_List_fromArray(
 						[
 							$elm$html$Html$text(
-							$elm$core$String$fromInt(player.y) + ' pts')
+							$elm$core$String$fromInt(player.p) + ' pts')
 						])),
-					player.a8 ? A2(
+					player.bi ? A2(
 					$elm$html$Html$span,
 					_List_fromArray(
 						[
@@ -10163,7 +11219,7 @@ var $author$project$Main$viewInProgressState = F3(
 									_List_fromArray(
 										[
 											$elm$html$Html$text(
-											'Tour ' + ($elm$core$String$fromInt(model.ah) + '/19'))
+											'Tour ' + ($elm$core$String$fromInt(model.ap) + '/19'))
 										])),
 									A2(
 									$elm$html$Html$div,
@@ -10173,12 +11229,12 @@ var $author$project$Main$viewInProgressState = F3(
 											A2(
 											$elm$html$Html$Attributes$style,
 											'opacity',
-											(!_Utils_eq(model.H, $elm$core$Maybe$Nothing)) ? '1' : '0')
+											(!_Utils_eq(model.J, $elm$core$Maybe$Nothing)) ? '1' : '0')
 										]),
 									_List_fromArray(
 										[
 											function () {
-											var _v0 = model.H;
+											var _v0 = model.J;
 											if (!_v0.$) {
 												var img = _v0.a;
 												var _v1 = $author$project$TileSvg$parseTileFromPath(img);
@@ -10215,7 +11271,7 @@ var $author$project$Main$viewInProgressState = F3(
 											}
 										}()
 										])),
-									(!_Utils_eq(model.H, $elm$core$Maybe$Nothing)) ? A2(
+									(!_Utils_eq(model.J, $elm$core$Maybe$Nothing)) ? A2(
 									$elm$html$Html$div,
 									_List_fromArray(
 										[
@@ -10239,43 +11295,91 @@ var $author$project$Main$viewInProgressState = F3(
 									_List_Nil,
 									A2(
 										$elm$core$List$map,
-										$author$project$Main$viewPlayer(session.bY),
-										gameState.b_))
+										$author$project$Main$viewPlayer(session.b6),
+										gameState.b8))
 								])),
-							model.cU ? A2(
-							$elm$html$Html$div,
-							_List_fromArray(
-								[
-									A2($elm$html$Html$Attributes$style, 'margin-top', '15px'),
-									A2($elm$html$Html$Attributes$style, 'text-align', 'center')
-								]),
-							_List_fromArray(
-								[
-									A2(
-									$elm$html$Html$button,
+							function () {
+							if ((!_Utils_eq(model.af, $elm$core$Maybe$Nothing)) && (model.Q || (model.w > 0))) {
+								var timerClass = 'timer-display board-overlay' + ((model.w <= 30) ? ' timer-low' : '');
+								var seconds = A2($elm$core$Basics$modBy, 60, model.w);
+								var minutes = (model.w / 60) | 0;
+								return A2(
+									$elm$html$Html$div,
 									_List_fromArray(
 										[
-											$elm$html$Html$Attributes$class('toggle-ai-board-button'),
-											$elm$html$Html$Events$onClick($author$project$Main$ToggleAiBoard),
-											A2($elm$html$Html$Attributes$style, 'padding', '8px 16px'),
-											A2($elm$html$Html$Attributes$style, 'border-radius', '8px'),
-											A2($elm$html$Html$Attributes$style, 'border', 'none'),
-											A2($elm$html$Html$Attributes$style, 'background', 'rgba(255,255,255,0.2)'),
-											A2($elm$html$Html$Attributes$style, 'cursor', 'pointer')
+											$elm$html$Html$Attributes$class(timerClass)
 										]),
 									_List_fromArray(
 										[
-											$elm$html$Html$text(
-											model.N ? '🤖 Masquer plateau IA' : '🤖 Voir plateau IA')
-										]))
-								])) : $elm$html$Html$text('')
+											A2(
+											$elm$html$Html$span,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('timer-text')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(
+													A3(
+														$elm$core$String$padLeft,
+														2,
+														'0',
+														$elm$core$String$fromInt(minutes)) + (':' + A3(
+														$elm$core$String$padLeft,
+														2,
+														'0',
+														$elm$core$String$fromInt(seconds))))
+												]))
+										]));
+							} else {
+								return $elm$html$Html$text('');
+							}
+						}()
 						])),
-					(model.cU && model.N) ? A2(
+					(model.aa > 0) ? A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('series-indicator')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							'Partie ' + ($elm$core$String$fromInt(model.aw) + ('/' + $elm$core$String$fromInt(model.aa))))
+						])) : $elm$html$Html$text(''),
+					model.c3 ? A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							A2($elm$html$Html$Attributes$style, 'text-align', 'center'),
+							A2($elm$html$Html$Attributes$style, 'margin-top', '10px')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$button,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('toggle-ai-board-button'),
+									$elm$html$Html$Events$onClick($author$project$Main$ToggleAiBoard),
+									A2($elm$html$Html$Attributes$style, 'padding', '8px 16px'),
+									A2($elm$html$Html$Attributes$style, 'border-radius', '8px'),
+									A2($elm$html$Html$Attributes$style, 'border', 'none'),
+									A2($elm$html$Html$Attributes$style, 'background', 'rgba(255,255,255,0.2)'),
+									A2($elm$html$Html$Attributes$style, 'cursor', 'pointer')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									model.H ? '🤖 Masquer plateau IA' : '🤖 Voir plateau IA')
+								]))
+						])) : $elm$html$Html$text(''),
+					(model.c3 && model.H) ? A2(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
 							$elm$html$Html$Attributes$class('ai-board-container glass-container'),
-							A2($elm$html$Html$Attributes$style, 'margin-top', '20px')
+							A2($elm$html$Html$Attributes$style, 'margin-top', '10px')
 						]),
 					_List_fromArray(
 						[
@@ -10285,9 +11389,9 @@ var $author$project$Main$viewInProgressState = F3(
 							_List_fromArray(
 								[
 									$elm$html$Html$text(
-									'🤖 Plateau IA - ' + ($elm$core$String$fromInt(model.cr) + ' pts'))
+									'🤖 Plateau IA - ' + ($elm$core$String$fromInt(model.cB) + ' pts'))
 								])),
-							$author$project$Main$viewAiHexBoard(model.B)
+							$author$project$Main$viewAiHexBoard(model.D)
 						])) : $elm$html$Html$text('')
 				]));
 	});
@@ -10298,16 +11402,16 @@ var $author$project$Main$viewWaitingState = F3(
 			A2(
 				$elm$core$List$filter,
 				function (p) {
-					return _Utils_eq(p.cP, session.bY);
+					return _Utils_eq(p.c_, session.b6);
 				},
-				gameState.b_));
+				gameState.b8));
 		var isReady = A2(
 			$elm$core$Maybe$withDefault,
 			false,
 			A2(
 				$elm$core$Maybe$map,
 				function ($) {
-					return $.a8;
+					return $.bi;
 				},
 				currentPlayer));
 		return A2(
@@ -10337,7 +11441,7 @@ var $author$project$Main$viewWaitingState = F3(
 						[
 							$elm$html$Html$Attributes$class('ready-button'),
 							$elm$html$Html$Events$onClick($author$project$Main$SetReady),
-							$elm$html$Html$Attributes$disabled(model.aM)
+							$elm$html$Html$Attributes$disabled(model.aW)
 						]),
 					_List_fromArray(
 						[
@@ -10355,7 +11459,7 @@ var $author$project$Main$viewGameState = F3(
 				]),
 			_List_fromArray(
 				[
-					(gameState.X !== 1) ? A2(
+					(gameState.ab !== 1) ? A2(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
@@ -10375,11 +11479,11 @@ var $author$project$Main$viewGameState = F3(
 							_List_Nil,
 							A2(
 								$elm$core$List$map,
-								$author$project$Main$viewPlayer(session.bY),
-								gameState.b_))
+								$author$project$Main$viewPlayer(session.b6),
+								gameState.b8))
 						])) : $elm$html$Html$text(''),
 					function () {
-					var _v0 = gameState.X;
+					var _v0 = gameState.ab;
 					switch (_v0) {
 						case 0:
 							return A3($author$project$Main$viewWaitingState, model, session, gameState);
@@ -10425,14 +11529,14 @@ var $author$project$Main$viewGameSession = F2(
 							_List_Nil,
 							_List_fromArray(
 								[
-									$elm$html$Html$text('Session: ' + session.M)
+									$elm$html$Html$text('Session: ' + session.P)
 								])),
 							A2(
 							$elm$html$Html$p,
 							_List_Nil,
 							_List_fromArray(
 								[
-									$elm$html$Html$text('Joueur: ' + model.t)
+									$elm$html$Html$text('Joueur: ' + model.o)
 								])),
 							A2(
 							$elm$html$Html$button,
@@ -10447,7 +11551,7 @@ var $author$project$Main$viewGameSession = F2(
 								]))
 						])),
 					function () {
-					var _v0 = model.k;
+					var _v0 = model.i;
 					if (!_v0.$) {
 						var gameState = _v0.a;
 						return A3($author$project$Main$viewGameState, model, gameState, session);
@@ -10467,18 +11571,6 @@ var $author$project$Main$viewGameSession = F2(
 				]));
 	});
 var $author$project$Main$ResetRealGame = {$: 48};
-var $elm$core$Maybe$andThen = F2(
-	function (callback, maybeValue) {
-		if (!maybeValue.$) {
-			var value = maybeValue.a;
-			return callback(value);
-		} else {
-			return $elm$core$Maybe$Nothing;
-		}
-	});
-var $elm$core$List$sum = function (numbers) {
-	return A3($elm$core$List$foldl, $elm$core$Basics$add, 0, numbers);
-};
 var $author$project$Main$calculateBoardScore = function (tiles) {
 	var v3Lines = _List_fromArray(
 		[
@@ -10576,21 +11668,21 @@ var $author$project$Main$calculateBoardScore = function (tiles) {
 			$elm$core$List$map,
 			scoreLine(
 				function ($) {
-					return $.dn;
+					return $.dy;
 				}),
 			v1Lines)) + $elm$core$List$sum(
 		A2(
 			$elm$core$List$map,
 			scoreLine(
 				function ($) {
-					return $.$7;
+					return $.dz;
 				}),
 			v2Lines))) + $elm$core$List$sum(
 		A2(
 			$elm$core$List$map,
 			scoreLine(
 				function ($) {
-					return $.dp;
+					return $.dA;
 				}),
 			v3Lines));
 };
@@ -10646,7 +11738,7 @@ var $author$project$Main$viewAiRealGameBoard = function (model) {
 						$elm$core$Maybe$withDefault,
 						'',
 						$elm$core$List$head(
-							A2($elm$core$List$drop, index, model.B)));
+							A2($elm$core$List$drop, index, model.D)));
 					return A2(
 						$elm$html$Html$div,
 						_List_fromArray(
@@ -10753,15 +11845,15 @@ var $author$project$Main$viewRealGameBoard = function (model) {
 						$elm$core$Maybe$withDefault,
 						'',
 						$elm$core$List$head(
-							A2($elm$core$List$drop, index, model.W)));
-					var isAvailable = A2($elm$core$List$member, index, model.G);
-					var canClick = isAvailable && ((!_Utils_eq(model.C, $elm$core$Maybe$Nothing)) && (!model.ao));
+							A2($elm$core$List$drop, index, model.Z)));
+					var isAvailable = A2($elm$core$List$member, index, model.I);
+					var canClick = isAvailable && ((!_Utils_eq(model.E, $elm$core$Maybe$Nothing)) && (!model.ay));
 					return A2(
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
 								$elm$html$Html$Attributes$class(
-								'hex-cell' + (((isAvailable && (!model.ao)) ? ' available' : '') + ((tile !== '') ? ' filled' : ''))),
+								'hex-cell' + (((isAvailable && (!model.ay)) ? ' available' : '') + ((tile !== '') ? ' filled' : ''))),
 								A2(
 								$elm$html$Html$Attributes$style,
 								'left',
@@ -10802,7 +11894,7 @@ var $author$project$Main$viewRealGameBoard = function (model) {
 										return $elm$html$Html$text('');
 									}
 								} else {
-									return A2($author$project$TileSvg$viewEmptyHexSvg, isAvailable && (!model.ao), index);
+									return A2($author$project$TileSvg$viewEmptyHexSvg, isAvailable && (!model.ay), index);
 								}
 							}()
 							]));
@@ -10932,7 +12024,7 @@ var $author$project$Main$viewTilePicker = function (model) {
 									]),
 								A2(
 									$elm$core$List$map,
-									$author$project$Main$viewPickerTile(model.a1),
+									$author$project$Main$viewPickerTile(model.bb),
 									tilesForV1(1)))
 							])),
 						A2(
@@ -10961,7 +12053,7 @@ var $author$project$Main$viewTilePicker = function (model) {
 									]),
 								A2(
 									$elm$core$List$map,
-									$author$project$Main$viewPickerTile(model.a1),
+									$author$project$Main$viewPickerTile(model.bb),
 									tilesForV1(5)))
 							])),
 						A2(
@@ -10990,15 +12082,15 @@ var $author$project$Main$viewTilePicker = function (model) {
 									]),
 								A2(
 									$elm$core$List$map,
-									$author$project$Main$viewPickerTile(model.a1),
+									$author$project$Main$viewPickerTile(model.bb),
 									tilesForV1(9)))
 							]))
 					]))
 			]));
 };
 var $author$project$Main$viewRealGame = function (model) {
-	var playerScore = $author$project$Main$calculateBoardScore(model.W);
-	var aiScore = $author$project$Main$calculateBoardScore(model.B);
+	var playerScore = $author$project$Main$calculateBoardScore(model.Z);
+	var aiScore = $author$project$Main$calculateBoardScore(model.D);
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(
@@ -11021,7 +12113,7 @@ var $author$project$Main$viewRealGame = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								'Tour ' + ($elm$core$String$fromInt(model.ah + 1) + '/19'))
+								'Tour ' + ($elm$core$String$fromInt(model.ap + 1) + '/19'))
 							])),
 						A2(
 						$elm$html$Html$p,
@@ -11030,7 +12122,7 @@ var $author$project$Main$viewRealGame = function (model) {
 							[
 								$elm$html$Html$text(
 								'Tuiles utilisées: ' + ($elm$core$String$fromInt(
-									$elm$core$List$length(model.a1)) + '/27'))
+									$elm$core$List$length(model.bb)) + '/27'))
 							])),
 						A2(
 						$elm$html$Html$button,
@@ -11044,7 +12136,7 @@ var $author$project$Main$viewRealGame = function (model) {
 								$elm$html$Html$text('🔄 Recommencer')
 							]))
 					])),
-				model.ao ? $author$project$Main$viewTilePicker(model) : A2(
+				model.ay ? $author$project$Main$viewTilePicker(model) : A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
@@ -11060,7 +12152,7 @@ var $author$project$Main$viewRealGame = function (model) {
 								$elm$html$Html$text('Tuile sélectionnée')
 							])),
 						function () {
-						var _v0 = model.H;
+						var _v0 = model.J;
 						if (!_v0.$) {
 							var img = _v0.a;
 							var _v1 = $author$project$TileSvg$parseTileFromPath(img);
@@ -11136,7 +12228,7 @@ var $author$project$Main$viewRealGame = function (model) {
 								$author$project$Main$viewAiRealGameBoard(model)
 							]))
 					])),
-				(model.ah >= 19) ? A2(
+				(model.ap >= 19) ? A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
@@ -11261,10 +12353,10 @@ var $author$project$Main$viewGame = function (model) {
 									[
 										$elm$html$Html$text(
 										function () {
-											var _v0 = model.z;
+											var _v0 = model.v;
 											if (!_v0.$) {
 												var mode = _v0.a;
-												return mode.ak + (' ' + mode.c_);
+												return mode.ag + (' ' + mode.c9);
 											} else {
 												return 'Take It Easy';
 											}
@@ -11272,7 +12364,7 @@ var $author$project$Main$viewGame = function (model) {
 									]))
 							]))
 					])),
-				(model.D !== '') ? A2(
+				(model.y !== '') ? A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
@@ -11280,7 +12372,7 @@ var $author$project$Main$viewGame = function (model) {
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text(model.D)
+						$elm$html$Html$text(model.y)
 					])) : $elm$html$Html$text(''),
 				A2(
 				$elm$html$Html$div,
@@ -11290,18 +12382,18 @@ var $author$project$Main$viewGame = function (model) {
 						A2(
 						$elm$html$Html$Attributes$style,
 						'opacity',
-						(model.T !== '') ? '1' : '0')
+						(model.W !== '') ? '1' : '0')
 					]),
 				_List_fromArray(
 					[
 						$elm$html$Html$text(
-						(model.T !== '') ? model.T : '\u00A0')
+						(model.W !== '') ? model.W : '\u00A0')
 					])),
 				function () {
-				if (model.bM) {
+				if (model.bW) {
 					return $author$project$Main$viewRealGame(model);
 				} else {
-					var _v1 = model.f;
+					var _v1 = model.e;
 					if (_v1.$ === 1) {
 						return $author$project$Main$viewConnectionInterface(model);
 					} else {
@@ -11310,6 +12402,98 @@ var $author$project$Main$viewGame = function (model) {
 					}
 				}
 			}()
+			]));
+};
+var $author$project$Main$challengeOptions = _List_fromArray(
+	[
+		_Utils_Tuple3(
+		'Chrono 3 min',
+		'timer',
+		{
+			ac: $elm$core$Maybe$Just(180),
+			aB: $elm$core$Maybe$Nothing
+		}),
+		_Utils_Tuple3(
+		'Chrono 5 min',
+		'timer',
+		{
+			ac: $elm$core$Maybe$Just(300),
+			aB: $elm$core$Maybe$Nothing
+		}),
+		_Utils_Tuple3(
+		'Match 5 parties',
+		'trophy',
+		{
+			ac: $elm$core$Maybe$Nothing,
+			aB: $elm$core$Maybe$Just(5)
+		}),
+		_Utils_Tuple3(
+		'Match 10 parties',
+		'trophy',
+		{
+			ac: $elm$core$Maybe$Nothing,
+			aB: $elm$core$Maybe$Just(10)
+		})
+	]);
+var $author$project$Main$SelectChallenge = function (a) {
+	return {$: 60, a: a};
+};
+var $author$project$Main$viewChallengeCard = function (_v0) {
+	var name = _v0.a;
+	var iconType = _v0.b;
+	var config = _v0.c;
+	var icon = (iconType === 'timer') ? '⏱️' : '🏆';
+	var desc = function () {
+		var _v1 = _Utils_Tuple2(config.ac, config.aB);
+		if (!_v1.a.$) {
+			var sec = _v1.a.a;
+			return 'Placez vos tuiles en ' + ($elm$core$String$fromInt((sec / 60) | 0) + ' min');
+		} else {
+			if (!_v1.b.$) {
+				var n = _v1.b.a;
+				return 'Score cumulé sur ' + ($elm$core$String$fromInt(n) + ' parties vs IA');
+			} else {
+				return '';
+			}
+		}
+	}();
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('mode-card challenge-card'),
+				$elm$html$Html$Events$onClick(
+				$author$project$Main$SelectChallenge(config))
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('mode-icon')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(icon)
+					])),
+				A2(
+				$elm$html$Html$h3,
+				_List_Nil,
+				_List_fromArray(
+					[
+						$elm$html$Html$text(name)
+					])),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('mode-description')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(desc)
+					]))
 			]));
 };
 var $author$project$Main$SelectGameMode = function (a) {
@@ -11321,10 +12505,10 @@ var $author$project$Main$viewModeCard = F2(
 			A2(
 				$elm$core$Maybe$map,
 				function ($) {
-					return $.cP;
+					return $.c_;
 				},
 				selectedMode),
-			$elm$core$Maybe$Just(mode.cP));
+			$elm$core$Maybe$Just(mode.c_));
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
@@ -11337,7 +12521,7 @@ var $author$project$Main$viewModeCard = F2(
 			_List_fromArray(
 				[
 					function () {
-					var _v0 = mode.aI;
+					var _v0 = mode.aF;
 					if (!_v0.$) {
 						var diff = _v0.a;
 						return A2(
@@ -11362,14 +12546,14 @@ var $author$project$Main$viewModeCard = F2(
 						]),
 					_List_fromArray(
 						[
-							$elm$html$Html$text(mode.ak)
+							$elm$html$Html$text(mode.ag)
 						])),
 					A2(
 					$elm$html$Html$h3,
 					_List_Nil,
 					_List_fromArray(
 						[
-							$elm$html$Html$text(mode.c_)
+							$elm$html$Html$text(mode.c9)
 						])),
 					A2(
 					$elm$html$Html$p,
@@ -11379,7 +12563,7 @@ var $author$project$Main$viewModeCard = F2(
 						]),
 					_List_fromArray(
 						[
-							$elm$html$Html$text(mode.au)
+							$elm$html$Html$text(mode.aq)
 						]))
 				]));
 	});
@@ -11390,6 +12574,8 @@ var $author$project$Main$gameModeLabel = function (mode) {
 	switch (mode) {
 		case 'single-player':
 			return 'Solo';
+		case 'single-player-challenge':
+			return 'Challenge';
 		case 'real-game':
 			return 'Compagnon';
 		case 'multiplayer':
@@ -11525,7 +12711,7 @@ var $elm$core$List$take = F2(
 		return A3($elm$core$List$takeFast, 0, n, list);
 	});
 var $author$project$Main$viewScoresSection = function (model) {
-	var top5 = A2($elm$core$List$take, 5, model.ay);
+	var top5 = A2($elm$core$List$take, 5, model.aJ);
 	var leaderboardPanel = A2(
 		$elm$html$Html$div,
 		_List_fromArray(
@@ -11617,7 +12803,7 @@ var $author$project$Main$viewScoresSection = function (model) {
 												_List_Nil,
 												_List_fromArray(
 													[
-														$elm$html$Html$text(entry.af)
+														$elm$html$Html$text(entry.an)
 													])),
 												A2(
 												$elm$html$Html$td,
@@ -11628,7 +12814,7 @@ var $author$project$Main$viewScoresSection = function (model) {
 												_List_fromArray(
 													[
 														$elm$html$Html$text(
-														$elm$core$String$fromInt(entry.a2))
+														$elm$core$String$fromInt(entry.bc))
 													])),
 												A2(
 												$elm$html$Html$td,
@@ -11636,15 +12822,15 @@ var $author$project$Main$viewScoresSection = function (model) {
 												_List_fromArray(
 													[
 														$elm$html$Html$text(
-														$elm$core$String$fromInt(entry.a6))
+														$elm$core$String$fromInt(entry.bg))
 													]))
 											]));
 								}),
-							model.ax))
+							model.aI))
 					]))
 			]));
-	var hasLeaderboard = !$elm$core$List$isEmpty(model.ax);
-	return (!hasLeaderboard) ? $elm$html$Html$text('') : ((!model.J) ? A2(
+	var hasLeaderboard = !$elm$core$List$isEmpty(model.aI);
+	return (!hasLeaderboard) ? $elm$html$Html$text('') : ((!model.L) ? A2(
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
@@ -11691,10 +12877,10 @@ var $author$project$Main$viewScoresSection = function (model) {
 								A2(
 									$elm$core$List$filter,
 									function ($) {
-										return $.bn;
+										return $.bx;
 									},
-									model.ay));
-							var totalGames = $elm$core$List$length(model.ay);
+									model.aJ));
+							var totalGames = $elm$core$List$length(model.aJ);
 							return A2(
 								$elm$html$Html$div,
 								_List_Nil,
@@ -11779,7 +12965,7 @@ var $author$project$Main$viewScoresSection = function (model) {
 																	_List_fromArray(
 																		[
 																			$elm$html$Html$text(
-																			$elm$core$String$fromInt(entry.y))
+																			$elm$core$String$fromInt(entry.p))
 																		])),
 																	A2(
 																	$elm$html$Html$td,
@@ -11787,7 +12973,7 @@ var $author$project$Main$viewScoresSection = function (model) {
 																	_List_fromArray(
 																		[
 																			$elm$html$Html$text(
-																			$author$project$Main$gameModeLabel(entry.bC))
+																			$author$project$Main$gameModeLabel(entry.bM))
 																		])),
 																	A2(
 																	$elm$html$Html$td,
@@ -11795,7 +12981,7 @@ var $author$project$Main$viewScoresSection = function (model) {
 																	_List_fromArray(
 																		[
 																			$elm$html$Html$text(
-																			entry.bn ? 'Victoire' : 'D\u00E9faite')
+																			entry.bx ? 'Victoire' : 'D\u00E9faite')
 																		])),
 																	A2(
 																	$elm$html$Html$td,
@@ -11806,7 +12992,7 @@ var $author$project$Main$viewScoresSection = function (model) {
 																	_List_fromArray(
 																		[
 																			$elm$html$Html$text(
-																			$author$project$Main$formatDate(entry.bX))
+																			$author$project$Main$formatDate(entry.b5))
 																		]))
 																]));
 													},
@@ -11832,8 +13018,8 @@ var $author$project$Main$viewUserHeader = function (model) {
 		_List_fromArray(
 			[
 				function () {
-				if (model.J) {
-					var _v0 = model.ae;
+				if (model.L) {
+					var _v0 = model.am;
 					if (!_v0.$) {
 						var user = _v0.a;
 						return A2(
@@ -11858,7 +13044,7 @@ var $author$project$Main$viewUserHeader = function (model) {
 											_List_Nil,
 											_List_fromArray(
 												[
-													$elm$html$Html$text(user.af)
+													$elm$html$Html$text(user.an)
 												]))
 										])),
 									A2(
@@ -11949,11 +13135,28 @@ var $author$project$Main$viewModeSelection = function (model) {
 					]),
 				A2(
 					$elm$core$List$map,
-					$author$project$Main$viewModeCard(model.z),
-					model.a5)),
+					$author$project$Main$viewModeCard(model.v),
+					model.bf)),
+				A2(
+				$elm$html$Html$h2,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('section-title challenge-title')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Challenges')
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('challenge-grid')
+					]),
+				A2($elm$core$List$map, $author$project$Main$viewChallengeCard, $author$project$Main$challengeOptions)),
 				$author$project$Main$viewScoresSection(model),
 				function () {
-				var _v0 = model.z;
+				var _v0 = model.v;
 				if (!_v0.$) {
 					var mode = _v0.a;
 					return A2(
@@ -11977,14 +13180,14 @@ var $author$project$Main$viewModeSelection = function (model) {
 										_List_Nil,
 										_List_fromArray(
 											[
-												$elm$html$Html$text(mode.ak + (' ' + mode.c_))
+												$elm$html$Html$text(mode.ag + (' ' + mode.c9))
 											])),
 										A2(
 										$elm$html$Html$p,
 										_List_Nil,
 										_List_fromArray(
 											[
-												$elm$html$Html$text(mode.au)
+												$elm$html$Html$text(mode.aq)
 											]))
 									])),
 								A2(
@@ -12017,7 +13220,7 @@ var $author$project$Main$viewModeSelection = function (model) {
 };
 var $author$project$Main$view = function (model) {
 	return {
-		cv: _List_fromArray(
+		cG: _List_fromArray(
 			[
 				A2(
 				$elm$html$Html$div,
@@ -12029,7 +13232,7 @@ var $author$project$Main$view = function (model) {
 				_List_fromArray(
 					[
 						function () {
-						var _v0 = model.p;
+						var _v0 = model.r;
 						switch (_v0) {
 							case 0:
 								return $author$project$Main$viewAuth(model);
@@ -12041,10 +13244,10 @@ var $author$project$Main$view = function (model) {
 					}()
 					]))
 			]),
-		dk: 'Take It Easy - Elm'
+		dv: 'Take It Easy - Elm'
 	};
 };
 var $author$project$Main$main = $elm$browser$Browser$application(
-	{cS: $author$project$Main$init, c7: $author$project$Main$UrlChanged, c8: $author$project$Main$UrlRequested, dh: $author$project$Main$subscriptions, dm: $author$project$Main$update, dq: $author$project$Main$view});
+	{c1: $author$project$Main$init, di: $author$project$Main$UrlChanged, dj: $author$project$Main$UrlRequested, ds: $author$project$Main$subscriptions, dx: $author$project$Main$update, dB: $author$project$Main$view});
 _Platform_export({'Main':{'init':$author$project$Main$main(
 	$elm$json$Json$Decode$succeed(0))(0)}});}(this));

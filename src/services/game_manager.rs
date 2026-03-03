@@ -384,6 +384,7 @@ pub async fn process_ai_turn_direct(
     }
 
     // V1Beam: GT logits + line_boost + v1_row_bonus with beam rollouts
+    let t0 = std::time::Instant::now();
     let policy_locked = policy_net.lock().await;
     let gt_net = policy_locked
         .as_graph_transformer()
@@ -403,11 +404,13 @@ pub async fn process_ai_turn_direct(
         &mut rng,
     );
     drop(policy_locked);
+    let elapsed = t0.elapsed();
 
     log::info!(
-        "🎯 AI V1Beam: tile {:?} → position {} (beam_k=4, rollouts=10)",
+        "🎯 AI V1Beam: tile {:?} → position {} (beam_k=4, rollouts=10) in {:.0?}",
         current_tile,
         best_position,
+        elapsed,
     );
 
     // Record AI move

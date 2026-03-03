@@ -1511,13 +1511,12 @@ body {
 .in-progress-layout .game-session { gap: 0.3rem; flex: 1; min-height: 0; }
 .in-progress-layout .game-state { gap: 0.3rem; flex: 1; min-height: 0; }
 .in-progress-layout .game-container { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.in-progress-layout .in-progress-state { gap: 0; flex: 1; min-height: 0; }
+.in-progress-layout .in-progress-state { gap: 0; flex: 1; min-height: 0; overflow-y: auto; }
 
 /* Board container: positioning context for overlays */
 .in-progress-layout .game-board {
     padding: 0.5rem;
-    flex: 1;
-    min-height: 0;
+    flex: 0 0 auto;
     position: relative;
 }
 
@@ -1577,24 +1576,24 @@ body {
     .in-progress-layout .hex-board {
         transform: scale(0.82);
         transform-origin: top center;
+        margin-bottom: -100px;
     }
-    .in-progress-layout .game-board { margin-bottom: -100px; }
 }
 
 @media (min-width: 621px) and (max-height: 750px) {
     .in-progress-layout .hex-board {
         transform: scale(0.68);
         transform-origin: top center;
+        margin-bottom: -180px;
     }
-    .in-progress-layout .game-board { margin-bottom: -180px; }
 }
 
 @media (min-width: 621px) and (max-height: 600px) {
     .in-progress-layout .hex-board {
         transform: scale(0.55);
         transform-origin: top center;
+        margin-bottom: -255px;
     }
-    .in-progress-layout .game-board { margin-bottom: -255px; }
 }
 
 /* ---- Width-based scaling for phones ---- */
@@ -1740,5 +1739,226 @@ body {
     .welcome-direction-labels {
         width: 272px;
         max-width: 100%;
+    }
+}
+
+/* ============================================================================
+   CHALLENGE MODE
+   ============================================================================ */
+
+.section-title {
+    text-align: center;
+    font-size: 1.3rem;
+    color: rgba(255, 255, 255, 0.9);
+    margin-bottom: 1rem;
+}
+
+.challenge-title {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 1.5rem;
+    margin-top: 0.5rem;
+}
+
+.challenge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.challenge-card {
+    border-color: rgba(255, 193, 7, 0.2);
+}
+
+.challenge-card:hover {
+    border-color: rgba(255, 193, 7, 0.5);
+    box-shadow: 0 12px 40px rgba(255, 193, 7, 0.15);
+}
+
+/* Timer overlay */
+.timer-display {
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.25rem 0.75rem;
+    text-align: center;
+}
+
+.timer-text {
+    font-family: 'Courier New', monospace;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #4ecdc4;
+    letter-spacing: 0.1em;
+}
+
+.timer-low .timer-text {
+    color: #ff6b6b;
+    animation: timer-pulse 1s infinite;
+}
+
+@keyframes timer-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* In-progress layout: compact timer */
+.in-progress-layout .timer-display {
+    padding: 0.15rem 0.5rem;
+}
+
+.in-progress-layout .timer-text {
+    font-size: 1rem;
+}
+
+/* Series indicator badge */
+.series-indicator {
+    background: rgba(255, 193, 7, 0.15);
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    border-radius: 8px;
+    padding: 0.4rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #ffc107;
+    text-align: center;
+}
+
+/* Series intermediate screen */
+.series-intermediate {
+    max-width: 500px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.series-intermediate h2 {
+    font-size: 1.5rem;
+    margin-bottom: 0.75rem;
+    background: linear-gradient(135deg, #ffc107 0%, #ffdb4d 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.series-last-result {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.series-cumulative {
+    margin: 1.5rem 0;
+}
+
+.series-score-big {
+    font-size: 2.5rem;
+    font-weight: 700;
+}
+
+.series-player-score {
+    color: #4ecdc4;
+}
+
+.series-vs {
+    color: rgba(255, 255, 255, 0.5);
+    margin: 0 0.5rem;
+}
+
+.series-ai-score {
+    color: #ff6b6b;
+}
+
+.series-score-label {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+}
+
+.series-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+}
+
+.series-table th {
+    text-align: center;
+    padding: 0.4rem 0.5rem;
+    color: rgba(255, 255, 255, 0.6);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-weight: 500;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.series-table td {
+    text-align: center;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.series-table .score-cell {
+    font-weight: 600;
+}
+
+.series-row-win {
+    background: rgba(78, 205, 196, 0.1);
+}
+
+.series-row-loss {
+    background: rgba(255, 107, 107, 0.1);
+}
+
+.series-buttons {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.series-final-result {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #ffc107;
+    margin-bottom: 0.5rem;
+}
+
+.abandon-button {
+    background: transparent;
+    border: 1px solid rgba(255, 107, 107, 0.5);
+    color: #ff6b6b;
+    padding: 0.5rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.abandon-button:hover {
+    background: rgba(255, 107, 107, 0.1);
+}
+
+@media (max-width: 620px) {
+    .challenge-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+    .challenge-card .mode-icon {
+        font-size: 1.5rem;
+    }
+    .challenge-card h3 {
+        font-size: 0.9rem;
+    }
+    .challenge-card .mode-description {
+        font-size: 0.75rem;
+    }
+    .in-progress-layout .timer-display {
+        padding: 0.1rem 0.3rem;
+    }
+    .in-progress-layout .timer-text {
+        font-size: 0.8rem;
+    }
+    .series-score-big {
+        font-size: 1.8rem;
     }
 }

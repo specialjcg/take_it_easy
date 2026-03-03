@@ -42,6 +42,7 @@ defaultModel =
     , hasSession = True
     , hasGameState = True
     , gameStateIsFinished = False
+    , autoPlayMode = False
     }
 
 

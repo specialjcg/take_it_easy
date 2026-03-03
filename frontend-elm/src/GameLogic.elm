@@ -50,6 +50,7 @@ type alias GameModel =
     , hasSession : Bool
     , hasGameState : Bool
     , gameStateIsFinished : Bool
+    , autoPlayMode : Bool
     }
 
 
