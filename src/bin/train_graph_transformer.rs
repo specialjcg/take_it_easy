@@ -114,6 +114,18 @@ struct Args {
     #[arg(long, default_value = "model_weights/graph_transformer_policy.safetensors")]
     policy_path: String,
 
+    /// Generator policy embed dim (must match policy-path model)
+    #[arg(long, default_value_t = 128)]
+    gen_embed_dim: i64,
+
+    /// Generator policy layers (must match policy-path model)
+    #[arg(long, default_value_t = 2)]
+    gen_num_layers: usize,
+
+    /// Generator policy heads (must match policy-path model)
+    #[arg(long, default_value_t = 4)]
+    gen_heads: i64,
+
     /// Line-boost strength for GT Direct self-play
     #[arg(long, default_value_t = 3.0)]
     boost: f64,
@@ -171,6 +183,7 @@ fn main() {
     if args.gen_games > 0 {
         println!("  Data:         {} self-play games (GT Direct)", args.gen_games);
         println!("  Policy:       {}", args.policy_path);
+        println!("  Gen arch:     dim={}, layers={}, heads={}", args.gen_embed_dim, args.gen_num_layers, args.gen_heads);
         println!("  Boost:        {:.1}", args.boost);
     } else {
         println!("  Data:         CSV from {}", args.data_dir);
@@ -357,10 +370,10 @@ fn random_tile_sequence(rng: &mut StdRng) -> Vec<Tile> {
 fn generate_selfplay_data(args: &Args, device: Device) -> Vec<Sample> {
     println!("\n Generating {} self-play games (GT Direct, boost={:.1})...", args.gen_games, args.boost);
 
-    // Load policy net for self-play on target device
+    // Load policy net for self-play on target device (use generator dims, not student dims)
     let mut gen_vs = nn::VarStore::new(device);
     let gen_net = GraphTransformerPolicyNet::new(
-        &gen_vs, 47, args.embed_dim, args.num_layers, args.heads, 0.0,
+        &gen_vs, 47, args.gen_embed_dim, args.gen_num_layers, args.gen_heads, 0.0,
     );
 
     if !Path::new(&args.policy_path).exists() {
