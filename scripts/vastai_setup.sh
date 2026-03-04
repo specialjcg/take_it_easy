@@ -1,10 +1,11 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-#  Vast.ai GPU Setup — Batched MCTS Benchmark
+#  Vast.ai GPU Setup — Take It Easy Training
 # ═══════════════════════════════════════════════════════════════
 #
-# Utilisation :
-#   1. Louer une instance Vast.ai (RTX 3090/4090, image cuda:12.4-devel)
+# Script 100% autonome. Sur une nouvelle instance Vast.ai :
+#
+#   1. Louer une instance (RTX 3090/4090, image pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel)
 #   2. Depuis ta machine locale :
 #        scp -P <PORT> scripts/vastai_setup.sh root@<HOST>:/root/
 #        scp -P <PORT> model_weights/graph_transformer_policy.safetensors root@<HOST>:/root/
@@ -12,10 +13,12 @@
 #        ssh -p <PORT> root@<HOST>
 #        bash /root/vastai_setup.sh
 #
+# Le script crée aussi /root/run_training.sh pour relancer facilement.
+#
 set -euo pipefail
 
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  Vast.ai GPU Setup — Take It Easy Training & Benchmark  ║"
+echo "║  Vast.ai GPU Setup — Take It Easy Training              ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
 # ── 1. Installer les dépendances système ──
@@ -35,12 +38,17 @@ else
 fi
 source "$HOME/.cargo/env" 2>/dev/null || true
 
-# ── 3. Télécharger libtorch CUDA ──
-LIBTORCH_DIR="/opt/libtorch"
-if [ -d "$LIBTORCH_DIR" ]; then
-    echo -e "\n[3/5] libtorch already present at $LIBTORCH_DIR"
+# ── 3. Détecter libtorch (PyTorch Python ou /opt/libtorch) ──
+echo -e "\n[3/5] Detecting libtorch..."
+USE_PYTORCH=0
+if python3 -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
+    TORCH_LIB=$(python3 -c "import torch; print(torch.__file__.replace('__init__.py','lib'))")
+    echo "  Found PyTorch Python with CUDA: $TORCH_LIB"
+    USE_PYTORCH=1
+elif [ -f "/opt/libtorch/lib/libtorch_cuda.so" ]; then
+    echo "  Found /opt/libtorch with CUDA"
 else
-    echo -e "\n[3/5] Downloading libtorch 2.5.1+cu124 (~3 GB)..."
+    echo "  No CUDA libtorch found. Downloading libtorch 2.5.1+cu124 (~3 GB)..."
     cd /opt
     wget -q --show-progress \
         "https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcu124.zip" \
@@ -49,11 +57,9 @@ else
     unzip -q libtorch.zip && rm libtorch.zip
     echo "  Done."
 fi
-export LIBTORCH="$LIBTORCH_DIR"
-export LD_LIBRARY_PATH="$LIBTORCH_DIR/lib:${LD_LIBRARY_PATH:-}"
 
-# ── 4. Cloner le repo et préparer ──
-echo -e "\n[4/5] Cloning repository..."
+# ── 4. Cloner le repo et configurer ──
+echo -e "\n[4/5] Setting up repository..."
 cd /root
 if [ -d "take_it_easy" ]; then
     cd take_it_easy
@@ -65,21 +71,28 @@ else
     cd take_it_easy
 fi
 
-# Override .cargo/config.toml to point to CUDA libtorch (repo has local CPU paths)
+# Configure cargo pour le bon libtorch
 mkdir -p .cargo
-cat > .cargo/config.toml <<'TOML'
+if [ "$USE_PYTORCH" -eq 1 ]; then
+    cat > .cargo/config.toml <<'TOML'
+[env]
+LIBTORCH_USE_PYTORCH = { value = "1", force = true }
+
+[build]
+TOML
+    echo "  .cargo/config.toml → LIBTORCH_USE_PYTORCH=1"
+else
+    cat > .cargo/config.toml <<'TOML'
 [env]
 LIBTORCH = { value = "/opt/libtorch", force = true }
 LD_LIBRARY_PATH = { value = "/opt/libtorch/lib", force = true }
 
 [build]
-
-[target.'cfg(test)']
-rustflags = ["-C", "link-arg=-Wl,-rpath=/opt/libtorch/lib"]
 TOML
-echo "  .cargo/config.toml overwritten for CUDA libtorch."
+    echo "  .cargo/config.toml → /opt/libtorch"
+fi
 
-# Copier les poids si uploadés dans /root/
+# Copier les poids
 mkdir -p model_weights
 if [ -f "/root/graph_transformer_policy.safetensors" ]; then
     cp /root/graph_transformer_policy.safetensors model_weights/
@@ -88,50 +101,99 @@ elif [ -f "model_weights/graph_transformer_policy.safetensors" ]; then
     echo "  Model weights already in place."
 else
     echo "  WARNING: model weights not found!"
-    echo "  Upload with: scp -P <PORT> model_weights/graph_transformer_policy.safetensors root@<HOST>:/root/"
+    echo "  Upload: scp -P <PORT> model_weights/graph_transformer_policy.safetensors root@<HOST>:/root/"
     exit 1
 fi
 
-# ── 5. Verify CUDA libs & Build ──
-echo -e "\n[5/5] Verifying libtorch CUDA and building..."
-if [ -f "$LIBTORCH_DIR/lib/libtorch_cuda.so" ]; then
-    echo "  libtorch_cuda.so found — CUDA linking will be enabled."
+# ── 5. Build ──
+echo -e "\n[5/5] Building binaries..."
+# Nuke torch-sys cache pour forcer re-détection
+rm -rf target/release/build/torch-sys-* target/release/.fingerprint/torch-sys-* \
+       target/release/build/tch-* target/release/.fingerprint/tch-* \
+       target/release/.fingerprint/take_it_easy-* 2>/dev/null || true
+
+cargo build --release \
+    --bin train_graph_transformer \
+    --bin train_value_net \
+    --bin benchmark_mcts_gpu 2>&1 | tail -5
+
+# ── Construire le LD_LIBRARY_PATH et LD_PRELOAD pour CUDA ──
+if [ "$USE_PYTORCH" -eq 1 ]; then
+    NVIDIA_LIBS=$(python3 -c "
+import os, glob
+base = '/usr/local/lib/python3.12/dist-packages'
+paths = glob.glob(os.path.join(base, 'nvidia', '*', 'lib'))
+paths.append(os.path.join(base, 'torch', 'lib'))
+print(':'.join(paths))
+" 2>/dev/null || echo "")
+    CUDA_LD="$NVIDIA_LIBS:/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu"
+    CUDA_PRELOAD="$TORCH_LIB/libtorch_cuda.so"
 else
-    echo "  ERROR: libtorch_cuda.so NOT found in $LIBTORCH_DIR/lib/"
-    echo "  torch-sys will only link CPU. Check your libtorch installation."
-    ls "$LIBTORCH_DIR/lib/"libtorch*.so 2>/dev/null || echo "  No libtorch*.so files found!"
-    exit 1
+    CUDA_LD="/opt/libtorch/lib:/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu"
+    CUDA_PRELOAD=""
 fi
-# Clean torch-sys cache to force re-detection of CUDA libs
-cargo clean -p torch-sys 2>/dev/null || true
-cargo build --release --bin benchmark_mcts_gpu --bin train_value_net --bin train_graph_transformer 2>&1 | tail -5
 
 # ── CUDA check ──
 echo -e "\n═══════════════════════════════════════════════════"
-echo "  Setup complete! Running CUDA check..."
+echo "  Running CUDA check..."
 echo "═══════════════════════════════════════════════════"
-./target/release/benchmark_mcts_gpu --device cuda --num-games 1 --sim-counts "10" 2>&1 | head -12
+LD_LIBRARY_PATH="$CUDA_LD" LD_PRELOAD="${CUDA_PRELOAD:-}" \
+    ./target/release/train_graph_transformer --device cuda --gen-games 0 --epochs 0 2>&1 | head -5
+
+# ── Créer le script de lancement ──
+cat > /root/run_training.sh << LAUNCHER
+#!/bin/bash
+# Lance le training GT Big (dim=256, 4 layers, 8 heads)
+cd /root/take_it_easy
+export LD_LIBRARY_PATH="$CUDA_LD"
+export LD_PRELOAD="${CUDA_PRELOAD:-}"
+
+./target/release/train_graph_transformer \\
+  --device cuda \\
+  --gen-games 100000 \\
+  --policy-path model_weights/graph_transformer_policy.safetensors \\
+  --gen-embed-dim 128 --gen-num-layers 2 --gen-heads 4 \\
+  --embed-dim 256 --num-layers 4 --heads 8 \\
+  --dropout 0.2 --batch-size 128 --lr 0.0003 --weight-decay 0.0003 \\
+  --epochs 100 --weight-power 3.0 \\
+  --save-path model_weights/gt_big \\
+  2>&1 | tee training_gt_big.log
+LAUNCHER
+chmod +x /root/run_training.sh
+
+cat > /root/run_training_bg.sh << LAUNCHER
+#!/bin/bash
+# Lance le training en background (survit à la déconnexion SSH)
+cd /root/take_it_easy
+export LD_LIBRARY_PATH="$CUDA_LD"
+export LD_PRELOAD="${CUDA_PRELOAD:-}"
+
+nohup ./target/release/train_graph_transformer \\
+  --device cuda \\
+  --gen-games 100000 \\
+  --policy-path model_weights/graph_transformer_policy.safetensors \\
+  --gen-embed-dim 128 --gen-num-layers 2 --gen-heads 4 \\
+  --embed-dim 256 --num-layers 4 --heads 8 \\
+  --dropout 0.2 --batch-size 128 --lr 0.0003 --weight-decay 0.0003 \\
+  --epochs 100 --weight-power 3.0 \\
+  --save-path model_weights/gt_big \\
+  > training_gt_big.log 2>&1 &
+
+echo "PID=\$!"
+echo "Suivi: tail -f /root/take_it_easy/training_gt_big.log"
+LAUNCHER
+chmod +x /root/run_training_bg.sh
 
 echo -e "\n═══════════════════════════════════════════════════"
-echo "  Ready! Commands:"
+echo "  Setup complete!"
 echo ""
-echo "  # 1. Train GT Big (dim=256, 4 layers, 8 heads) — 100k self-play"
-echo "  ./target/release/train_graph_transformer \\"
-echo "    --device cuda \\"
-echo "    --gen-games 100000 \\"
-echo "    --policy-path model_weights/graph_transformer_policy.safetensors \\"
-echo "    --embed-dim 256 --num-layers 4 --heads 8 \\"
-echo "    --dropout 0.2 --batch-size 128 --lr 0.0003 --weight-decay 0.0003 \\"
-echo "    --epochs 100 --weight-power 3.0 \\"
-echo "    --save-path model_weights/gt_big"
+echo "  Lancer le training :"
+echo "    bash /root/run_training.sh       # foreground"
+echo "    bash /root/run_training_bg.sh    # background"
 echo ""
-echo "  # 2. Train value network (GPU, ~10 min for 10k games)"
-echo "  ./target/release/train_value_net \\"
-echo "    --device cuda --num-games 10000 --epochs 80 --eval-games 200"
+echo "  Suivi :"
+echo "    tail -f /root/take_it_easy/training_gt_big.log"
 echo ""
-echo "  # 3. Benchmark expectimax vs GT Direct"
-echo "  ./target/release/benchmark_mcts_gpu \\"
-echo "    --device cuda --num-games 200 \\"
-echo "    --value-model-path model_weights/value_net.safetensors \\"
-echo "    --sim-counts \"50,100\""
+echo "  Récupérer le modèle :"
+echo "    scp -P <PORT> root@<HOST>:/root/take_it_easy/model_weights/gt_big_policy.safetensors ."
 echo "═══════════════════════════════════════════════════"
