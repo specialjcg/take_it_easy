@@ -15,7 +15,7 @@
 set -euo pipefail
 
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  Vast.ai GPU Setup — Take It Easy MCTS Benchmark        ║"
+echo "║  Vast.ai GPU Setup — Take It Easy Training & Benchmark  ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
 # ── 1. Installer les dépendances système ──
@@ -58,12 +58,11 @@ cd /root
 if [ -d "take_it_easy" ]; then
     cd take_it_easy
     git fetch origin
-    git checkout feature/cuda-gpu
-    git pull origin feature/cuda-gpu || true
+    git checkout master
+    git pull origin master || true
 else
     git clone https://github.com/specialjcg/take_it_easy.git
     cd take_it_easy
-    git checkout feature/cuda-gpu
 fi
 
 # Override .cargo/config.toml to point to CUDA libtorch (repo has local CPU paths)
@@ -105,7 +104,7 @@ else
 fi
 # Clean torch-sys cache to force re-detection of CUDA libs
 cargo clean -p torch-sys 2>/dev/null || true
-cargo build --release --bin benchmark_mcts_gpu --bin train_value_net 2>&1 | tail -5
+cargo build --release --bin benchmark_mcts_gpu --bin train_value_net --bin train_graph_transformer 2>&1 | tail -5
 
 # ── CUDA check ──
 echo -e "\n═══════════════════════════════════════════════════"
@@ -116,17 +115,23 @@ echo "════════════════════════�
 echo -e "\n═══════════════════════════════════════════════════"
 echo "  Ready! Commands:"
 echo ""
-echo "  # 1. Train value network (GPU, ~10 min for 10k games)"
+echo "  # 1. Train GT Big (dim=256, 4 layers, 8 heads) — 100k self-play"
+echo "  ./target/release/train_graph_transformer \\"
+echo "    --device cuda \\"
+echo "    --gen-games 100000 \\"
+echo "    --policy-path model_weights/graph_transformer_policy.safetensors \\"
+echo "    --embed-dim 256 --num-layers 4 --heads 8 \\"
+echo "    --dropout 0.2 --batch-size 128 --lr 0.0003 --weight-decay 0.0003 \\"
+echo "    --epochs 100 --weight-power 3.0 \\"
+echo "    --save-path model_weights/gt_big"
+echo ""
+echo "  # 2. Train value network (GPU, ~10 min for 10k games)"
 echo "  ./target/release/train_value_net \\"
 echo "    --device cuda --num-games 10000 --epochs 80 --eval-games 200"
 echo ""
-echo "  # 2. Benchmark expectimax vs GT Direct"
+echo "  # 3. Benchmark expectimax vs GT Direct"
 echo "  ./target/release/benchmark_mcts_gpu \\"
 echo "    --device cuda --num-games 200 \\"
 echo "    --value-model-path model_weights/value_net.safetensors \\"
 echo "    --sim-counts \"50,100\""
-echo ""
-echo "  # 3. MCTS-only benchmark"
-echo "  ./target/release/benchmark_mcts_gpu \\"
-echo "    --device cuda --num-games 100 --sim-counts \"50,100,500,1000\" --batch-size 128"
 echo "═══════════════════════════════════════════════════"
