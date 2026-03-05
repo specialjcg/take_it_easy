@@ -94,6 +94,10 @@ struct Args {
     #[arg(long, default_value_t = 0.1)]
     val_split: f64,
 
+    /// Early stopping patience (number of game evals without improvement, 0 = disabled)
+    #[arg(long, default_value_t = 3)]
+    patience: usize,
+
     /// Random seed
     #[arg(long, default_value_t = 42)]
     seed: u64,
@@ -244,6 +248,7 @@ fn main() {
 
     let mut best_val_acc = 0.0f64;
     let mut best_game_score = 0.0f64;
+    let mut evals_without_improvement = 0usize;
 
     // Training loop
     println!("\n Training Graph Transformer...\n");
@@ -316,11 +321,19 @@ fn main() {
 
         if should_eval && game_score > best_game_score {
             best_game_score = game_score;
+            evals_without_improvement = 0;
             let path = format!("{}_policy.safetensors", args.save_path);
             if let Err(e) = save_varstore(&vs, &path) {
                 eprintln!("Warning: failed to save: {}", e);
             }
             println!("   New best game score! Model saved.");
+        } else if should_eval {
+            evals_without_improvement += 1;
+            if args.patience > 0 && evals_without_improvement >= args.patience {
+                println!("\n   Early stopping: no game score improvement for {} evals (best: {:.1} pts)",
+                         args.patience, best_game_score);
+                break;
+            }
         }
     }
 
