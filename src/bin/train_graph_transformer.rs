@@ -391,6 +391,7 @@ fn generate_selfplay_data(args: &Args, device: Device) -> Vec<Sample> {
     let mut rng = StdRng::seed_from_u64(args.seed);
     let mut samples = Vec::with_capacity(args.gen_games * 19);
     let mut score_sum = 0i64;
+    let mut kept_games = 0usize;
     let gen_start = Instant::now();
 
     for game_idx in 0..args.gen_games {
@@ -440,32 +441,35 @@ fn generate_selfplay_data(args: &Args, device: Device) -> Vec<Sample> {
 
         let final_score = result(&plateau);
         score_sum += final_score as i64;
-        let weight = (final_score as f64 / 100.0).powf(args.weight_power);
 
-        for (plat, tile, position, turn) in game_records {
-            samples.push(Sample {
-                plateau: plat,
-                tile,
-                position,
-                turn,
-                final_score,
-                weight,
-            });
+        if final_score >= args.min_score {
+            let weight = (final_score as f64 / 100.0).powf(args.weight_power);
+            kept_games += 1;
+            for (plat, tile, position, turn) in game_records {
+                samples.push(Sample {
+                    plateau: plat,
+                    tile,
+                    position,
+                    turn,
+                    final_score,
+                    weight,
+                });
+            }
         }
 
         if (game_idx + 1) % 1000 == 0 {
             let avg = score_sum as f64 / (game_idx + 1) as f64;
             let elapsed = gen_start.elapsed().as_secs_f32();
             let games_per_sec = (game_idx + 1) as f64 / elapsed as f64;
-            println!("  Generated {}/{} games | avg: {:.1} pts | {:.0} games/s",
-                     game_idx + 1, args.gen_games, avg, games_per_sec);
+            println!("  Generated {}/{} games | avg: {:.1} pts | kept: {} (>={}) | {:.0} games/s",
+                     game_idx + 1, args.gen_games, avg, kept_games, args.min_score, games_per_sec);
         }
     }
 
     let avg = score_sum as f64 / args.gen_games as f64;
     let elapsed = gen_start.elapsed().as_secs_f32();
-    println!("   {} samples from {} games (avg: {:.1} pts) in {:.1}s",
-             samples.len(), args.gen_games, avg, elapsed);
+    println!("   {} samples from {}/{} games (avg: {:.1} pts, kept >= {}) in {:.1}s",
+             samples.len(), kept_games, args.gen_games, avg, args.min_score, elapsed);
 
     samples
 }
