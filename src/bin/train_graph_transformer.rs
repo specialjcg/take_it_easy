@@ -220,12 +220,30 @@ fn main() {
     println!("   Score range: {} - {}", scores.iter().min().unwrap(), scores.iter().max().unwrap());
     println!("   Total weight: {:.1}", total_weight);
 
+    // Pre-compute all features, masks, targets, weights on GPU
+    println!("\n Pre-computing features on {:?}...", device);
+    let precompute_start = Instant::now();
+    let n = samples.len();
+    let all_features: Vec<Tensor> = samples.iter().map(|s| sample_to_features(s)).collect();
+    let all_masks: Vec<Tensor> = samples.iter().map(|s| get_available_mask(s)).collect();
+    let all_targets: Vec<i64> = samples.iter().map(|s| s.position as i64).collect();
+    let all_weights: Vec<f64> = samples.iter().map(|s| s.weight).collect();
+
+    // Stack and move to device once
+    let features_gpu = Tensor::stack(&all_features, 0).to_device(device);
+    let masks_gpu = Tensor::stack(&all_masks, 0).to_device(device);
+    let targets_gpu = Tensor::from_slice(&all_targets).to_device(device);
+    let weights_gpu = Tensor::from_slice(&all_weights).to_kind(Kind::Float).to_device(device);
+    drop(all_features);
+    drop(all_masks);
+    println!("   Pre-computed {} samples in {:.1}s", n, precompute_start.elapsed().as_secs_f32());
+
     // Split train/val
     let mut rng = StdRng::seed_from_u64(args.seed);
-    let mut indices: Vec<usize> = (0..samples.len()).collect();
+    let mut indices: Vec<usize> = (0..n).collect();
     indices.shuffle(&mut rng);
 
-    let val_size = (samples.len() as f64 * args.val_split) as usize;
+    let val_size = (n as f64 * args.val_split) as usize;
     let val_indices: Vec<usize> = indices[..val_size].to_vec();
     let train_indices: Vec<usize> = indices[val_size..].to_vec();
 
@@ -266,9 +284,15 @@ fn main() {
         let n_batches = train_idx.len() / args.batch_size;
 
         for batch_i in 0..n_batches {
-            let batch_indices: Vec<usize> = train_idx[batch_i * args.batch_size..(batch_i + 1) * args.batch_size].to_vec();
+            let start = batch_i * args.batch_size;
+            let end = start + args.batch_size;
+            let batch_idx: Vec<i64> = train_idx[start..end].iter().map(|&i| i as i64).collect();
+            let idx_tensor = Tensor::from_slice(&batch_idx).to_device(device);
 
-            let (features, targets, masks, weights) = prepare_batch_weighted(&samples, &batch_indices, device);
+            let features = features_gpu.index_select(0, &idx_tensor);
+            let targets = targets_gpu.index_select(0, &idx_tensor);
+            let masks = masks_gpu.index_select(0, &idx_tensor);
+            let weights = weights_gpu.index_select(0, &idx_tensor);
 
             let logits = policy_net.forward(&features, true);
             let masked_logits = logits + &masks;
@@ -289,7 +313,7 @@ fn main() {
         let train_acc = train_correct as f64 / (n_batches * args.batch_size) as f64;
 
         // Validation
-        let (val_loss, val_acc) = evaluate(&policy_net, &samples, &val_indices, args.batch_size, device);
+        let (val_loss, val_acc) = evaluate_gpu(&policy_net, &features_gpu, &targets_gpu, &masks_gpu, &val_indices, args.batch_size, device);
 
         let elapsed = epoch_start.elapsed().as_secs_f32();
 
@@ -557,21 +581,8 @@ fn get_available_mask(sample: &Sample) -> Tensor {
     Tensor::from_slice(&mask)
 }
 
-fn prepare_batch_weighted(samples: &[Sample], indices: &[usize], device: Device) -> (Tensor, Tensor, Tensor, Tensor) {
-    let features: Vec<Tensor> = indices.iter().map(|&i| sample_to_features(&samples[i])).collect();
-    let targets: Vec<i64> = indices.iter().map(|&i| samples[i].position as i64).collect();
-    let masks: Vec<Tensor> = indices.iter().map(|&i| get_available_mask(&samples[i])).collect();
-    let weights: Vec<f64> = indices.iter().map(|&i| samples[i].weight).collect();
 
-    (
-        Tensor::stack(&features, 0).to_device(device),
-        Tensor::from_slice(&targets).to_device(device),
-        Tensor::stack(&masks, 0).to_device(device),
-        Tensor::from_slice(&weights).to_kind(Kind::Float).to_device(device),
-    )
-}
-
-fn evaluate(net: &GraphTransformerPolicyNet, samples: &[Sample], indices: &[usize], batch_size: usize, device: Device) -> (f64, f64) {
+fn evaluate_gpu(net: &GraphTransformerPolicyNet, features_gpu: &Tensor, targets_gpu: &Tensor, masks_gpu: &Tensor, indices: &[usize], batch_size: usize, device: Device) -> (f64, f64) {
     let n_batches = indices.len() / batch_size;
     if n_batches == 0 { return (0.0, 0.0); }
 
@@ -579,8 +590,14 @@ fn evaluate(net: &GraphTransformerPolicyNet, samples: &[Sample], indices: &[usiz
     let mut total_correct = 0usize;
 
     for batch_i in 0..n_batches {
-        let batch_indices: Vec<usize> = indices[batch_i * batch_size..(batch_i + 1) * batch_size].to_vec();
-        let (features, targets, masks, _) = prepare_batch_weighted(samples, &batch_indices, device);
+        let start = batch_i * batch_size;
+        let end = start + batch_size;
+        let batch_idx: Vec<i64> = indices[start..end].iter().map(|&i| i as i64).collect();
+        let idx_tensor = Tensor::from_slice(&batch_idx).to_device(device);
+
+        let features = features_gpu.index_select(0, &idx_tensor);
+        let targets = targets_gpu.index_select(0, &idx_tensor);
+        let masks = masks_gpu.index_select(0, &idx_tensor);
 
         let logits = tch::no_grad(|| net.forward(&features, false));
         let masked_logits = &logits + &masks;
