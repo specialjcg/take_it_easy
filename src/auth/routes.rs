@@ -89,8 +89,11 @@ async fn register(
     State(state): State<Arc<AuthState>>,
     Json(req): Json<RegisterRequest>,
 ) -> impl IntoResponse {
+    // Normalize email to lowercase
+    let email = req.email.trim().to_lowercase();
+
     // Validate email format
-    if !req.email.contains('@') || req.email.len() < 5 {
+    if !email.contains('@') || email.len() < 5 {
         return error_response(StatusCode::BAD_REQUEST, "Invalid email format").into_response();
     }
 
@@ -106,7 +109,7 @@ async fn register(
     }
 
     // Check if email already exists
-    match state.db.find_user_by_email(&req.email) {
+    match state.db.find_user_by_email(&email) {
         Ok(Some(_)) => {
             return error_response(StatusCode::CONFLICT, "Email already registered").into_response()
         }
@@ -132,7 +135,7 @@ async fn register(
     let now = chrono::Utc::now().to_rfc3339();
     let user = User {
         id: uuid::Uuid::new_v4().to_string(),
-        email: req.email.clone(),
+        email: email.clone(),
         username: req.username.clone(),
         password_hash: Some(password_hash),
         email_verified: false,
@@ -199,8 +202,11 @@ async fn login(
     State(state): State<Arc<AuthState>>,
     Json(req): Json<LoginRequest>,
 ) -> impl IntoResponse {
+    // Normalize email to lowercase
+    let email = req.email.trim().to_lowercase();
+
     // Find user
-    let user = match state.db.find_user_by_email(&req.email) {
+    let user = match state.db.find_user_by_email(&email) {
         Ok(Some(user)) => user,
         Ok(None) => {
             return error_response(StatusCode::UNAUTHORIZED, "Invalid credentials").into_response()

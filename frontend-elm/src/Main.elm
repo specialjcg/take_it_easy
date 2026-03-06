@@ -356,6 +356,7 @@ type Msg
     | BackToModeSelection
     | ToggleAiBoard
     | RestartSoloGame
+    | RematchMultiplayer
       -- Session
     | SetPlayerName String
     | SetSessionCode String
@@ -805,12 +806,33 @@ update msg model =
             ( { model | showAiBoard = not model.showAiBoard }, Cmd.none )
 
         RestartSoloGame ->
-            -- Reset game state and create new session
+            -- Leave old session first, then reset and create new session
             let
                 gameMode =
                     model.selectedGameMode
                         |> Maybe.map .id
                         |> Maybe.withDefault "single-player"
+
+                leaveCmd =
+                    case model.session of
+                        Just session ->
+                            sendToJs <|
+                                Encode.object
+                                    [ ( "type", Encode.string "leaveSession" )
+                                    , ( "sessionId", Encode.string session.sessionId )
+                                    , ( "playerId", Encode.string session.playerId )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
+
+                createCmd =
+                    sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "createSession" )
+                            , ( "playerName", Encode.string model.playerName )
+                            , ( "gameMode", Encode.string gameMode )
+                            ]
             in
             ( { model
                 | session = Nothing
@@ -828,12 +850,56 @@ update msg model =
                 , error = ""
                 , statusMessage = ""
               }
-            , sendToJs <|
-                Encode.object
-                    [ ( "type", Encode.string "createSession" )
-                    , ( "playerName", Encode.string model.playerName )
-                    , ( "gameMode", Encode.string gameMode )
-                    ]
+            , Cmd.batch [ leaveCmd, createCmd ]
+            )
+
+        RematchMultiplayer ->
+            -- Leave old session, reset game state, create new session with same mode
+            let
+                gameMode =
+                    model.selectedGameMode
+                        |> Maybe.map .id
+                        |> Maybe.withDefault "multiplayer"
+
+                leaveCmd =
+                    case model.session of
+                        Just session ->
+                            sendToJs <|
+                                Encode.object
+                                    [ ( "type", Encode.string "leaveSession" )
+                                    , ( "sessionId", Encode.string session.sessionId )
+                                    , ( "playerId", Encode.string session.playerId )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
+
+                createCmd =
+                    sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "createSession" )
+                            , ( "playerName", Encode.string model.playerName )
+                            , ( "gameMode", Encode.string gameMode )
+                            ]
+            in
+            ( { model
+                | session = Nothing
+                , gameState = Nothing
+                , plateauTiles = List.repeat 19 ""
+                , aiPlateauTiles = List.repeat 19 ""
+                , availablePositions = List.range 0 18
+                , currentTurnNumber = 0
+                , currentTile = Nothing
+                , currentTileImage = Nothing
+                , aiScore = 0
+                , showAiBoard = False
+                , allPlayerPlateaus = []
+                , loading = True
+                , error = ""
+                , statusMessage = ""
+                , isSoloMode = False
+              }
+            , Cmd.batch [ leaveCmd, createCmd ]
             )
 
         -- Session
@@ -3534,7 +3600,10 @@ viewNormalFinishedState model gameState =
             button [ class "play-again-button", onClick RestartSoloGame ] [ text "🔄 Rejouer" ]
 
           else
-            button [ class "play-again-button", onClick BackToModeSelection ] [ text "Rejouer" ]
+            div [ class "rematch-buttons" ]
+                [ button [ class "play-again-button", onClick RematchMultiplayer ] [ text "🔄 Rejouer (même mode)" ]
+                , button [ class "back-button", onClick BackToModeSelection ] [ text "← Retour au menu" ]
+                ]
         ]
 
 
