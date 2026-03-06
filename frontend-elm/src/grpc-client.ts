@@ -8,7 +8,8 @@ import {
     CreateSessionRequest,
     JoinSessionRequest,
     SetReadyRequest,
-    GetSessionStateRequest
+    GetSessionStateRequest,
+    RestartSessionRequest
 } from './generated/session_service';
 import {
     MakeMoveRequest,
@@ -111,6 +112,22 @@ class GrpcClient {
                 return { success: false, error: response.error.message };
             }
             return { success: false, error: "Échec" };
+        } catch (error: any) {
+            return { success: false, error: error.message || 'Erreur réseau' };
+        }
+    }
+
+    async restartSession(sessionId: string, playerId: string) {
+        try {
+            const request: RestartSessionRequest = { sessionId, playerId };
+            const { response } = await this.sessionClient.restartSession(request);
+
+            if (response.success && response.gameState) {
+                return { success: true, gameState: response.gameState };
+            } else if (response.error) {
+                return { success: false, error: response.error.message };
+            }
+            return { success: false, error: "Échec du redémarrage" };
         } catch (error: any) {
             return { success: false, error: error.message || 'Erreur réseau' };
         }

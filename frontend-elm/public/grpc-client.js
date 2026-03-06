@@ -4372,11 +4372,138 @@
     }
   };
   var GetSessionStateResponse = new GetSessionStateResponse$Type();
+  var RestartSessionRequest$Type = class extends MessageType {
+    constructor() {
+      super("takeiteasygame.v1.RestartSessionRequest", [
+        {
+          no: 1,
+          name: "session_id",
+          kind: "scalar",
+          T: 9
+          /*ScalarType.STRING*/
+        },
+        {
+          no: 2,
+          name: "player_id",
+          kind: "scalar",
+          T: 9
+          /*ScalarType.STRING*/
+        }
+      ]);
+    }
+    create(value) {
+      const message = globalThis.Object.create(this.messagePrototype);
+      message.sessionId = "";
+      message.playerId = "";
+      if (value !== void 0)
+        reflectionMergePartial(this, message, value);
+      return message;
+    }
+    internalBinaryRead(reader, length, options, target) {
+      let message = target ?? this.create(), end = reader.pos + length;
+      while (reader.pos < end) {
+        let [fieldNo, wireType] = reader.tag();
+        switch (fieldNo) {
+          case /* string session_id */
+          1:
+            message.sessionId = reader.string();
+            break;
+          case /* string player_id */
+          2:
+            message.playerId = reader.string();
+            break;
+          default:
+            let u = options.readUnknownField;
+            if (u === "throw")
+              throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+            let d = reader.skip(wireType);
+            if (u !== false)
+              (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+        }
+      }
+      return message;
+    }
+    internalBinaryWrite(message, writer, options) {
+      if (message.sessionId !== "")
+        writer.tag(1, WireType.LengthDelimited).string(message.sessionId);
+      if (message.playerId !== "")
+        writer.tag(2, WireType.LengthDelimited).string(message.playerId);
+      let u = options.writeUnknownFields;
+      if (u !== false)
+        (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+      return writer;
+    }
+  };
+  var RestartSessionRequest = new RestartSessionRequest$Type();
+  var RestartSessionResponse$Type = class extends MessageType {
+    constructor() {
+      super("takeiteasygame.v1.RestartSessionResponse", [
+        {
+          no: 1,
+          name: "success",
+          kind: "scalar",
+          T: 8
+          /*ScalarType.BOOL*/
+        },
+        { no: 2, name: "error", kind: "message", T: () => Error2 },
+        { no: 3, name: "game_state", kind: "message", T: () => GameState }
+      ]);
+    }
+    create(value) {
+      const message = globalThis.Object.create(this.messagePrototype);
+      message.success = false;
+      if (value !== void 0)
+        reflectionMergePartial(this, message, value);
+      return message;
+    }
+    internalBinaryRead(reader, length, options, target) {
+      let message = target ?? this.create(), end = reader.pos + length;
+      while (reader.pos < end) {
+        let [fieldNo, wireType] = reader.tag();
+        switch (fieldNo) {
+          case /* bool success */
+          1:
+            message.success = reader.bool();
+            break;
+          case /* takeiteasygame.v1.Error error */
+          2:
+            message.error = Error2.internalBinaryRead(reader, reader.uint32(), options, message.error);
+            break;
+          case /* takeiteasygame.v1.GameState game_state */
+          3:
+            message.gameState = GameState.internalBinaryRead(reader, reader.uint32(), options, message.gameState);
+            break;
+          default:
+            let u = options.readUnknownField;
+            if (u === "throw")
+              throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+            let d = reader.skip(wireType);
+            if (u !== false)
+              (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+        }
+      }
+      return message;
+    }
+    internalBinaryWrite(message, writer, options) {
+      if (message.success !== false)
+        writer.tag(1, WireType.Varint).bool(message.success);
+      if (message.error)
+        Error2.internalBinaryWrite(message.error, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
+      if (message.gameState)
+        GameState.internalBinaryWrite(message.gameState, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
+      let u = options.writeUnknownFields;
+      if (u !== false)
+        (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+      return writer;
+    }
+  };
+  var RestartSessionResponse = new RestartSessionResponse$Type();
   var SessionService = new ServiceType("takeiteasygame.v1.SessionService", [
     { name: "CreateSession", options: {}, I: CreateSessionRequest, O: CreateSessionResponse },
     { name: "JoinSession", options: {}, I: JoinSessionRequest, O: JoinSessionResponse },
     { name: "SetReady", options: {}, I: SetReadyRequest, O: SetReadyResponse },
-    { name: "GetSessionState", options: {}, I: GetSessionStateRequest, O: GetSessionStateResponse }
+    { name: "GetSessionState", options: {}, I: GetSessionStateRequest, O: GetSessionStateResponse },
+    { name: "RestartSession", options: {}, I: RestartSessionRequest, O: RestartSessionResponse }
   ]);
 
   // src/generated/session_service.client.ts
@@ -4413,6 +4540,13 @@
      */
     getSessionState(input, options) {
       const method = this.methods[3], opt = this._transport.mergeOptions(options);
+      return stackIntercept("unary", this._transport, method, opt, input);
+    }
+    /**
+     * @generated from protobuf rpc: RestartSession
+     */
+    restartSession(input, options) {
+      const method = this.methods[4], opt = this._transport.mergeOptions(options);
       return stackIntercept("unary", this._transport, method, opt, input);
     }
   };
@@ -5475,6 +5609,20 @@
           return { success: false, error: response.error.message };
         }
         return { success: false, error: "\xC9chec" };
+      } catch (error) {
+        return { success: false, error: error.message || "Erreur r\xE9seau" };
+      }
+    }
+    async restartSession(sessionId, playerId) {
+      try {
+        const request = { sessionId, playerId };
+        const { response } = await this.sessionClient.restartSession(request);
+        if (response.success && response.gameState) {
+          return { success: true, gameState: response.gameState };
+        } else if (response.error) {
+          return { success: false, error: response.error.message };
+        }
+        return { success: false, error: "\xC9chec du red\xE9marrage" };
       } catch (error) {
         return { success: false, error: error.message || "Erreur r\xE9seau" };
       }

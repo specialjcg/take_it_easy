@@ -73,6 +73,9 @@ function initPorts(app) {
                 case 'setReady':
                     await handleSetReady(app, message.sessionId, message.playerId);
                     break;
+                case 'restartSession':
+                    await handleRestartSession(app, message.sessionId, message.playerId);
+                    break;
 
                 // ========== GAMEPLAY (via gRPC) ==========
                 case 'pollSession':
@@ -425,6 +428,39 @@ async function handleJoinSession(app, sessionCode, playerName) {
 async function handleLeaveSession(app, sessionId, playerId) {
     playerNames = {};
     app.ports.receiveFromJs.send({ type: 'sessionLeft' });
+}
+
+async function handleRestartSession(app, sessionId, playerId) {
+    if (!window.grpcClient) {
+        app.ports.receiveFromJs.send({
+            type: 'sessionError',
+            error: 'gRPC client not loaded'
+        });
+        return;
+    }
+
+    try {
+        const result = await window.grpcClient.restartSession(sessionId, playerId);
+        if (result.success) {
+            log('restartSession success:', result.gameState);
+            app.ports.receiveFromJs.send({
+                type: 'sessionRestarted',
+                gameState: result.gameState
+            });
+        } else {
+            console.error('restartSession failed:', result.error);
+            app.ports.receiveFromJs.send({
+                type: 'sessionError',
+                error: result.error || 'Restart failed'
+            });
+        }
+    } catch (e) {
+        console.error('restartSession error:', e);
+        app.ports.receiveFromJs.send({
+            type: 'sessionError',
+            error: 'Restart error: ' + e.message
+        });
+    }
 }
 
 async function handleSetReady(app, sessionId, playerId) {

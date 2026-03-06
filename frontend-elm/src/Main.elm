@@ -357,6 +357,7 @@ type Msg
     | ToggleAiBoard
     | RestartSoloGame
     | RematchMultiplayer
+    | SessionRestarted GameState
       -- Session
     | SetPlayerName String
     | SetSessionCode String
@@ -823,100 +824,132 @@ update msg model =
             ( { model | showAiBoard = not model.showAiBoard }, Cmd.none )
 
         RestartSoloGame ->
-            -- Leave old session first, then reset and create new session
-            let
-                gameMode =
-                    model.selectedGameMode
-                        |> Maybe.map .id
-                        |> Maybe.withDefault "single-player"
+            -- Restart on same session
+            case model.session of
+                Just session ->
+                    ( { model
+                        | gameState = Nothing
+                        , plateauTiles = List.repeat 19 ""
+                        , aiPlateauTiles = List.repeat 19 ""
+                        , availablePositions = List.range 0 18
+                        , currentTurnNumber = 0
+                        , currentTile = Nothing
+                        , currentTileImage = Nothing
+                        , aiScore = 0
+                        , showAiBoard = False
+                        , allPlayerPlateaus = []
+                        , loading = True
+                        , error = ""
+                        , statusMessage = ""
+                      }
+                    , sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "restartSession" )
+                            , ( "sessionId", Encode.string session.sessionId )
+                            , ( "playerId", Encode.string session.playerId )
+                            ]
+                    )
 
-                leaveCmd =
-                    case model.session of
-                        Just session ->
-                            sendToJs <|
-                                Encode.object
-                                    [ ( "type", Encode.string "leaveSession" )
-                                    , ( "sessionId", Encode.string session.sessionId )
-                                    , ( "playerId", Encode.string session.playerId )
-                                    ]
-
-                        Nothing ->
-                            Cmd.none
-
-                createCmd =
-                    sendToJs <|
+                Nothing ->
+                    -- No session, create a new one
+                    let
+                        gameMode =
+                            model.selectedGameMode
+                                |> Maybe.map .id
+                                |> Maybe.withDefault "single-player"
+                    in
+                    ( { model
+                        | session = Nothing
+                        , gameState = Nothing
+                        , plateauTiles = List.repeat 19 ""
+                        , aiPlateauTiles = List.repeat 19 ""
+                        , availablePositions = List.range 0 18
+                        , currentTurnNumber = 0
+                        , currentTile = Nothing
+                        , currentTileImage = Nothing
+                        , aiScore = 0
+                        , showAiBoard = False
+                        , allPlayerPlateaus = []
+                        , loading = True
+                        , error = ""
+                        , statusMessage = ""
+                      }
+                    , sendToJs <|
                         Encode.object
                             [ ( "type", Encode.string "createSession" )
                             , ( "playerName", Encode.string model.playerName )
                             , ( "gameMode", Encode.string gameMode )
                             ]
-            in
-            ( { model
-                | session = Nothing
-                , gameState = Nothing
-                , plateauTiles = List.repeat 19 ""
-                , aiPlateauTiles = List.repeat 19 ""
-                , availablePositions = List.range 0 18
-                , currentTurnNumber = 0
-                , currentTile = Nothing
-                , currentTileImage = Nothing
-                , aiScore = 0
-                , showAiBoard = False
-                , allPlayerPlateaus = []
-                , loading = True
-                , error = ""
-                , statusMessage = ""
-              }
-            , Cmd.batch [ leaveCmd, createCmd ]
-            )
+                    )
 
         RematchMultiplayer ->
-            -- Leave old session, reset game state, create new session with same mode
-            let
-                gameMode =
-                    model.selectedGameMode
-                        |> Maybe.map .id
-                        |> Maybe.withDefault "multiplayer"
+            -- Restart on same session (keeps same players)
+            case model.session of
+                Just session ->
+                    ( { model
+                        | gameState = Nothing
+                        , plateauTiles = List.repeat 19 ""
+                        , aiPlateauTiles = List.repeat 19 ""
+                        , availablePositions = List.range 0 18
+                        , currentTurnNumber = 0
+                        , currentTile = Nothing
+                        , currentTileImage = Nothing
+                        , aiScore = 0
+                        , showAiBoard = False
+                        , allPlayerPlateaus = []
+                        , loading = True
+                        , error = ""
+                        , statusMessage = ""
+                        , isSoloMode = False
+                      }
+                    , sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "restartSession" )
+                            , ( "sessionId", Encode.string session.sessionId )
+                            , ( "playerId", Encode.string session.playerId )
+                            ]
+                    )
 
-                leaveCmd =
+                Nothing ->
+                    -- Fallback: go back to mode selection
+                    update BackToModeSelection model
+
+        SessionRestarted gameState ->
+            -- Session restarted: back to lobby, auto-ready for solo
+            let
+                isSoloMode =
+                    model.isSoloMode
+
+                cmd =
                     case model.session of
                         Just session ->
-                            sendToJs <|
-                                Encode.object
-                                    [ ( "type", Encode.string "leaveSession" )
-                                    , ( "sessionId", Encode.string session.sessionId )
-                                    , ( "playerId", Encode.string session.playerId )
+                            if isSoloMode then
+                                Cmd.batch
+                                    [ sendToJs <|
+                                        Encode.object
+                                            [ ( "type", Encode.string "setReady" )
+                                            , ( "sessionId", Encode.string session.sessionId )
+                                            , ( "playerId", Encode.string session.playerId )
+                                            ]
+                                    , Process.sleep 5000
+                                        |> Task.perform (\_ -> PollSession)
                                     ]
+
+                            else
+                                -- Multi: start polling for other players to ready up
+                                Process.sleep 2000
+                                    |> Task.perform (\_ -> PollSession)
 
                         Nothing ->
                             Cmd.none
-
-                createCmd =
-                    sendToJs <|
-                        Encode.object
-                            [ ( "type", Encode.string "createSession" )
-                            , ( "playerName", Encode.string model.playerName )
-                            , ( "gameMode", Encode.string gameMode )
-                            ]
             in
             ( { model
-                | session = Nothing
-                , gameState = Nothing
-                , plateauTiles = List.repeat 19 ""
-                , aiPlateauTiles = List.repeat 19 ""
-                , availablePositions = List.range 0 18
-                , currentTurnNumber = 0
-                , currentTile = Nothing
-                , currentTileImage = Nothing
-                , aiScore = 0
-                , showAiBoard = False
-                , allPlayerPlateaus = []
-                , loading = True
+                | gameState = Just gameState
+                , loading = isSoloMode
                 , error = ""
-                , statusMessage = ""
-                , isSoloMode = False
+                , statusMessage = "Session redémarrée"
               }
-            , Cmd.batch [ leaveCmd, createCmd ]
+            , cmd
             )
 
         -- Session
@@ -1680,6 +1713,9 @@ handleJsMessage value model =
                 JsSessionLeft ->
                     update SessionLeft model
 
+                JsSessionRestarted gameState ->
+                    update (SessionRestarted gameState) model
+
                 JsReadySet gameStarted ->
                     update (ReadySet gameStarted) model
 
@@ -1731,6 +1767,7 @@ type JsMessage
     | JsSessionCreated Session GameState
     | JsSessionJoined Session GameState
     | JsSessionLeft
+    | JsSessionRestarted GameState
     | JsReadySet Bool
     | JsSessionError String
     | JsSessionPolled GameState
@@ -1801,6 +1838,9 @@ jsMessageDecoderByType msgType =
 
         "sessionLeft" ->
             Decode.succeed JsSessionLeft
+
+        "sessionRestarted" ->
+            Decode.map JsSessionRestarted (Decode.field "gameState" gameStateDecoder)
 
         "readySet" ->
             Decode.map JsReadySet (Decode.field "gameStarted" Decode.bool)

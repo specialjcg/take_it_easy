@@ -5963,6 +5963,9 @@ var $author$project$Main$SessionLeft = {$: 'SessionLeft'};
 var $author$project$Main$SessionPolled = function (a) {
 	return {$: 'SessionPolled', a: a};
 };
+var $author$project$Main$SessionRestarted = function (a) {
+	return {$: 'SessionRestarted', a: a};
+};
 var $author$project$Main$StartGame = {$: 'StartGame'};
 var $author$project$Main$TimerExpired = {$: 'TimerExpired'};
 var $author$project$Main$TurnStarted = F6(
@@ -6357,6 +6360,9 @@ var $author$project$Main$JsSessionLeft = {$: 'JsSessionLeft'};
 var $author$project$Main$JsSessionPolled = function (a) {
 	return {$: 'JsSessionPolled', a: a};
 };
+var $author$project$Main$JsSessionRestarted = function (a) {
+	return {$: 'JsSessionRestarted', a: a};
+};
 var $author$project$Main$JsTurnStarted = F6(
 	function (a, b, c, d, e, f) {
 		return {$: 'JsTurnStarted', a: a, b: b, c: c, d: d, e: e, f: f};
@@ -6543,6 +6549,11 @@ var $author$project$Main$jsMessageDecoderByType = function (msgType) {
 				A2($elm$json$Json$Decode$field, 'gameState', $author$project$Main$gameStateDecoder));
 		case 'sessionLeft':
 			return $elm$json$Json$Decode$succeed($author$project$Main$JsSessionLeft);
+		case 'sessionRestarted':
+			return A2(
+				$elm$json$Json$Decode$map,
+				$author$project$Main$JsSessionRestarted,
+				A2($elm$json$Json$Decode$field, 'gameState', $author$project$Main$gameStateDecoder));
 		case 'readySet':
 			return A2(
 				$elm$json$Json$Decode$map,
@@ -6884,9 +6895,9 @@ var $elm$url$Url$toString = function (url) {
 };
 var $author$project$Main$handleJsMessage = F2(
 	function (value, model) {
-		var _v26 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$jsMessageDecoder, value);
-		if (_v26.$ === 'Ok') {
-			var jsMsg = _v26.a;
+		var _v29 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$jsMessageDecoder, value);
+		if (_v29.$ === 'Ok') {
+			var jsMsg = _v29.a;
 			switch (jsMsg.$) {
 				case 'JsLoginSuccess':
 					var user = jsMsg.a;
@@ -6963,6 +6974,12 @@ var $author$project$Main$handleJsMessage = F2(
 						model);
 				case 'JsSessionLeft':
 					return A2($author$project$Main$update, $author$project$Main$SessionLeft, model);
+				case 'JsSessionRestarted':
+					var gameState = jsMsg.a;
+					return A2(
+						$author$project$Main$update,
+						$author$project$Main$SessionRestarted(gameState),
+						model);
 				case 'JsReadySet':
 					var gameStarted = jsMsg.a;
 					return A2(
@@ -7496,142 +7513,179 @@ var $author$project$Main$update = F2(
 							{showAiBoard: !model.showAiBoard}),
 						$elm$core$Platform$Cmd$none);
 				case 'RestartSoloGame':
-					var leaveCmd = function () {
-						var _v4 = model.session;
-						if (_v4.$ === 'Just') {
-							var session = _v4.a;
-							return $author$project$Main$sendToJs(
+					var _v4 = model.session;
+					if (_v4.$ === 'Just') {
+						var session = _v4.a;
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{
+									aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
+									aiScore: 0,
+									allPlayerPlateaus: _List_Nil,
+									availablePositions: A2($elm$core$List$range, 0, 18),
+									currentTile: $elm$core$Maybe$Nothing,
+									currentTileImage: $elm$core$Maybe$Nothing,
+									currentTurnNumber: 0,
+									error: '',
+									gameState: $elm$core$Maybe$Nothing,
+									loading: true,
+									plateauTiles: A2($elm$core$List$repeat, 19, ''),
+									showAiBoard: false,
+									statusMessage: ''
+								}),
+							$author$project$Main$sendToJs(
 								$elm$json$Json$Encode$object(
 									_List_fromArray(
 										[
 											_Utils_Tuple2(
 											'type',
-											$elm$json$Json$Encode$string('leaveSession')),
+											$elm$json$Json$Encode$string('restartSession')),
 											_Utils_Tuple2(
 											'sessionId',
 											$elm$json$Json$Encode$string(session.sessionId)),
 											_Utils_Tuple2(
 											'playerId',
 											$elm$json$Json$Encode$string(session.playerId))
-										])));
-						} else {
-							return $elm$core$Platform$Cmd$none;
-						}
-					}();
-					var gameMode = A2(
-						$elm$core$Maybe$withDefault,
-						'single-player',
-						A2(
-							$elm$core$Maybe$map,
-							function ($) {
-								return $.id;
-							},
-							model.selectedGameMode));
-					var createCmd = $author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('createSession')),
-									_Utils_Tuple2(
-									'playerName',
-									$elm$json$Json$Encode$string(model.playerName)),
-									_Utils_Tuple2(
-									'gameMode',
-									$elm$json$Json$Encode$string(gameMode))
-								])));
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{
-								aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
-								aiScore: 0,
-								allPlayerPlateaus: _List_Nil,
-								availablePositions: A2($elm$core$List$range, 0, 18),
-								currentTile: $elm$core$Maybe$Nothing,
-								currentTileImage: $elm$core$Maybe$Nothing,
-								currentTurnNumber: 0,
-								error: '',
-								gameState: $elm$core$Maybe$Nothing,
-								loading: true,
-								plateauTiles: A2($elm$core$List$repeat, 19, ''),
-								session: $elm$core$Maybe$Nothing,
-								showAiBoard: false,
-								statusMessage: ''
-							}),
-						$elm$core$Platform$Cmd$batch(
-							_List_fromArray(
-								[leaveCmd, createCmd])));
+										]))));
+					} else {
+						var gameMode = A2(
+							$elm$core$Maybe$withDefault,
+							'single-player',
+							A2(
+								$elm$core$Maybe$map,
+								function ($) {
+									return $.id;
+								},
+								model.selectedGameMode));
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{
+									aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
+									aiScore: 0,
+									allPlayerPlateaus: _List_Nil,
+									availablePositions: A2($elm$core$List$range, 0, 18),
+									currentTile: $elm$core$Maybe$Nothing,
+									currentTileImage: $elm$core$Maybe$Nothing,
+									currentTurnNumber: 0,
+									error: '',
+									gameState: $elm$core$Maybe$Nothing,
+									loading: true,
+									plateauTiles: A2($elm$core$List$repeat, 19, ''),
+									session: $elm$core$Maybe$Nothing,
+									showAiBoard: false,
+									statusMessage: ''
+								}),
+							$author$project$Main$sendToJs(
+								$elm$json$Json$Encode$object(
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'type',
+											$elm$json$Json$Encode$string('createSession')),
+											_Utils_Tuple2(
+											'playerName',
+											$elm$json$Json$Encode$string(model.playerName)),
+											_Utils_Tuple2(
+											'gameMode',
+											$elm$json$Json$Encode$string(gameMode))
+										]))));
+					}
 				case 'RematchMultiplayer':
-					var leaveCmd = function () {
-						var _v5 = model.session;
-						if (_v5.$ === 'Just') {
-							var session = _v5.a;
-							return $author$project$Main$sendToJs(
+					var _v5 = model.session;
+					if (_v5.$ === 'Just') {
+						var session = _v5.a;
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{
+									aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
+									aiScore: 0,
+									allPlayerPlateaus: _List_Nil,
+									availablePositions: A2($elm$core$List$range, 0, 18),
+									currentTile: $elm$core$Maybe$Nothing,
+									currentTileImage: $elm$core$Maybe$Nothing,
+									currentTurnNumber: 0,
+									error: '',
+									gameState: $elm$core$Maybe$Nothing,
+									isSoloMode: false,
+									loading: true,
+									plateauTiles: A2($elm$core$List$repeat, 19, ''),
+									showAiBoard: false,
+									statusMessage: ''
+								}),
+							$author$project$Main$sendToJs(
 								$elm$json$Json$Encode$object(
 									_List_fromArray(
 										[
 											_Utils_Tuple2(
 											'type',
-											$elm$json$Json$Encode$string('leaveSession')),
+											$elm$json$Json$Encode$string('restartSession')),
 											_Utils_Tuple2(
 											'sessionId',
 											$elm$json$Json$Encode$string(session.sessionId)),
 											_Utils_Tuple2(
 											'playerId',
 											$elm$json$Json$Encode$string(session.playerId))
-										])));
+										]))));
+					} else {
+						var $temp$msg = $author$project$Main$BackToModeSelection,
+							$temp$model = model;
+						msg = $temp$msg;
+						model = $temp$model;
+						continue update;
+					}
+				case 'SessionRestarted':
+					var gameState = msg.a;
+					var isSoloMode = model.isSoloMode;
+					var cmd = function () {
+						var _v6 = model.session;
+						if (_v6.$ === 'Just') {
+							var session = _v6.a;
+							return isSoloMode ? $elm$core$Platform$Cmd$batch(
+								_List_fromArray(
+									[
+										$author$project$Main$sendToJs(
+										$elm$json$Json$Encode$object(
+											_List_fromArray(
+												[
+													_Utils_Tuple2(
+													'type',
+													$elm$json$Json$Encode$string('setReady')),
+													_Utils_Tuple2(
+													'sessionId',
+													$elm$json$Json$Encode$string(session.sessionId)),
+													_Utils_Tuple2(
+													'playerId',
+													$elm$json$Json$Encode$string(session.playerId))
+												]))),
+										A2(
+										$elm$core$Task$perform,
+										function (_v7) {
+											return $author$project$Main$PollSession;
+										},
+										$elm$core$Process$sleep(5000))
+									])) : A2(
+								$elm$core$Task$perform,
+								function (_v8) {
+									return $author$project$Main$PollSession;
+								},
+								$elm$core$Process$sleep(2000));
 						} else {
 							return $elm$core$Platform$Cmd$none;
 						}
 					}();
-					var gameMode = A2(
-						$elm$core$Maybe$withDefault,
-						'multiplayer',
-						A2(
-							$elm$core$Maybe$map,
-							function ($) {
-								return $.id;
-							},
-							model.selectedGameMode));
-					var createCmd = $author$project$Main$sendToJs(
-						$elm$json$Json$Encode$object(
-							_List_fromArray(
-								[
-									_Utils_Tuple2(
-									'type',
-									$elm$json$Json$Encode$string('createSession')),
-									_Utils_Tuple2(
-									'playerName',
-									$elm$json$Json$Encode$string(model.playerName)),
-									_Utils_Tuple2(
-									'gameMode',
-									$elm$json$Json$Encode$string(gameMode))
-								])));
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
-								aiPlateauTiles: A2($elm$core$List$repeat, 19, ''),
-								aiScore: 0,
-								allPlayerPlateaus: _List_Nil,
-								availablePositions: A2($elm$core$List$range, 0, 18),
-								currentTile: $elm$core$Maybe$Nothing,
-								currentTileImage: $elm$core$Maybe$Nothing,
-								currentTurnNumber: 0,
 								error: '',
-								gameState: $elm$core$Maybe$Nothing,
-								isSoloMode: false,
-								loading: true,
-								plateauTiles: A2($elm$core$List$repeat, 19, ''),
-								session: $elm$core$Maybe$Nothing,
-								showAiBoard: false,
-								statusMessage: ''
+								gameState: $elm$core$Maybe$Just(gameState),
+								loading: isSoloMode,
+								statusMessage: 'Session redémarrée'
 							}),
-						$elm$core$Platform$Cmd$batch(
-							_List_fromArray(
-								[leaveCmd, createCmd])));
+						cmd);
 				case 'SetPlayerName':
 					var name = msg.a;
 					return _Utils_Tuple2(
@@ -7694,9 +7748,9 @@ var $author$project$Main$update = F2(
 										$elm$json$Json$Encode$string(model.playerName))
 									]))));
 				case 'LeaveSession':
-					var _v6 = model.session;
-					if (_v6.$ === 'Just') {
-						var session = _v6.a;
+					var _v9 = model.session;
+					if (_v9.$ === 'Just') {
+						var session = _v9.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -7719,9 +7773,9 @@ var $author$project$Main$update = F2(
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					}
 				case 'SetReady':
-					var _v7 = model.session;
-					if (_v7.$ === 'Just') {
-						var session = _v7.a;
+					var _v10 = model.session;
+					if (_v10.$ === 'Just') {
+						var session = _v10.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -7747,9 +7801,9 @@ var $author$project$Main$update = F2(
 					var session = msg.a;
 					var gameState = msg.b;
 					var isSoloMode = function () {
-						var _v10 = model.selectedGameMode;
-						if (_v10.$ === 'Just') {
-							var mode = _v10.a;
+						var _v13 = model.selectedGameMode;
+						if (_v13.$ === 'Just') {
+							var mode = _v13.a;
 							return A2($elm$core$String$startsWith, 'single-player', mode.id);
 						} else {
 							return false;
@@ -7774,13 +7828,13 @@ var $author$project$Main$update = F2(
 										]))),
 								A2(
 								$elm$core$Task$perform,
-								function (_v8) {
+								function (_v11) {
 									return $author$project$Main$PollSession;
 								},
 								$elm$core$Process$sleep(5000))
 							])) : A2(
 						$elm$core$Task$perform,
-						function (_v9) {
+						function (_v12) {
 							return $author$project$Main$PollSession;
 						},
 						$elm$core$Process$sleep(2000));
@@ -7809,7 +7863,7 @@ var $author$project$Main$update = F2(
 							}),
 						A2(
 							$elm$core$Task$perform,
-							function (_v11) {
+							function (_v14) {
 								return $author$project$Main$PollSession;
 							},
 							$elm$core$Process$sleep(2000)));
@@ -7842,9 +7896,9 @@ var $author$project$Main$update = F2(
 						_List_fromArray(
 							[
 								function () {
-								var _v12 = model.session;
-								if (_v12.$ === 'Just') {
-									var session = _v12.a;
+								var _v15 = model.session;
+								if (_v15.$ === 'Just') {
+									var session = _v15.a;
 									return $author$project$Main$sendToJs(
 										$elm$json$Json$Encode$object(
 											_List_fromArray(
@@ -7862,13 +7916,13 @@ var $author$project$Main$update = F2(
 							}(),
 								A2(
 								$elm$core$Task$perform,
-								function (_v13) {
+								function (_v16) {
 									return $author$project$Main$PollTurn;
 								},
 								$elm$core$Process$sleep(3000))
 							])) : A2(
 						$elm$core$Task$perform,
-						function (_v14) {
+						function (_v17) {
 							return $author$project$Main$PollSession;
 						},
 						$elm$core$Process$sleep(2000));
@@ -7885,9 +7939,9 @@ var $author$project$Main$update = F2(
 							{error: error, loading: false}),
 						$elm$core$Platform$Cmd$none);
 				case 'PollSession':
-					var _v15 = model.session;
-					if (_v15.$ === 'Just') {
-						var session = _v15.a;
+					var _v18 = model.session;
+					if (_v18.$ === 'Just') {
+						var session = _v18.a;
 						return _Utils_Tuple2(
 							model,
 							$author$project$Main$sendToJs(
@@ -7911,9 +7965,9 @@ var $author$project$Main$update = F2(
 						_List_fromArray(
 							[
 								function () {
-								var _v16 = model.session;
-								if (_v16.$ === 'Just') {
-									var session = _v16.a;
+								var _v19 = model.session;
+								if (_v19.$ === 'Just') {
+									var session = _v19.a;
 									return $author$project$Main$sendToJs(
 										$elm$json$Json$Encode$object(
 											_List_fromArray(
@@ -7931,13 +7985,13 @@ var $author$project$Main$update = F2(
 							}(),
 								A2(
 								$elm$core$Task$perform,
-								function (_v17) {
+								function (_v20) {
 									return $author$project$Main$PollTurn;
 								},
 								$elm$core$Process$sleep(3000))
 							])) : A2(
 						$elm$core$Task$perform,
-						function (_v18) {
+						function (_v21) {
 							return $author$project$Main$PollSession;
 						},
 						$elm$core$Process$sleep(2000));
@@ -7950,9 +8004,9 @@ var $author$project$Main$update = F2(
 							}),
 						autoStartCmd);
 				case 'StartTurn':
-					var _v19 = model.session;
-					if (_v19.$ === 'Just') {
-						var session = _v19.a;
+					var _v22 = model.session;
+					if (_v22.$ === 'Just') {
+						var session = _v22.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -7976,9 +8030,9 @@ var $author$project$Main$update = F2(
 					if (model.loading) {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var _v20 = model.session;
-						if (_v20.$ === 'Just') {
-							var session = _v20.a;
+						var _v23 = model.session;
+						if (_v23.$ === 'Just') {
+							var session = _v23.a;
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
@@ -8106,9 +8160,9 @@ var $author$project$Main$update = F2(
 							waitingForPlayers: result.waitingForPlayers
 						});
 					if (model.autoPlayMode && result.myTurn) {
-						var _v21 = $elm$core$List$head(positions);
-						if (_v21.$ === 'Just') {
-							var pos = _v21.a;
+						var _v24 = $elm$core$List$head(positions);
+						if (_v24.$ === 'Just') {
+							var pos = _v24.a;
 							var $temp$msg = $author$project$Main$PlayMove(pos),
 								$temp$model = updatedModel;
 							msg = $temp$msg;
@@ -8153,11 +8207,11 @@ var $author$project$Main$update = F2(
 					var playerTiles = msg.b;
 					var aiTiles = msg.c;
 					var allPlateaus = msg.d;
-					var _v22 = model.gameState;
-					if (_v22.$ === 'Nothing') {
+					var _v25 = model.gameState;
+					if (_v25.$ === 'Nothing') {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var gs = _v22.a;
+						var gs = _v25.a;
 						if (_Utils_eq(gs.state, $author$project$Main$Finished)) {
 							return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 						} else {
@@ -8426,9 +8480,9 @@ var $author$project$Main$update = F2(
 							model.challengeConfig));
 					var name = (model.playerName === '') ? 'Joueur' : model.playerName;
 					var leaveCmd = function () {
-						var _v25 = model.session;
-						if (_v25.$ === 'Just') {
-							var session = _v25.a;
+						var _v28 = model.session;
+						if (_v28.$ === 'Just') {
+							var session = _v28.a;
 							return $author$project$Main$sendToJs(
 								$elm$json$Json$Encode$object(
 									_List_fromArray(
