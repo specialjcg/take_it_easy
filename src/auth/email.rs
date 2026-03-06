@@ -110,7 +110,7 @@ impl EmailService {
         token: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let reset_url = format!(
-            "{}/auth/reset-password?token={}",
+            "{}/?reset_token={}",
             self.config.app_url, token
         );
 
@@ -188,7 +188,7 @@ impl MockEmailService {
         username: &str,
         token: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let reset_url = format!("{}/auth/reset-password?token={}", self.app_url, token);
+        let reset_url = format!("{}/?reset_token={}", self.app_url, token);
         log::info!(
             "[MOCK EMAIL] Password reset email to {} ({}): {}",
             to_email,
