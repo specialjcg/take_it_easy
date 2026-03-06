@@ -31,7 +31,10 @@ jobs:
           restore-keys: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}-
 
       - name: Clean stale torch-sys build cache
-        run: rm -rf target/release/build/torch-sys-*
+        run: |
+          rm -rf target/release/build/torch-sys-*
+          rm -rf target/release/.fingerprint/torch-sys-*
+          rm -rf target/release/deps/*torch_sys*
 
       # --- Install system deps ---
       - name: Install build dependencies
