@@ -755,6 +755,27 @@ update msg model =
                     ( model, Cmd.none )
 
         BackToModeSelection ->
+            let
+                leaveCmd =
+                    case model.session of
+                        Just session ->
+                            sendToJs <|
+                                Encode.object
+                                    [ ( "type", Encode.string "leaveSession" )
+                                    , ( "sessionId", Encode.string session.sessionId )
+                                    , ( "playerId", Encode.string session.playerId )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
+
+                fetchCmd =
+                    if model.isAuthenticated then
+                        fetchScoresAndLeaderboard
+
+                    else
+                        fetchLeaderboard
+            in
             ( { model
                 | currentView = ModeSelectionView
                 , session = Nothing
@@ -795,11 +816,7 @@ update msg model =
                 , seriesAiScores = []
                 , showSeriesScreen = False
               }
-            , if model.isAuthenticated then
-                fetchScoresAndLeaderboard
-
-              else
-                fetchLeaderboard
+            , Cmd.batch [ leaveCmd, fetchCmd ]
             )
 
         ToggleAiBoard ->
@@ -1565,6 +1582,27 @@ update msg model =
                     model.challengeConfig
                         |> Maybe.andThen .timerSeconds
                         |> Maybe.withDefault 0
+
+                leaveCmd =
+                    case model.session of
+                        Just session ->
+                            sendToJs <|
+                                Encode.object
+                                    [ ( "type", Encode.string "leaveSession" )
+                                    , ( "sessionId", Encode.string session.sessionId )
+                                    , ( "playerId", Encode.string session.playerId )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
+
+                createCmd =
+                    sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "createSession" )
+                            , ( "playerName", Encode.string name )
+                            , ( "gameMode", Encode.string gameMode )
+                            ]
             in
             ( { model
                 | session = Nothing
@@ -1587,12 +1625,7 @@ update msg model =
                 , timerActive = False
                 , autoPlayMode = False
               }
-            , sendToJs <|
-                Encode.object
-                    [ ( "type", Encode.string "createSession" )
-                    , ( "playerName", Encode.string name )
-                    , ( "gameMode", Encode.string gameMode )
-                    ]
+            , Cmd.batch [ leaveCmd, createCmd ]
             )
 
         AbandonSeries ->
