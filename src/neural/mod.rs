@@ -1,6 +1,7 @@
 pub mod device_util;
 pub mod gnn;
 pub mod graph_transformer;
+pub mod hypergraph_transformer;
 pub mod manager;
 pub mod model_io;
 pub mod policy_value_net;
