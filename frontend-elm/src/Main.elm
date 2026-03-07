@@ -206,6 +206,7 @@ type alias Model =
     , loading : Bool
     , error : String
     , statusMessage : String
+    , hoveredPosition : Maybe Int
     }
 
 
@@ -285,6 +286,7 @@ initialModel key url =
     , loading = False
     , error = ""
     , statusMessage = ""
+    , hoveredPosition = Nothing
     }
 
 
@@ -356,6 +358,8 @@ type Msg
     | BackToModeSelection
     | ToggleAiBoard
     | RestartSoloGame
+    | RematchMultiplayer
+    | SessionRestarted GameState
       -- Session
     | SetPlayerName String
     | SetSessionCode String
@@ -374,6 +378,8 @@ type Msg
       -- Gameplay
     | StartTurn
     | PlayMove Int
+    | HoverPosition Int
+    | UnhoverPosition
       -- Real Game Mode
     | OpenTilePicker
     | SelectRealTile String
@@ -754,6 +760,27 @@ update msg model =
                     ( model, Cmd.none )
 
         BackToModeSelection ->
+            let
+                leaveCmd =
+                    case model.session of
+                        Just session ->
+                            sendToJs <|
+                                Encode.object
+                                    [ ( "type", Encode.string "leaveSession" )
+                                    , ( "sessionId", Encode.string session.sessionId )
+                                    , ( "playerId", Encode.string session.playerId )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
+
+                fetchCmd =
+                    if model.isAuthenticated then
+                        fetchScoresAndLeaderboard
+
+                    else
+                        fetchLeaderboard
+            in
             ( { model
                 | currentView = ModeSelectionView
                 , session = Nothing
@@ -794,27 +821,113 @@ update msg model =
                 , seriesAiScores = []
                 , showSeriesScreen = False
               }
-            , if model.isAuthenticated then
-                fetchScoresAndLeaderboard
-
-              else
-                fetchLeaderboard
+            , Cmd.batch [ leaveCmd, fetchCmd ]
             )
 
         ToggleAiBoard ->
             ( { model | showAiBoard = not model.showAiBoard }, Cmd.none )
 
         RestartSoloGame ->
-            -- Reset game state and create new session
+            -- Restart on same session
+            case model.session of
+                Just session ->
+                    ( { model
+                        | loading = True
+                        , error = ""
+                        , statusMessage = ""
+                      }
+                    , sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "restartSession" )
+                            , ( "sessionId", Encode.string session.sessionId )
+                            , ( "playerId", Encode.string session.playerId )
+                            ]
+                    )
+
+                Nothing ->
+                    -- No session, create a new one
+                    let
+                        gameMode =
+                            model.selectedGameMode
+                                |> Maybe.map .id
+                                |> Maybe.withDefault "single-player"
+                    in
+                    ( { model
+                        | session = Nothing
+                        , gameState = Nothing
+                        , plateauTiles = List.repeat 19 ""
+                        , aiPlateauTiles = List.repeat 19 ""
+                        , availablePositions = List.range 0 18
+                        , currentTurnNumber = 0
+                        , currentTile = Nothing
+                        , currentTileImage = Nothing
+                        , aiScore = 0
+                        , showAiBoard = False
+                        , allPlayerPlateaus = []
+                        , loading = True
+                        , error = ""
+                        , statusMessage = ""
+                      }
+                    , sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "createSession" )
+                            , ( "playerName", Encode.string model.playerName )
+                            , ( "gameMode", Encode.string gameMode )
+                            ]
+                    )
+
+        RematchMultiplayer ->
+            -- Restart on same session (keeps same players)
+            case model.session of
+                Just session ->
+                    ( { model
+                        | loading = True
+                        , error = ""
+                        , statusMessage = ""
+                      }
+                    , sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "restartSession" )
+                            , ( "sessionId", Encode.string session.sessionId )
+                            , ( "playerId", Encode.string session.playerId )
+                            ]
+                    )
+
+                Nothing ->
+                    -- Fallback: go back to mode selection
+                    update BackToModeSelection model
+
+        SessionRestarted gameState ->
+            -- Session restarted: back to lobby, auto-ready for solo
             let
-                gameMode =
-                    model.selectedGameMode
-                        |> Maybe.map .id
-                        |> Maybe.withDefault "single-player"
+                isSoloMode =
+                    model.isSoloMode
+
+                cmd =
+                    case model.session of
+                        Just session ->
+                            if isSoloMode then
+                                Cmd.batch
+                                    [ sendToJs <|
+                                        Encode.object
+                                            [ ( "type", Encode.string "setReady" )
+                                            , ( "sessionId", Encode.string session.sessionId )
+                                            , ( "playerId", Encode.string session.playerId )
+                                            ]
+                                    , Process.sleep 5000
+                                        |> Task.perform (\_ -> PollSession)
+                                    ]
+
+                            else
+                                -- Multi: start polling for other players to ready up
+                                Process.sleep 2000
+                                    |> Task.perform (\_ -> PollSession)
+
+                        Nothing ->
+                            Cmd.none
             in
             ( { model
-                | session = Nothing
-                , gameState = Nothing
+                | gameState = Just gameState
                 , plateauTiles = List.repeat 19 ""
                 , aiPlateauTiles = List.repeat 19 ""
                 , availablePositions = List.range 0 18
@@ -824,16 +937,12 @@ update msg model =
                 , aiScore = 0
                 , showAiBoard = False
                 , allPlayerPlateaus = []
-                , loading = True
+                , hoveredPosition = Nothing
+                , loading = isSoloMode
                 , error = ""
-                , statusMessage = ""
+                , statusMessage = "Session redémarrée"
               }
-            , sendToJs <|
-                Encode.object
-                    [ ( "type", Encode.string "createSession" )
-                    , ( "playerName", Encode.string model.playerName )
-                    , ( "gameMode", Encode.string gameMode )
-                    ]
+            , cmd
             )
 
         -- Session
@@ -1076,7 +1185,7 @@ update msg model =
             else
                 case model.session of
                     Just session ->
-                        ( { model | loading = True }
+                        ( { model | loading = True, hoveredPosition = Nothing }
                         , sendToJs <|
                             Encode.object
                                 [ ( "type", Encode.string "playMove" )
@@ -1088,6 +1197,12 @@ update msg model =
 
                     Nothing ->
                         ( model, Cmd.none )
+
+        HoverPosition pos ->
+            ( { model | hoveredPosition = Just pos }, Cmd.none )
+
+        UnhoverPosition ->
+            ( { model | hoveredPosition = Nothing }, Cmd.none )
 
         -- Real Game Mode
         OpenTilePicker ->
@@ -1499,6 +1614,27 @@ update msg model =
                     model.challengeConfig
                         |> Maybe.andThen .timerSeconds
                         |> Maybe.withDefault 0
+
+                leaveCmd =
+                    case model.session of
+                        Just session ->
+                            sendToJs <|
+                                Encode.object
+                                    [ ( "type", Encode.string "leaveSession" )
+                                    , ( "sessionId", Encode.string session.sessionId )
+                                    , ( "playerId", Encode.string session.playerId )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
+
+                createCmd =
+                    sendToJs <|
+                        Encode.object
+                            [ ( "type", Encode.string "createSession" )
+                            , ( "playerName", Encode.string name )
+                            , ( "gameMode", Encode.string gameMode )
+                            ]
             in
             ( { model
                 | session = Nothing
@@ -1521,12 +1657,7 @@ update msg model =
                 , timerActive = False
                 , autoPlayMode = False
               }
-            , sendToJs <|
-                Encode.object
-                    [ ( "type", Encode.string "createSession" )
-                    , ( "playerName", Encode.string name )
-                    , ( "gameMode", Encode.string gameMode )
-                    ]
+            , Cmd.batch [ leaveCmd, createCmd ]
             )
 
         AbandonSeries ->
@@ -1581,6 +1712,9 @@ handleJsMessage value model =
                 JsSessionLeft ->
                     update SessionLeft model
 
+                JsSessionRestarted gameState ->
+                    update (SessionRestarted gameState) model
+
                 JsReadySet gameStarted ->
                     update (ReadySet gameStarted) model
 
@@ -1632,6 +1766,7 @@ type JsMessage
     | JsSessionCreated Session GameState
     | JsSessionJoined Session GameState
     | JsSessionLeft
+    | JsSessionRestarted GameState
     | JsReadySet Bool
     | JsSessionError String
     | JsSessionPolled GameState
@@ -1702,6 +1837,9 @@ jsMessageDecoderByType msgType =
 
         "sessionLeft" ->
             Decode.succeed JsSessionLeft
+
+        "sessionRestarted" ->
+            Decode.map JsSessionRestarted (Decode.field "gameState" gameStateDecoder)
 
         "readySet" ->
             Decode.map JsReadySet (Decode.field "gameStarted" Decode.bool)
@@ -3203,9 +3341,19 @@ viewHexBoard model =
 
                     canClick =
                         isAvailable && model.currentTile /= Nothing && model.myTurn
+
+                    isHovered =
+                        canClick && model.hoveredPosition == Just index
+
+                    previewTile =
+                        if isHovered then
+                            model.currentTileImage |> Maybe.andThen parseTileFromPath
+
+                        else
+                            Nothing
                 in
                 div
-                    [ class
+                    ([ class
                         ("hex-cell"
                             ++ (if isAvailable then
                                     " available"
@@ -3219,17 +3367,28 @@ viewHexBoard model =
                                 else
                                     ""
                                )
+                            ++ (if isHovered then
+                                    " hovered-preview"
+
+                                else
+                                    ""
+                               )
                         )
                     , style "left" (String.fromFloat x ++ "px")
                     , style "top" (String.fromFloat y ++ "px")
                     , style "width" (String.fromFloat hexWidth ++ "px")
                     , style "height" (String.fromFloat hexHeight ++ "px")
-                    , if canClick then
-                        onClick (PlayMove index)
-
-                      else
-                        class ""
                     ]
+                    ++ (if canClick then
+                            [ onClick (PlayMove index)
+                            , onMouseEnter (HoverPosition index)
+                            , onMouseLeave UnhoverPosition
+                            ]
+
+                        else
+                            []
+                       )
+                    )
                     [ if tile /= "" then
                         case parseTileFromPath tile of
                             Just tileData ->
@@ -3240,7 +3399,13 @@ viewHexBoard model =
                                 Html.img [ src tile, class "hex-tile-image" ] []
 
                       else
-                        viewEmptyHexSvg isAvailable index
+                        case previewTile of
+                            Just tileData ->
+                                div [ class "hex-tile-svg hex-tile-preview" ]
+                                    [ viewTileSvg tileData ]
+
+                            Nothing ->
+                                viewEmptyHexSvg isAvailable index
                     ]
             )
             hexPositions
@@ -3534,7 +3699,10 @@ viewNormalFinishedState model gameState =
             button [ class "play-again-button", onClick RestartSoloGame ] [ text "🔄 Rejouer" ]
 
           else
-            button [ class "play-again-button", onClick BackToModeSelection ] [ text "Rejouer" ]
+            div [ class "rematch-buttons" ]
+                [ button [ class "play-again-button", onClick RematchMultiplayer ] [ text "🔄 Rejouer (même mode)" ]
+                , button [ class "back-button", onClick BackToModeSelection ] [ text "← Retour au menu" ]
+                ]
         ]
 
 

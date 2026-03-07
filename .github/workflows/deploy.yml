@@ -1,0 +1,119 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Cache Rust build ---
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Cache target dir
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-target-v2-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-target-v2-
+
+      # --- Install system deps ---
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq protobuf-compiler cmake clang wget unzip
+
+      # --- Install Rust ---
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # --- Download libtorch ---
+      - name: Cache libtorch
+        id: cache-libtorch
+        uses: actions/cache@v4
+        with:
+          path: /opt/libtorch
+          key: libtorch-2.5.1-cpu-cxx11
+
+      - name: Download libtorch
+        if: steps.cache-libtorch.outputs.cache-hit != 'true'
+        run: |
+          wget -q "https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcpu.zip" -O /tmp/libtorch.zip
+          sudo unzip -q /tmp/libtorch.zip -d /opt/
+
+      # --- Build Rust binary ---
+      - name: Build release binary
+        env:
+          LIBTORCH: /opt/libtorch
+          LD_LIBRARY_PATH: /opt/libtorch/lib
+        run: cargo build --release --bin take_it_easy
+
+      # --- Build frontend ---
+      - name: Install Elm
+        run: npm install -g elm
+
+      - name: Install frontend deps and build gRPC client
+        run: |
+          cd frontend-elm
+          npm install
+          npm run build:grpc
+
+      - name: Bump cache version in index.html
+        run: |
+          cd frontend-elm/public
+          CURRENT_V=$(grep -oP '\?v=\K[0-9]+' index.html | head -1)
+          NEW_V=$((CURRENT_V + 1))
+          sed -i "s/?v=${CURRENT_V}/?v=${NEW_V}/g" index.html
+          echo "Cache version bumped: v=${CURRENT_V} -> v=${NEW_V}"
+
+      - name: Compile Elm
+        run: |
+          cd frontend-elm
+          elm make src/Main.elm --optimize --output=public/elm.js
+
+      # --- Deploy to VPS ---
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p 9999 VPS-779132.ssh.vps1euro.fr >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Stop service on VPS
+        run: |
+          ssh -p 9999 -i ~/.ssh/id_deploy root@VPS-779132.ssh.vps1euro.fr \
+            "systemctl stop takeitasy"
+
+      - name: Deploy binary
+        run: |
+          scp -P 9999 -i ~/.ssh/id_deploy \
+            target/release/take_it_easy \
+            root@VPS-779132.ssh.vps1euro.fr:/opt/takeitasy/take_it_easy
+
+      - name: Deploy frontend
+        run: |
+          scp -P 9999 -i ~/.ssh/id_deploy \
+            frontend-elm/public/index.html \
+            frontend-elm/public/elm.js \
+            frontend-elm/public/styles.css \
+            frontend-elm/public/ports.js \
+            frontend-elm/public/grpc-client.js \
+            root@VPS-779132.ssh.vps1euro.fr:/opt/takeitasy/frontend/
+
+      - name: Start service on VPS
+        run: |
+          ssh -p 9999 -i ~/.ssh/id_deploy root@VPS-779132.ssh.vps1euro.fr \
+            "systemctl start takeitasy && sleep 3 && systemctl is-active takeitasy"

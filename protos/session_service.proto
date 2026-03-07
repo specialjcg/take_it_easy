@@ -67,9 +67,21 @@ message GetSessionStateResponse {
   Error error = 2;
 }
 
+message RestartSessionRequest {
+  string session_id = 1;
+  string player_id = 2;
+}
+
+message RestartSessionResponse {
+  bool success = 1;
+  Error error = 2;
+  GameState game_state = 3;
+}
+
 service SessionService {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
   rpc JoinSession(JoinSessionRequest) returns (JoinSessionResponse);
   rpc SetReady(SetReadyRequest) returns (SetReadyResponse);
   rpc GetSessionState(GetSessionStateRequest) returns (GetSessionStateResponse);
+  rpc RestartSession(RestartSessionRequest) returns (RestartSessionResponse);
 }

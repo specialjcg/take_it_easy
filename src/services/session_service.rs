@@ -658,4 +658,87 @@ impl SessionService for SessionServiceImpl {
             }
         }
     }
+
+    async fn restart_session(
+        &self,
+        request: Request<RestartSessionRequest>,
+    ) -> Result<Response<RestartSessionResponse>, Status> {
+        let req = request.into_inner();
+        log::info!(
+            "🔄 RESTART_SESSION: session={}, player={}",
+            req.session_id,
+            req.player_id
+        );
+
+        let store = get_store_from_manager(&self.session_manager);
+        let result = transform_session_in_store(store, &req.session_id, |mut session| {
+            // Verify player exists in session
+            if !session.players.contains_key(&req.player_id) {
+                return Err("PLAYER_NOT_FOUND".to_string());
+            }
+
+            // Reset session state to WAITING
+            session.state = 0; // WAITING
+            session.board_state = "{}".to_string();
+            session.turn_number = 0;
+            session.current_player_id = None;
+
+            // Reset all players: keep them but unready, reset scores
+            // AI players stay ready (they don't need to re-ready)
+            for player in session.players.values_mut() {
+                player.score = 0;
+                if player.id == "mcts_ai" {
+                    player.is_ready = true;
+                } else {
+                    player.is_ready = false;
+                }
+            }
+
+            Ok((session, true))
+        })
+        .await;
+
+        match result {
+            Ok(Some(_)) => {
+                // Fetch updated session to return game state
+                match get_session_by_id_with_manager(&self.session_manager, &req.session_id).await {
+                    Some(session) => {
+                        let game_state = session_to_game_state(&session);
+                        Ok(Response::new(RestartSessionResponse {
+                            success: true,
+                            error: None,
+                            game_state: Some(game_state),
+                        }))
+                    }
+                    None => Ok(Response::new(RestartSessionResponse {
+                        success: false,
+                        error: Some(crate::generated::takeiteasygame::v1::Error {
+                            code: "SESSION_NOT_FOUND".to_string(),
+                            message: "Session disappeared after restart".to_string(),
+                            details: std::collections::HashMap::new(),
+                        }),
+                        game_state: None,
+                    })),
+                }
+            }
+            Ok(None) => Ok(Response::new(RestartSessionResponse {
+                success: false,
+                error: Some(crate::generated::takeiteasygame::v1::Error {
+                    code: "SESSION_NOT_FOUND".to_string(),
+                    message: format!("Session {} not found", req.session_id),
+                    details: std::collections::HashMap::new(),
+                }),
+                game_state: None,
+            })),
+            Err(error_code) => Ok(Response::new(RestartSessionResponse {
+                success: false,
+                error: Some(crate::generated::takeiteasygame::v1::Error {
+                    code: error_code.clone(),
+                    message: format!("Failed to restart session: {}", error_code),
+                    details: std::collections::HashMap::new(),
+                }),
+                game_state: None,
+            })),
+        }
+    }
 }

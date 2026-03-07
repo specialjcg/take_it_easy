@@ -1123,6 +1123,16 @@ body {
     z-index: 10;
 }
 
+.hex-cell.hovered-preview {
+    transform: scale(1.08);
+    z-index: 11;
+    filter: drop-shadow(0 4px 12px rgba(78, 205, 196, 0.4));
+}
+
+.hex-tile-preview {
+    opacity: 0.8;
+}
+
 .hex-cell.filled {
     background: transparent;
 }
@@ -1294,6 +1304,31 @@ body {
 .play-again-button:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(78, 205, 196, 0.4);
+}
+
+.rematch-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    align-items: center;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.rematch-buttons .back-button {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ccc;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    padding: 0.875rem 2rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.rematch-buttons .back-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
 }
 
 /* ============================================================================

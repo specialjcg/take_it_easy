@@ -1,6 +1,6 @@
 [env]
-LIBTORCH = { value = "/home/jcgouleau/libtorch-clean/libtorch", force = true }
-LD_LIBRARY_PATH = { value = "/home/jcgouleau/libtorch-clean/libtorch/lib", force = true }
+LIBTORCH = { value = "/home/jcgouleau/libtorch-clean/libtorch", force = false }
+LD_LIBRARY_PATH = { value = "/home/jcgouleau/libtorch-clean/libtorch/lib", force = false }
 
 [build]
 # Configuration optionnelle pour le build

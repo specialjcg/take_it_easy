@@ -171,7 +171,7 @@ impl AuthDatabase {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, email, username, password_hash, email_verified, created_at, updated_at
-             FROM users WHERE email = ?1",
+             FROM users WHERE email = ?1 COLLATE NOCASE",
         )?;
 
         let mut rows = stmt.query(params![email])?;
