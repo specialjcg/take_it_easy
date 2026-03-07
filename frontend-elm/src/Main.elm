@@ -206,6 +206,7 @@ type alias Model =
     , loading : Bool
     , error : String
     , statusMessage : String
+    , hoveredPosition : Maybe Int
     }
 
 
@@ -285,6 +286,7 @@ initialModel key url =
     , loading = False
     , error = ""
     , statusMessage = ""
+    , hoveredPosition = Nothing
     }
 
 
@@ -376,6 +378,8 @@ type Msg
       -- Gameplay
     | StartTurn
     | PlayMove Int
+    | HoverPosition Int
+    | UnhoverPosition
       -- Real Game Mode
     | OpenTilePicker
     | SelectRealTile String
@@ -828,17 +832,7 @@ update msg model =
             case model.session of
                 Just session ->
                     ( { model
-                        | gameState = Nothing
-                        , plateauTiles = List.repeat 19 ""
-                        , aiPlateauTiles = List.repeat 19 ""
-                        , availablePositions = List.range 0 18
-                        , currentTurnNumber = 0
-                        , currentTile = Nothing
-                        , currentTileImage = Nothing
-                        , aiScore = 0
-                        , showAiBoard = False
-                        , allPlayerPlateaus = []
-                        , loading = True
+                        | loading = True
                         , error = ""
                         , statusMessage = ""
                       }
@@ -887,20 +881,9 @@ update msg model =
             case model.session of
                 Just session ->
                     ( { model
-                        | gameState = Nothing
-                        , plateauTiles = List.repeat 19 ""
-                        , aiPlateauTiles = List.repeat 19 ""
-                        , availablePositions = List.range 0 18
-                        , currentTurnNumber = 0
-                        , currentTile = Nothing
-                        , currentTileImage = Nothing
-                        , aiScore = 0
-                        , showAiBoard = False
-                        , allPlayerPlateaus = []
-                        , loading = True
+                        | loading = True
                         , error = ""
                         , statusMessage = ""
-                        , isSoloMode = False
                       }
                     , sendToJs <|
                         Encode.object
@@ -945,6 +928,16 @@ update msg model =
             in
             ( { model
                 | gameState = Just gameState
+                , plateauTiles = List.repeat 19 ""
+                , aiPlateauTiles = List.repeat 19 ""
+                , availablePositions = List.range 0 18
+                , currentTurnNumber = 0
+                , currentTile = Nothing
+                , currentTileImage = Nothing
+                , aiScore = 0
+                , showAiBoard = False
+                , allPlayerPlateaus = []
+                , hoveredPosition = Nothing
                 , loading = isSoloMode
                 , error = ""
                 , statusMessage = "Session redémarrée"
@@ -1192,7 +1185,7 @@ update msg model =
             else
                 case model.session of
                     Just session ->
-                        ( { model | loading = True }
+                        ( { model | loading = True, hoveredPosition = Nothing }
                         , sendToJs <|
                             Encode.object
                                 [ ( "type", Encode.string "playMove" )
@@ -1204,6 +1197,12 @@ update msg model =
 
                     Nothing ->
                         ( model, Cmd.none )
+
+        HoverPosition pos ->
+            ( { model | hoveredPosition = Just pos }, Cmd.none )
+
+        UnhoverPosition ->
+            ( { model | hoveredPosition = Nothing }, Cmd.none )
 
         -- Real Game Mode
         OpenTilePicker ->
@@ -3342,9 +3341,19 @@ viewHexBoard model =
 
                     canClick =
                         isAvailable && model.currentTile /= Nothing && model.myTurn
+
+                    isHovered =
+                        canClick && model.hoveredPosition == Just index
+
+                    previewTile =
+                        if isHovered then
+                            model.currentTileImage |> Maybe.andThen parseTileFromPath
+
+                        else
+                            Nothing
                 in
                 div
-                    [ class
+                    ([ class
                         ("hex-cell"
                             ++ (if isAvailable then
                                     " available"
@@ -3358,17 +3367,28 @@ viewHexBoard model =
                                 else
                                     ""
                                )
+                            ++ (if isHovered then
+                                    " hovered-preview"
+
+                                else
+                                    ""
+                               )
                         )
                     , style "left" (String.fromFloat x ++ "px")
                     , style "top" (String.fromFloat y ++ "px")
                     , style "width" (String.fromFloat hexWidth ++ "px")
                     , style "height" (String.fromFloat hexHeight ++ "px")
-                    , if canClick then
-                        onClick (PlayMove index)
-
-                      else
-                        class ""
                     ]
+                    ++ (if canClick then
+                            [ onClick (PlayMove index)
+                            , onMouseEnter (HoverPosition index)
+                            , onMouseLeave UnhoverPosition
+                            ]
+
+                        else
+                            []
+                       )
+                    )
                     [ if tile /= "" then
                         case parseTileFromPath tile of
                             Just tileData ->
@@ -3378,23 +3398,14 @@ viewHexBoard model =
                             Nothing ->
                                 Html.img [ src tile, class "hex-tile-image" ] []
 
-                      else if canClick then
-                        -- Show current tile preview on hoverable empty cells
-                        case model.currentTileImage of
-                            Just img ->
-                                case parseTileFromPath img of
-                                    Just tileData ->
-                                        div [ class "hex-tile-svg hex-tile-preview" ]
-                                            [ viewTileSvg tileData ]
-
-                                    Nothing ->
-                                        viewEmptyHexSvg isAvailable index
+                      else
+                        case previewTile of
+                            Just tileData ->
+                                div [ class "hex-tile-svg hex-tile-preview" ]
+                                    [ viewTileSvg tileData ]
 
                             Nothing ->
                                 viewEmptyHexSvg isAvailable index
-
-                      else
-                        viewEmptyHexSvg isAvailable index
                     ]
             )
             hexPositions

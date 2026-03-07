@@ -1123,14 +1123,14 @@ body {
     z-index: 10;
 }
 
-.hex-tile-preview {
-    opacity: 0.15;
-    transition: opacity 0.15s ease;
-    pointer-events: none;
+.hex-cell.hovered-preview {
+    transform: scale(1.08);
+    z-index: 11;
+    filter: drop-shadow(0 4px 12px rgba(78, 205, 196, 0.4));
 }
 
-.hex-cell.available:hover .hex-tile-preview {
-    opacity: 0.7;
+.hex-tile-preview {
+    opacity: 0.8;
 }
 
 .hex-cell.filled {

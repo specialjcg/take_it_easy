@@ -34,6 +34,7 @@ function getPlayerName(id) {
  * Initialize ports for the Elm app
  */
 function initPorts(app) {
+
     // Listen for messages from Elm
     app.ports.sendToJs.subscribe(async (message) => {
         log('Elm -> JS:', message);
@@ -445,7 +446,7 @@ async function handleRestartSession(app, sessionId, playerId) {
             log('restartSession success:', result.gameState);
             app.ports.receiveFromJs.send({
                 type: 'sessionRestarted',
-                gameState: result.gameState
+                gameState: parseGameState(result.gameState)
             });
         } else {
             console.error('restartSession failed:', result.error);
