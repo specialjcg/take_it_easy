@@ -248,6 +248,223 @@ impl SheafLayer {
     }
 }
 
+/// Multi-head self-attention block
+struct MultiHeadAttention {
+    qkv: nn::Linear,
+    out_proj: nn::Linear,
+    num_heads: i64,
+    head_dim: i64,
+}
+
+impl MultiHeadAttention {
+    fn new(path: &nn::Path, embed_dim: i64, num_heads: i64) -> Self {
+        let head_dim = embed_dim / num_heads;
+        Self {
+            qkv: nn::linear(path / "qkv", embed_dim, embed_dim * 3, Default::default()),
+            out_proj: nn::linear(path / "out", embed_dim, embed_dim, Default::default()),
+            num_heads,
+            head_dim,
+        }
+    }
+
+    fn forward(&self, x: &Tensor, train: bool, dropout: f64) -> Tensor {
+        let (b, n, _d) = x.size3().unwrap();
+        let qkv = x.apply(&self.qkv); // [B, N, 3*D]
+        let qkv = qkv.reshape([b, n, 3, self.num_heads, self.head_dim]);
+        let qkv = qkv.permute([2, 0, 3, 1, 4]); // [3, B, H, N, Hd]
+        let q = qkv.select(0, 0);
+        let k = qkv.select(0, 1);
+        let v = qkv.select(0, 2);
+
+        let scale = (self.head_dim as f64).sqrt();
+        let attn = q.matmul(&k.transpose(-2, -1)) / scale;
+        let attn = attn.softmax(-1, Kind::Float);
+        let attn = if train && dropout > 0.0 {
+            attn.dropout(dropout, train)
+        } else {
+            attn
+        };
+
+        let out = attn.matmul(&v); // [B, H, N, Hd]
+        let out = out.permute([0, 2, 1, 3]).reshape([b, n, -1]); // [B, N, D]
+        out.apply(&self.out_proj)
+    }
+}
+
+/// Sheaf + Attention hybrid layer
+/// Sheaf diffusion captures line structure, attention captures global interactions
+struct SheafAttentionLayer {
+    // Sheaf diffusion (same as SheafLayer)
+    restrict: Vec<nn::Linear>,
+    lift: Vec<nn::Linear>,
+    diffusion_ln: nn::LayerNorm,
+    gate_proj: nn::Linear,
+
+    // Self-attention
+    attn_ln: nn::LayerNorm,
+    attn: MultiHeadAttention,
+
+    // FFN
+    ffn_ln: nn::LayerNorm,
+    ffn: FFN,
+}
+
+impl SheafAttentionLayer {
+    fn new(path: &nn::Path, embed_dim: i64, stalk_dim: i64, ff_dim: i64, num_heads: i64) -> Self {
+        let mut restrict = Vec::with_capacity(NUM_DIRECTIONS);
+        let mut lift = Vec::with_capacity(NUM_DIRECTIONS);
+        for d in 0..NUM_DIRECTIONS {
+            restrict.push(nn::linear(
+                path / format!("restrict_{}", d),
+                embed_dim,
+                stalk_dim,
+                Default::default(),
+            ));
+            lift.push(nn::linear(
+                path / format!("lift_{}", d),
+                stalk_dim,
+                embed_dim,
+                Default::default(),
+            ));
+        }
+
+        Self {
+            restrict,
+            lift,
+            diffusion_ln: nn::layer_norm(
+                path / "diff_ln",
+                vec![embed_dim],
+                nn::LayerNormConfig { eps: 1e-5, ..Default::default() },
+            ),
+            gate_proj: nn::linear(path / "gate", embed_dim * 2, embed_dim, Default::default()),
+            attn_ln: nn::layer_norm(
+                path / "attn_ln",
+                vec![embed_dim],
+                nn::LayerNormConfig { eps: 1e-5, ..Default::default() },
+            ),
+            attn: MultiHeadAttention::new(&(path / "attn"), embed_dim, num_heads),
+            ffn_ln: nn::layer_norm(
+                path / "ffn_ln",
+                vec![embed_dim],
+                nn::LayerNormConfig { eps: 1e-5, ..Default::default() },
+            ),
+            ffn: FFN::new(&(path / "ffn"), embed_dim, ff_dim),
+        }
+    }
+
+    fn sheaf_diffusion_dir(&self, x: &Tensor, dir: usize) -> Tensor {
+        let device = x.device();
+        let s = x.apply(&self.restrict[dir]);
+
+        let mut line_means: Vec<Tensor> = Vec::with_capacity(LINES_PER_DIR);
+        for line_idx in 0..LINES_PER_DIR {
+            let len = DIR_LINE_LENS[dir][line_idx];
+            let members: Vec<i64> = DIR_LINES[dir][line_idx][..len].to_vec();
+            let idx = Tensor::from_slice(&members).to_device(device);
+            let line_stalks = s.index_select(1, &idx);
+            line_means.push(line_stalks.mean_dim(1, false, Kind::Float));
+        }
+
+        let mut disagree_parts: Vec<Tensor> = Vec::with_capacity(19);
+        for node in 0..19 {
+            let line_idx = NODE_TO_DIR_LINE[node][dir];
+            let node_stalk = s.select(1, node as i64);
+            let disagree = &line_means[line_idx] - &node_stalk;
+            disagree_parts.push(disagree.unsqueeze(1));
+        }
+
+        let all_disagree = Tensor::cat(&disagree_parts, 1);
+        all_disagree.apply(&self.lift[dir])
+    }
+
+    fn forward(&self, x: &Tensor, train: bool, dropout: f64) -> Tensor {
+        // 1. Sheaf diffusion + gated residual
+        let msg0 = self.sheaf_diffusion_dir(x, 0);
+        let msg1 = self.sheaf_diffusion_dir(x, 1);
+        let msg2 = self.sheaf_diffusion_dir(x, 2);
+        let msg = msg0 + msg1 + msg2;
+
+        let normed = x.apply(&self.diffusion_ln);
+        let gate_input = Tensor::cat(&[&normed, &msg], -1);
+        let gate = gate_input.apply(&self.gate_proj).sigmoid();
+        let x = x + &gate * &msg;
+        let x = if train && dropout > 0.0 { x.dropout(dropout, train) } else { x };
+
+        // 2. Self-attention + residual
+        let normed = x.apply(&self.attn_ln);
+        let attn_out = self.attn.forward(&normed, train, dropout);
+        let attn_out = if train && dropout > 0.0 { attn_out.dropout(dropout, train) } else { attn_out };
+        let x = &x + attn_out;
+
+        // 3. FFN + residual
+        let normed = x.apply(&self.ffn_ln);
+        let ffn_out = self.ffn.forward(&normed, train, dropout);
+        let ffn_out = if train && dropout > 0.0 { ffn_out.dropout(dropout, train) } else { ffn_out };
+        x + ffn_out
+    }
+}
+
+/// Sheaf + Attention Hybrid Policy Net
+pub struct SheafAttentionPolicyNet {
+    input_proj: nn::Linear,
+    pos_embed: Tensor,
+    layers: Vec<SheafAttentionLayer>,
+    final_ln: nn::LayerNorm,
+    policy_head: nn::Linear,
+    dropout: f64,
+}
+
+impl SheafAttentionPolicyNet {
+    pub fn new(
+        vs: &nn::VarStore,
+        input_dim: i64,
+        embed_dim: i64,
+        stalk_dim: i64,
+        num_layers: usize,
+        num_heads: i64,
+        dropout: f64,
+    ) -> Self {
+        let p = vs.root();
+        let ff_dim = embed_dim * 4;
+
+        let input_proj = nn::linear(&p / "input_proj", input_dim, embed_dim, Default::default());
+        let pos_embed = (&p / "pos_embed").var(
+            "weight",
+            &[NODE_COUNT, embed_dim],
+            nn::Init::Randn { mean: 0.0, stdev: 0.02 },
+        );
+
+        let mut layers = Vec::with_capacity(num_layers);
+        for i in 0..num_layers {
+            layers.push(SheafAttentionLayer::new(
+                &(&p / format!("sheaf_attn_{}", i)),
+                embed_dim, stalk_dim, ff_dim, num_heads,
+            ));
+        }
+
+        let final_ln = nn::layer_norm(
+            &p / "final_ln",
+            vec![embed_dim],
+            nn::LayerNormConfig { eps: 1e-5, ..Default::default() },
+        );
+        let policy_head = nn::linear(&p / "policy_head", embed_dim, 1, Default::default());
+
+        Self { input_proj, pos_embed, layers, final_ln, policy_head, dropout }
+    }
+
+    pub fn forward(&self, node_features: &Tensor, train: bool) -> Tensor {
+        let mut h = node_features.apply(&self.input_proj) + self.pos_embed.unsqueeze(0);
+        if train && self.dropout > 0.0 {
+            h = h.dropout(self.dropout, train);
+        }
+        for layer in &self.layers {
+            h = layer.forward(&h, train, self.dropout);
+        }
+        h = h.apply(&self.final_ln);
+        h.apply(&self.policy_head).squeeze_dim(-1)
+    }
+}
+
 /// Sheaf Neural Network Policy Net
 pub struct SheafPolicyNet {
     input_proj: nn::Linear,
@@ -398,6 +615,25 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_sheaf_attention_forward() {
+        let vs = nn::VarStore::new(tch::Device::Cpu);
+        let net = SheafAttentionPolicyNet::new(&vs, 47, 128, 64, 2, 4, 0.1);
+
+        let x = Tensor::randn([4, 19, 47], (Kind::Float, tch::Device::Cpu));
+        let logits = net.forward(&x, false);
+        assert_eq!(logits.size(), vec![4, 19]);
+    }
+
+    #[test]
+    fn test_sheaf_attention_param_count() {
+        let vs = nn::VarStore::new(tch::Device::Cpu);
+        let _net = SheafAttentionPolicyNet::new(&vs, 47, 128, 64, 3, 4, 0.1);
+        let count: i64 = vs.variables().values().map(|t| t.numel() as i64).sum();
+        println!("SheafAttention param count (dim=128, stalk=64, 3 layers, 4 heads): {}", count);
+        assert!(count > 0);
     }
 
     #[test]

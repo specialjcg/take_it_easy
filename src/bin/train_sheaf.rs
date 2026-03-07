@@ -24,7 +24,7 @@ use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::device_util::{check_cuda, parse_device};
 use take_it_easy::neural::graph_transformer::GraphTransformerPolicyNet;
 use take_it_easy::neural::model_io::{load_varstore, save_varstore};
-use take_it_easy::neural::sheaf_network::SheafPolicyNet;
+use take_it_easy::neural::sheaf_network::{SheafAttentionPolicyNet, SheafPolicyNet};
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
 use take_it_easy::strategy::gt_boost::line_boost;
@@ -58,6 +58,13 @@ struct Args {
 
     #[arg(long, default_value_t = 3)]
     num_layers: usize,
+
+    #[arg(long, default_value_t = 4)]
+    heads: i64,
+
+    /// Architecture: "sheaf" or "sheaf-attn"
+    #[arg(long, default_value = "sheaf")]
+    arch: String,
 
     #[arg(long, default_value_t = 0.1)]
     dropout: f64,
@@ -109,6 +116,20 @@ struct Args {
     data_dir: String,
 }
 
+enum PolicyNet {
+    Sheaf(SheafPolicyNet),
+    SheafAttn(SheafAttentionPolicyNet),
+}
+
+impl PolicyNet {
+    fn forward(&self, x: &Tensor, train: bool) -> Tensor {
+        match self {
+            PolicyNet::Sheaf(net) => net.forward(x, train),
+            PolicyNet::SheafAttn(net) => net.forward(x, train),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Sample {
     plateau: [i32; 19],
@@ -131,13 +152,18 @@ fn main() {
     };
     check_cuda();
 
+    let arch_name = match args.arch.as_str() {
+        "sheaf-attn" => format!("Sheaf+Attention (heads={})", args.heads),
+        _ => "Sheaf Neural Network (direction-aware Laplacian)".to_string(),
+    };
+
     println!("================================================================");
-    println!("         Sheaf Neural Network Training");
+    println!("         {} Training", arch_name);
     println!("================================================================\n");
 
     println!("Config:");
     println!("  Device:       {:?}", device);
-    println!("  Architecture: Sheaf Neural Network (direction-aware Laplacian)");
+    println!("  Architecture: {}", arch_name);
     println!("  Embed dim:    {}", args.embed_dim);
     println!("  Stalk dim:    {} (restriction map bottleneck)", args.stalk_dim);
     println!("  Layers:       {}", args.num_layers);
@@ -228,16 +254,18 @@ fn main() {
         val_indices.len()
     );
 
-    // Initialize Sheaf Neural Network
+    // Initialize network
     let vs = nn::VarStore::new(device);
-    let policy_net = SheafPolicyNet::new(
-        &vs,
-        47,
-        args.embed_dim,
-        args.stalk_dim,
-        args.num_layers,
-        args.dropout,
-    );
+    let policy_net = match args.arch.as_str() {
+        "sheaf-attn" => PolicyNet::SheafAttn(SheafAttentionPolicyNet::new(
+            &vs, 47, args.embed_dim, args.stalk_dim,
+            args.num_layers, args.heads, args.dropout,
+        )),
+        _ => PolicyNet::Sheaf(SheafPolicyNet::new(
+            &vs, 47, args.embed_dim, args.stalk_dim,
+            args.num_layers, args.dropout,
+        )),
+    };
 
     let param_count: i64 = vs.variables().values().map(|t| t.numel() as i64).sum();
     println!(
@@ -257,7 +285,7 @@ fn main() {
     let mut best_game_score = 0.0f64;
     let mut evals_without_improvement = 0usize;
 
-    println!("\n Training Sheaf Neural Network...\n");
+    println!("\n Training {}...\n", arch_name);
     for epoch in 0..args.epochs {
         let epoch_start = Instant::now();
 
@@ -381,7 +409,7 @@ fn main() {
     println!("\n================================================================");
     println!("                     TRAINING COMPLETE");
     println!("================================================================");
-    println!("\n  Architecture: Sheaf Neural Network");
+    println!("\n  Architecture: {}", arch_name);
     println!("  Embed dim: {}, Stalk dim: {}", args.embed_dim, args.stalk_dim);
     println!("  Best validation accuracy: {:.2}%", best_val_acc * 100.0);
     println!("  Best game score: {:.2} pts", best_game_score);
@@ -680,7 +708,7 @@ fn compute_lr(base_lr: f64, epoch: usize, total: usize, scheduler: &str, min_rat
 }
 
 fn evaluate_gpu(
-    net: &SheafPolicyNet,
+    net: &PolicyNet,
     features_gpu: &Tensor,
     targets_gpu: &Tensor,
     masks_gpu: &Tensor,
@@ -726,7 +754,7 @@ fn evaluate_gpu(
 }
 
 fn eval_games(
-    net: &SheafPolicyNet,
+    net: &PolicyNet,
     n_games: usize,
     rng: &mut StdRng,
     device: Device,
