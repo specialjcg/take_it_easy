@@ -61,9 +61,15 @@ jobs:
           LD_LIBRARY_PATH: /opt/libtorch/lib
         run: cargo build --release --bin take_it_easy
 
-      # --- Build Elm frontend ---
+      # --- Build frontend ---
       - name: Install Elm
         run: npm install -g elm
+
+      - name: Install frontend deps and build gRPC client
+        run: |
+          cd frontend-elm
+          npm install
+          npm run build:grpc
 
       - name: Bump cache version in index.html
         run: |
@@ -104,6 +110,7 @@ jobs:
             frontend-elm/public/elm.js \
             frontend-elm/public/styles.css \
             frontend-elm/public/ports.js \
+            frontend-elm/public/grpc-client.js \
             root@VPS-779132.ssh.vps1euro.fr:/opt/takeitasy/frontend/
 
       - name: Start service on VPS
