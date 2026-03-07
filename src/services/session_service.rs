@@ -684,9 +684,14 @@ impl SessionService for SessionServiceImpl {
             session.current_player_id = None;
 
             // Reset all players: keep them but unready, reset scores
+            // AI players stay ready (they don't need to re-ready)
             for player in session.players.values_mut() {
-                player.is_ready = false;
                 player.score = 0;
+                if player.id == "mcts_ai" {
+                    player.is_ready = true;
+                } else {
+                    player.is_ready = false;
+                }
             }
 
             Ok((session, true))
