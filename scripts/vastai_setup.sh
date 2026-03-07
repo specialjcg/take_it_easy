@@ -115,6 +115,8 @@ rm -rf target/release/build/torch-sys-* target/release/.fingerprint/torch-sys-* 
 cargo build --release \
     --bin train_graph_transformer \
     --bin train_value_net \
+    --bin train_sheaf \
+    --bin train_hypergraph \
     --bin benchmark_mcts_gpu 2>&1 | tail -5
 
 # ── Construire le LD_LIBRARY_PATH et LD_PRELOAD pour CUDA ──
@@ -184,16 +186,60 @@ echo "Suivi: tail -f /root/take_it_easy/training_gt_big.log"
 LAUNCHER
 chmod +x /root/run_training_bg.sh
 
+cat > /root/run_sheaf.sh << LAUNCHER
+#!/bin/bash
+# Sheaf Neural Network Training (GPU)
+cd /root/take_it_easy
+export LD_LIBRARY_PATH="$CUDA_LD"
+export LD_PRELOAD="${CUDA_PRELOAD:-}"
+
+./target/release/train_sheaf \\
+  --device cuda \\
+  --gen-games 100000 \\
+  --policy-path model_weights/graph_transformer_policy.safetensors \\
+  --gen-embed-dim 128 --gen-num-layers 2 --gen-heads 4 \\
+  --embed-dim 128 --stalk-dim 64 --num-layers 3 \\
+  --dropout 0.1 --batch-size 128 --lr 0.0005 --weight-decay 0.0001 \\
+  --epochs 80 --weight-power 3.0 --patience 3 \\
+  --save-path model_weights/sheaf \\
+  2>&1 | tee training_sheaf.log
+LAUNCHER
+chmod +x /root/run_sheaf.sh
+
+cat > /root/run_sheaf_bg.sh << LAUNCHER
+#!/bin/bash
+cd /root/take_it_easy
+export LD_LIBRARY_PATH="$CUDA_LD"
+export LD_PRELOAD="${CUDA_PRELOAD:-}"
+
+nohup ./target/release/train_sheaf \\
+  --device cuda \\
+  --gen-games 100000 \\
+  --policy-path model_weights/graph_transformer_policy.safetensors \\
+  --gen-embed-dim 128 --gen-num-layers 2 --gen-heads 4 \\
+  --embed-dim 128 --stalk-dim 64 --num-layers 3 \\
+  --dropout 0.1 --batch-size 128 --lr 0.0005 --weight-decay 0.0001 \\
+  --epochs 80 --weight-power 3.0 --patience 3 \\
+  --save-path model_weights/sheaf \\
+  > training_sheaf.log 2>&1 &
+
+echo "PID=\$!"
+echo "Suivi: tail -f /root/take_it_easy/training_sheaf.log"
+LAUNCHER
+chmod +x /root/run_sheaf_bg.sh
+
 echo -e "\n═══════════════════════════════════════════════════"
 echo "  Setup complete!"
 echo ""
-echo "  Lancer le training :"
-echo "    bash /root/run_training.sh       # foreground"
-echo "    bash /root/run_training_bg.sh    # background"
+echo "  Training scripts:"
+echo "    bash /root/run_training.sh       # GT Big (foreground)"
+echo "    bash /root/run_sheaf.sh          # Sheaf Network (foreground)"
+echo "    bash /root/run_sheaf_bg.sh       # Sheaf Network (background)"
 echo ""
 echo "  Suivi :"
-echo "    tail -f /root/take_it_easy/training_gt_big.log"
+echo "    tail -f /root/take_it_easy/training_sheaf.log"
 echo ""
-echo "  Récupérer le modèle :"
+echo "  Recuperer les modeles :"
+echo "    scp -P <PORT> root@<HOST>:/root/take_it_easy/model_weights/sheaf_policy.safetensors ."
 echo "    scp -P <PORT> root@<HOST>:/root/take_it_easy/model_weights/gt_big_policy.safetensors ."
 echo "═══════════════════════════════════════════════════"
