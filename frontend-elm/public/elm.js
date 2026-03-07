@@ -11354,7 +11354,32 @@ var $author$project$Main$viewHexBoard = function (model) {
 											_List_Nil);
 									}
 								} else {
-									return A2($author$project$TileSvg$viewEmptyHexSvg, isAvailable, index);
+									if (canClick) {
+										var _v2 = model.currentTileImage;
+										if (_v2.$ === 'Just') {
+											var img = _v2.a;
+											var _v3 = $author$project$TileSvg$parseTileFromPath(img);
+											if (_v3.$ === 'Just') {
+												var tileData = _v3.a;
+												return A2(
+													$elm$html$Html$div,
+													_List_fromArray(
+														[
+															$elm$html$Html$Attributes$class('hex-tile-svg hex-tile-preview')
+														]),
+													_List_fromArray(
+														[
+															$author$project$TileSvg$viewTileSvg(tileData)
+														]));
+											} else {
+												return A2($author$project$TileSvg$viewEmptyHexSvg, isAvailable, index);
+											}
+										} else {
+											return A2($author$project$TileSvg$viewEmptyHexSvg, isAvailable, index);
+										}
+									} else {
+										return A2($author$project$TileSvg$viewEmptyHexSvg, isAvailable, index);
+									}
 								}
 							}()
 							]));

@@ -3378,6 +3378,21 @@ viewHexBoard model =
                             Nothing ->
                                 Html.img [ src tile, class "hex-tile-image" ] []
 
+                      else if canClick then
+                        -- Show current tile preview on hoverable empty cells
+                        case model.currentTileImage of
+                            Just img ->
+                                case parseTileFromPath img of
+                                    Just tileData ->
+                                        div [ class "hex-tile-svg hex-tile-preview" ]
+                                            [ viewTileSvg tileData ]
+
+                                    Nothing ->
+                                        viewEmptyHexSvg isAvailable index
+
+                            Nothing ->
+                                viewEmptyHexSvg isAvailable index
+
                       else
                         viewEmptyHexSvg isAvailable index
                     ]

@@ -1123,6 +1123,16 @@ body {
     z-index: 10;
 }
 
+.hex-tile-preview {
+    opacity: 0.15;
+    transition: opacity 0.15s ease;
+    pointer-events: none;
+}
+
+.hex-cell.available:hover .hex-tile-preview {
+    opacity: 0.7;
+}
+
 .hex-cell.filled {
     background: transparent;
 }
