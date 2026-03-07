@@ -64,10 +64,10 @@ cd /root
 if [ -d "take_it_easy" ]; then
     cd take_it_easy
     git fetch origin
-    git checkout master
-    git pull origin master || true
+    git checkout feature/hypergraph-transformer
+    git pull origin feature/hypergraph-transformer || true
 else
-    git clone https://github.com/specialjcg/take_it_easy.git
+    git clone -b feature/hypergraph-transformer https://github.com/specialjcg/take_it_easy.git
     cd take_it_easy
 fi
 
