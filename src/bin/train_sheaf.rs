@@ -24,7 +24,10 @@ use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::device_util::{check_cuda, parse_device};
 use take_it_easy::neural::graph_transformer::GraphTransformerPolicyNet;
 use take_it_easy::neural::model_io::{load_varstore, save_varstore};
+use take_it_easy::neural::kan_network::KANPolicyNet;
 use take_it_easy::neural::mamba_network::MambaPolicyNet;
+use take_it_easy::neural::perceiver_network::PerceiverPolicyNet;
+use take_it_easy::neural::retnet_network::RetNetPolicyNet;
 use take_it_easy::neural::sheaf_network::{SheafAttentionPolicyNet, SheafPolicyNet};
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
@@ -67,7 +70,15 @@ struct Args {
     #[arg(long, default_value_t = 16)]
     d_state: i64,
 
-    /// Architecture: "sheaf", "sheaf-attn", or "mamba"
+    /// KAN grid size (RBF centers)
+    #[arg(long, default_value_t = 8)]
+    grid_size: i64,
+
+    /// Perceiver latent tokens
+    #[arg(long, default_value_t = 8)]
+    num_latents: i64,
+
+    /// Architecture: "sheaf", "sheaf-attn", "mamba", "kan", "perceiver", "retnet"
     #[arg(long, default_value = "sheaf")]
     arch: String,
 
@@ -125,6 +136,9 @@ enum PolicyNet {
     Sheaf(SheafPolicyNet),
     SheafAttn(SheafAttentionPolicyNet),
     Mamba(MambaPolicyNet),
+    KAN(KANPolicyNet),
+    Perceiver(PerceiverPolicyNet),
+    RetNet(RetNetPolicyNet),
 }
 
 impl PolicyNet {
@@ -133,6 +147,9 @@ impl PolicyNet {
             PolicyNet::Sheaf(net) => net.forward(x, train),
             PolicyNet::SheafAttn(net) => net.forward(x, train),
             PolicyNet::Mamba(net) => net.forward(x, train),
+            PolicyNet::KAN(net) => net.forward(x, train),
+            PolicyNet::Perceiver(net) => net.forward(x, train),
+            PolicyNet::RetNet(net) => net.forward(x, train),
         }
     }
 }
@@ -162,6 +179,9 @@ fn main() {
     let arch_name = match args.arch.as_str() {
         "sheaf-attn" => format!("Sheaf+Attention (heads={})", args.heads),
         "mamba" => format!("Mamba SSM (d_state={})", args.d_state),
+        "kan" => format!("KAN (grid_size={})", args.grid_size),
+        "perceiver" => format!("Perceiver (latents={}, heads={})", args.num_latents, args.heads),
+        "retnet" => format!("RetNet (heads={})", args.heads),
         _ => "Sheaf Neural Network (direction-aware Laplacian)".to_string(),
     };
 
@@ -272,6 +292,18 @@ fn main() {
         "mamba" => PolicyNet::Mamba(MambaPolicyNet::new(
             &vs, 47, args.embed_dim, args.d_state,
             args.num_layers, args.dropout,
+        )),
+        "kan" => PolicyNet::KAN(KANPolicyNet::new(
+            &vs, 47, args.embed_dim, args.num_layers,
+            args.grid_size, args.dropout,
+        )),
+        "perceiver" => PolicyNet::Perceiver(PerceiverPolicyNet::new(
+            &vs, 47, args.embed_dim, args.num_latents,
+            args.num_layers, args.heads, args.dropout,
+        )),
+        "retnet" => PolicyNet::RetNet(RetNetPolicyNet::new(
+            &vs, 47, args.embed_dim, args.num_layers,
+            args.heads, args.dropout,
         )),
         _ => PolicyNet::Sheaf(SheafPolicyNet::new(
             &vs, 47, args.embed_dim, args.stalk_dim,

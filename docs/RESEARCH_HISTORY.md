@@ -20,6 +20,7 @@
 14. [Value Network + Expectimax Hybride (mars 2026)](#14-value-network--expectimax-hybride-mars-2026)
 15. [Policy Distillation depuis Expectimax (mars 2026)](#15-policy-distillation-depuis-expectimax-mars-2026)
 16. [2-ply Expectimax (mars 2026)](#16-2-ply-expectimax-mars-2026)
+17. [Architectures Alternatives GPU — Sheaf, Sheaf+Attention, Mamba (mars 2026)](#17-architectures-alternatives-gpu--sheaf-sheafattention-mamba-mars-2026)
 
 ---
 
@@ -820,6 +821,133 @@ Forward pass chunké par lots de 8192 pour la mémoire GPU.
 
 ---
 
+## 17. Architectures Alternatives GPU — Sheaf, Sheaf+Attention, Mamba (mars 2026)
+
+### Motivation
+
+Le Graph Transformer (~152.3 pts) est la meilleure architecture policy pure. Objectif : explorer des architectures **fondamentalement différentes** qui exploitent la structure hexagonale autrement, entraînées sur GPU (Vast.ai RTX 3090, $0.175/h) avec 100k parties self-play.
+
+### Instance GPU
+
+- **Vast.ai** : RTX 3090, Sweden, PyTorch 2.5.1+cu124
+- **Libtorch** : `LIBTORCH_USE_PYTORCH=1` via pip torch
+- **Binary** : `train_sheaf --arch {sheaf|sheaf-attn|mamba}`
+- **Data** : 100k parties GT Direct self-play, ~1.85M samples, générées on-the-fly (~1100s)
+
+### Architecture 1 : Sheaf Neural Network
+
+**Concept** : Restriction maps direction-dépendantes projettent les features de chaque noeud dans un "stalk space" par direction de scoring (3 directions). Le Sheaf Laplacien (line_mean - node_stalk) propage l'information le long des lignes de scoring.
+
+```
+Couche Sheaf :
+  Pour chaque direction d ∈ {0, 1, 2} :
+    stalk_d = restrict_d(node_features)  [embed → stalk_dim]
+    laplacian_d = line_mean(stalk_d) - stalk_d
+    lifted_d = lift_d(laplacian_d)       [stalk_dim → embed]
+  fusion = gated_sum(lifted_0, lifted_1, lifted_2)  [3 gates]
+  output = FFN(node_features + fusion)
+```
+
+**Config** : embed=128, stalk_dim=64, 3 layers, dropout=0.1, lr=0.0005, batch=128
+**Paramètres** : 548K
+
+**Résultats (200 eval games)** :
+
+| Epoch | Val Acc | Val Loss | Game Score |
+|-------|---------|----------|------------|
+| 10 | 93.6% | 0.1500 | 146.9 pts |
+| 20 | 94.2% | 0.1346 | **153.9 pts** |
+| 30 | 94.4% | 0.1312 | 151.1 pts |
+| 40 | 94.6% | 0.1285 | 147.3 pts |
+| 50 (final) | 94.7% | 0.1267 | **147.5 pts** |
+
+**Analyse** : Pic de performance à l'epoch 20 (153.9 pts ≈ GT Direct), puis dégradation malgré l'amélioration continue de val acc/loss. Signe classique d'**overfitting sur la métrique de jeu** : le modèle améliore l'accuracy sur des coups peu impactants tout en dégradant les coups critiques. Résultat final -4.8 pts vs GT Direct.
+
+### Architecture 2 : Sheaf + Multi-Head Attention Hybrid
+
+**Concept** : Ajouter du multi-head self-attention entre la diffusion sheaf et le FFN dans chaque couche. L'attention capture les interactions globales (toutes positions ↔ toutes positions) que le sheaf Laplacien local ne voit pas.
+
+```
+Couche SheafAttention :
+  sheaf_out = SheafDiffusion(x)          [comme ci-dessus]
+  attn_out = MultiHeadAttention(x + sheaf_out)  [4 heads]
+  output = FFN(x + sheaf_out + attn_out)
+```
+
+**Config** : embed=128, stalk_dim=64, 3 layers, 4 heads, dropout=0.1, lr=0.0005, batch=128
+**Paramètres** : 852K (+55% vs Sheaf pur)
+
+**Résultats (200 eval games)** :
+
+| Epoch | Val Acc | Val Loss | Game Score |
+|-------|---------|----------|------------|
+| 10 | 93.7% | 0.1477 | 143.2 pts |
+| 20 | 94.3% | 0.1354 | **148.7 pts** |
+
+**Décision** : Tué à l'epoch 20 (148.7 < 153.9 seuil GT Direct). L'ajout d'attention ne compense pas le coût en paramètres — pire que Sheaf pur à chaque checkpoint.
+
+### Architecture 3 : Mamba (Selective State Space Model)
+
+**Concept** : State Space Model avec mécanisme sélectif (input-dependent A, B, C). Scan bidirectionnel le long des 3 directions de scoring (6 scans au total). O(N) vs O(N²) pour l'attention.
+
+```
+h_t = A_bar * h_{t-1} + B_bar * x_t
+y_t = C * h_t + D * x_t
+
+MambaBlock :
+  in_proj → [gate, x] (2× expansion)
+  conv1d(x)
+  forward_scan(x, direction_d) + backward_scan(x, direction_d)
+  gate * ssm_output → out_proj
+
+MambaLayer :
+  3 × MambaBlock (une par direction) → fusion → FFN
+```
+
+**Config** : embed=128, d_state=16, 3 layers, batch=512, lr=0.0005
+**Paramètres** : 2.19M (~4× Sheaf, ~16× GT)
+
+**Résultats (200 eval games)** :
+
+| Epoch | Val Acc | Val Loss | Game Score |
+|-------|---------|----------|------------|
+| 10 | 93.6% | 0.1353 | **140.4 pts** |
+| 12 | 93.8% | 0.1354 | — |
+
+**Décision** : Tué à l'epoch 12 (140.4 pts à epoch 10, tendance insuffisante pour atteindre 153.9 à epoch 20). Score le plus bas des 3 architectures malgré 4× plus de paramètres. Epochs très lentes (~813s vs ~130s pour Sheaf+Attention) à cause du scan séquentiel sur 19 positions × 3 directions × 2 (bidirectionnel).
+
+### Tableau Comparatif
+
+| Architecture | Params | Epoch 10 | Epoch 20 | Final | vs GT Direct | Epoch Time |
+|---|---|---|---|---|---|---|
+| **GT Direct** | ~137K | — | — | **~152.3** | baseline | — |
+| Sheaf | 548K | 146.9 | **153.9** | 147.5 | **-4.8** | ~100s |
+| Sheaf+Attention | 852K | 143.2 | 148.7 | killed | **< GT** | ~130s |
+| Mamba SSM | 2,190K | 140.4 | — | killed | **< GT** | ~813s |
+
+### Conclusions
+
+1. **Aucune architecture alternative ne bat GT Direct** sur cette tâche. Le Graph Transformer reste optimal.
+
+2. **Plus de paramètres ≠ meilleur score** : Mamba (2.19M) < Sheaf (548K) < GT (137K). La structure inductive (attention sur graphe hexagonal) est plus importante que la capacité brute.
+
+3. **Le Sheaf Laplacien a une intuition correcte** (propager l'info le long des lignes de scoring) mais manque la flexibilité de l'attention pour pondérer les interactions. Son pic à 153.9 (epoch 20) montre qu'il capture quelque chose, mais ne généralise pas.
+
+4. **Mamba est inadapté** : le scan séquentiel sur 19 positions (court) n'exploite pas l'avantage de Mamba (séquences longues). De plus, le "routing" par direction de scoring est artificiel — les 19 positions n'ont pas d'ordre naturel sur une grille hexagonale.
+
+5. **L'attention reste le bon inductive bias** pour les graphes : elle gère nativement les relations N-to-N entre positions, pondérées par pertinence apprise.
+
+### Fichiers
+
+| Fichier | Description |
+|---------|-------------|
+| `src/neural/sheaf_network.rs` | SheafPolicyNet + SheafAttentionPolicyNet |
+| `src/neural/mamba_network.rs` | MambaPolicyNet (Selective SSM) |
+| `src/bin/train_sheaf.rs` | Multi-arch trainer (`--arch sheaf\|sheaf-attn\|mamba`) |
+| `scripts/vastai_setup.sh` | Setup GPU Vast.ai |
+
+---
+
 ## Conclusion
 
 Après 5 mois de recherche (novembre 2025 — mars 2026) :
@@ -837,6 +965,8 @@ Après 5 mois de recherche (novembre 2025 — mars 2026) :
 8. **Le MCTS + GT prior dégrade le score** — rollouts stochastiques < GT argmax
 9. **Le value net + expectimax fonctionne en mode hybride** — la clé est de limiter
    l'expectimax aux tours où le value net est assez précis (t≥8)
+10. **Les architectures alternatives (Sheaf, Mamba) ne battent pas le GT** — l'attention sur
+    graphe hexagonal est le bon inductive bias, plus de paramètres n'aide pas
 
 **Meilleur score** : **~159.2 pts** (2-ply Expectimax hybride t≥8, nécessite value net GPU)
 **Meilleur 1-ply** : **~157.5 pts** (1-ply Expectimax hybride t≥8)
@@ -848,6 +978,9 @@ Après 5 mois de recherche (novembre 2025 — mars 2026) :
 |-------|-----------|---------------------|---------|
 | ~~**2-ply expectimax**~~ | ~~Moyenne~~ | ~~Moyenne~~ | ✅ **Fait** : 159.2 pts (+6.9), ~34k évals/coup au tour 8 (section 16) |
 | **Value net plus gros** (dim=256, 4 layers) | Faible | Faible-Moyenne | Potentiellement meilleur ranking, mais risque d'overfitting |
+| ~~**Sheaf Neural Network**~~ | ~~Moyenne~~ | ~~Faible~~ | ✅ **Testé** : 147.5 pts (-4.8 vs GT), overfitting après epoch 20 (section 17) |
+| ~~**Sheaf + Attention hybrid**~~ | ~~Moyenne~~ | ~~Faible~~ | ✅ **Testé** : 148.7 pts à epoch 20, tué (section 17) |
+| ~~**Mamba SSM**~~ | ~~Moyenne~~ | ~~Faible~~ | ✅ **Testé** : 140.4 pts à epoch 10, tué — trop lent, inadapté (section 17) |
 | **Entraîner V sur les positions de l'expectimax** (itératif) | Moyenne | Moyenne | V actuel entraîné sur GT Direct, pas sur les états expectimax |
 | ~~**Policy distillation depuis expectimax**~~ | ~~Moyenne~~ | ~~Moyenne~~ | ✅ **Fait** : 154.0 pts (+3.4), 93.8% accuracy (section 15) |
 | **Distillation itérative** (V2) | Moyenne | Moyenne | Re-entraîner V sur les positions du distillé, puis re-distiller |
@@ -855,5 +988,5 @@ Après 5 mois de recherche (novembre 2025 — mars 2026) :
 
 ---
 
-*Document mis à jour le 2 mars 2026*
+*Document mis à jour le 8 mars 2026*
 *Auteurs: Claude Opus 4.5/4.6 + équipe de développement*
