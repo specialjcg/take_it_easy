@@ -24,6 +24,7 @@ use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::device_util::{check_cuda, parse_device};
 use take_it_easy::neural::graph_transformer::GraphTransformerPolicyNet;
 use take_it_easy::neural::model_io::{load_varstore, save_varstore};
+use take_it_easy::neural::edge_aware_gt::EdgeAwareGTPolicyNet;
 use take_it_easy::neural::kan_network::KANPolicyNet;
 use take_it_easy::neural::mamba_network::MambaPolicyNet;
 use take_it_easy::neural::perceiver_network::PerceiverPolicyNet;
@@ -78,7 +79,7 @@ struct Args {
     #[arg(long, default_value_t = 8)]
     num_latents: i64,
 
-    /// Architecture: "sheaf", "sheaf-attn", "mamba", "kan", "perceiver", "retnet"
+    /// Architecture: "sheaf", "sheaf-attn", "mamba", "kan", "perceiver", "retnet", "edge-gt"
     #[arg(long, default_value = "sheaf")]
     arch: String,
 
@@ -139,6 +140,7 @@ enum PolicyNet {
     KAN(KANPolicyNet),
     Perceiver(PerceiverPolicyNet),
     RetNet(RetNetPolicyNet),
+    EdgeGT(EdgeAwareGTPolicyNet),
 }
 
 impl PolicyNet {
@@ -150,6 +152,7 @@ impl PolicyNet {
             PolicyNet::KAN(net) => net.forward(x, train),
             PolicyNet::Perceiver(net) => net.forward(x, train),
             PolicyNet::RetNet(net) => net.forward(x, train),
+            PolicyNet::EdgeGT(net) => net.forward(x, train),
         }
     }
 }
@@ -182,6 +185,7 @@ fn main() {
         "kan" => format!("KAN (grid_size={})", args.grid_size),
         "perceiver" => format!("Perceiver (latents={}, heads={})", args.num_latents, args.heads),
         "retnet" => format!("RetNet (heads={})", args.heads),
+        "edge-gt" => format!("Edge-Aware GT (heads={})", args.heads),
         _ => "Sheaf Neural Network (direction-aware Laplacian)".to_string(),
     };
 
@@ -302,6 +306,10 @@ fn main() {
             args.num_layers, args.heads, args.dropout,
         )),
         "retnet" => PolicyNet::RetNet(RetNetPolicyNet::new(
+            &vs, 47, args.embed_dim, args.num_layers,
+            args.heads, args.dropout,
+        )),
+        "edge-gt" => PolicyNet::EdgeGT(EdgeAwareGTPolicyNet::new(
             &vs, 47, args.embed_dim, args.num_layers,
             args.heads, args.dropout,
         )),
