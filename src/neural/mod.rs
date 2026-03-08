@@ -3,6 +3,7 @@ pub mod gnn;
 pub mod graph_transformer;
 pub mod hypergraph_transformer;
 pub mod manager;
+pub mod mamba_network;
 pub mod sheaf_network;
 pub mod model_io;
 pub mod policy_value_net;

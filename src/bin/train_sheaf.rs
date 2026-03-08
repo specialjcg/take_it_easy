@@ -24,6 +24,7 @@ use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::device_util::{check_cuda, parse_device};
 use take_it_easy::neural::graph_transformer::GraphTransformerPolicyNet;
 use take_it_easy::neural::model_io::{load_varstore, save_varstore};
+use take_it_easy::neural::mamba_network::MambaPolicyNet;
 use take_it_easy::neural::sheaf_network::{SheafAttentionPolicyNet, SheafPolicyNet};
 use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
 use take_it_easy::scoring::scoring::result;
@@ -62,7 +63,11 @@ struct Args {
     #[arg(long, default_value_t = 4)]
     heads: i64,
 
-    /// Architecture: "sheaf" or "sheaf-attn"
+    /// SSM state dimension (Mamba)
+    #[arg(long, default_value_t = 16)]
+    d_state: i64,
+
+    /// Architecture: "sheaf", "sheaf-attn", or "mamba"
     #[arg(long, default_value = "sheaf")]
     arch: String,
 
@@ -119,6 +124,7 @@ struct Args {
 enum PolicyNet {
     Sheaf(SheafPolicyNet),
     SheafAttn(SheafAttentionPolicyNet),
+    Mamba(MambaPolicyNet),
 }
 
 impl PolicyNet {
@@ -126,6 +132,7 @@ impl PolicyNet {
         match self {
             PolicyNet::Sheaf(net) => net.forward(x, train),
             PolicyNet::SheafAttn(net) => net.forward(x, train),
+            PolicyNet::Mamba(net) => net.forward(x, train),
         }
     }
 }
@@ -154,6 +161,7 @@ fn main() {
 
     let arch_name = match args.arch.as_str() {
         "sheaf-attn" => format!("Sheaf+Attention (heads={})", args.heads),
+        "mamba" => format!("Mamba SSM (d_state={})", args.d_state),
         _ => "Sheaf Neural Network (direction-aware Laplacian)".to_string(),
     };
 
@@ -260,6 +268,10 @@ fn main() {
         "sheaf-attn" => PolicyNet::SheafAttn(SheafAttentionPolicyNet::new(
             &vs, 47, args.embed_dim, args.stalk_dim,
             args.num_layers, args.heads, args.dropout,
+        )),
+        "mamba" => PolicyNet::Mamba(MambaPolicyNet::new(
+            &vs, 47, args.embed_dim, args.d_state,
+            args.num_layers, args.dropout,
         )),
         _ => PolicyNet::Sheaf(SheafPolicyNet::new(
             &vs, 47, args.embed_dim, args.stalk_dim,
