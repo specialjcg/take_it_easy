@@ -287,7 +287,7 @@ fn main() {
     );
 
     // Initialize network
-    let vs = nn::VarStore::new(device);
+    let mut vs = nn::VarStore::new(device);
     let policy_net = match args.arch.as_str() {
         "sheaf-attn" => PolicyNet::SheafAttn(SheafAttentionPolicyNet::new(
             &vs, 47, args.embed_dim, args.stalk_dim,
@@ -403,10 +403,10 @@ fn main() {
 
         let elapsed = epoch_start.elapsed().as_secs_f32();
 
-        // Game evaluation every 10 epochs
-        let should_eval = epoch % 10 == 9 || epoch == args.epochs - 1;
+        // Game evaluation every 5 epochs
+        let should_eval = epoch % 5 == 4 || epoch == args.epochs - 1;
         let game_score = if should_eval {
-            let (score, _) = eval_games(&policy_net, 100, &mut rng, device);
+            let (score, _) = eval_games(&policy_net, 200, &mut rng, device);
             score
         } else {
             0.0
@@ -465,6 +465,16 @@ fn main() {
     println!("  Embed dim: {}, Stalk dim: {}", args.embed_dim, args.stalk_dim);
     println!("  Best validation accuracy: {:.2}%", best_val_acc * 100.0);
     println!("  Best game score: {:.2} pts", best_game_score);
+
+    // Reload best game score model before final evaluation
+    let best_path = format!("{}_policy.safetensors", args.save_path);
+    if Path::new(&best_path).exists() {
+        if let Err(e) = load_varstore(&mut vs, &best_path) {
+            eprintln!("Warning: failed to reload best model: {}", e);
+        } else {
+            println!("\n  Reloaded best game score model from {}", best_path);
+        }
+    }
 
     // Final evaluation
     println!("\n Evaluating by playing 200 games...\n");
