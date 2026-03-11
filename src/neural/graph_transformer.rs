@@ -363,7 +363,7 @@ impl GraphTransformerValueNet {
 
     /// Forward pass
     /// node_features: [batch, 19, input_dim]
-    /// Returns: [batch, 1] value in [-1, 1]
+    /// Returns: [batch, 1] unbounded normalized score
     pub fn forward(&self, node_features: &Tensor, train: bool) -> Tensor {
         // Backbone: [batch, 19, embed_dim]
         let h = self.transformer.forward(node_features, train);
@@ -371,8 +371,8 @@ impl GraphTransformerValueNet {
         // Mean pool over nodes: [batch, embed_dim]
         let pooled = h.mean_dim(1, false, Kind::Float);
 
-        // Value head: [batch, 1]
-        pooled.apply(&self.value_head).tanh()
+        // Value head: [batch, 1] — linear output, no tanh
+        pooled.apply(&self.value_head)
     }
 }
 

@@ -21,6 +21,9 @@
 15. [Policy Distillation depuis Expectimax (mars 2026)](#15-policy-distillation-depuis-expectimax-mars-2026)
 16. [2-ply Expectimax (mars 2026)](#16-2-ply-expectimax-mars-2026)
 17. [Architectures Alternatives GPU — Sheaf, Sheaf+Attention, Mamba (mars 2026)](#17-architectures-alternatives-gpu--sheaf-sheafattention-mamba-mars-2026)
+18. [Enriched 62ch Features (mars 2026)](#18-enriched-62ch-features-mars-2026)
+19. [D3 Hexagonal Symmetry Augmentation (mars 2026)](#19-d3-hexagonal-symmetry-augmentation-mars-2026)
+20. [Distillation Itérative V2 (mars 2026)](#20-distillation-itérative-v2-mars-2026)
 
 ---
 
@@ -916,26 +919,83 @@ MambaLayer :
 
 **Décision** : Tué à l'epoch 12 (140.4 pts à epoch 10, tendance insuffisante pour atteindre 153.9 à epoch 20). Score le plus bas des 3 architectures malgré 4× plus de paramètres. Epochs très lentes (~813s vs ~130s pour Sheaf+Attention) à cause du scan séquentiel sur 19 positions × 3 directions × 2 (bidirectionnel).
 
-### Tableau Comparatif
+### Architecture 4 : KAN (Kolmogorov-Arnold Network)
 
-| Architecture | Params | Epoch 10 | Epoch 20 | Final | vs GT Direct | Epoch Time |
-|---|---|---|---|---|---|---|
-| **GT Direct** | ~137K | — | — | **~152.3** | baseline | — |
-| Sheaf | 548K | 146.9 | **153.9** | 147.5 | **-4.8** | ~100s |
-| Sheaf+Attention | 852K | 143.2 | 148.7 | killed | **< GT** | ~130s |
-| Mamba SSM | 2,190K | 140.4 | — | killed | **< GT** | ~813s |
+**Concept** : Remplace les couches linéaires+activation par des fonctions d'activation apprenables par arête. Chaque connexion a sa propre fonction non-linéaire (RBF Gaussien avec coefficients apprenables). Théorème de Kolmogorov-Arnold : toute fonction continue multivariée peut être décomposée en sommes de fonctions univariées.
+
+**Config** : embed=128, grid_size=8 (centres RBF), 3 layers, dropout=0.1, batch=128
+**Paramètres** : 3,992K
+
+**Résultats** :
+
+| Epoch | Val Acc | Val Loss | Game Score |
+|-------|---------|----------|------------|
+| 10 | 91.8% | 0.2078 | **141.5 pts** |
+| 15 | 91.9% | 0.2027 | — |
+
+**Décision** : Tué à l'epoch 15. Val acc plafonne à 91.9% (vs 93.6% pour Sheaf), score de jeu 141.5 insuffisant. Les fonctions d'activation apprenables n'apportent pas d'avantage sur cette tâche : le problème est structurel (topologie du graphe), pas fonctionnel (non-linéarités).
+
+### Architecture 5 : Perceiver (Cross-Attention Latent Bottleneck)
+
+**Concept** : Cross-attention entre un petit tableau latent appris (8 tokens) et les 19 positions du plateau. Encode → Process (self-attention sur latents) → Decode. Force la compression de l'état du plateau dans un bottleneck.
+
+**Config** : embed=128, num_latents=8, 3 layers, 4 heads, dropout=0.1, batch=128
+**Paramètres** : 871K
+
+**Résultats** :
+
+| Epoch | Val Acc | Val Loss | Game Score |
+|-------|---------|----------|------------|
+| 10 | 93.2% | 0.1654 | **138.7 pts** |
+| 16 | 93.3% | 0.1656 | — |
+
+**Décision** : Tué à l'epoch 16. Le bottleneck latent (8 tokens pour 19 positions) perd de l'information positionnelle critique. Le décodage par cross-attention ne récupère pas assez de détails pour les décisions fines.
+
+### Architecture 6 : RetNet (Retentive Network, multi-directional)
+
+**Concept** : Mécanisme de rétention multi-échelle avec decay exponentiel par tête (γ_h = 1 - 2^(-5-h)). Scan bidirectionnel le long des 3 directions de scoring. Matrice de decay D[i,j] = γ^|i-j| remplace le softmax de l'attention.
+
+**Config** : embed=128, 3 layers, 4 heads, dropout=0.1, batch=128, **min_score=180** (filtrage haute qualité)
+**Paramètres** : 1,150K
+**Data** : ~14k games sur 100k (14% kept ≥180 pts) → ~266k samples
+
+**Résultats** :
+
+| Métrique | Valeur |
+|----------|--------|
+| Best Val Acc | 95.92% |
+| Best Game Score | 138.12 pts |
+| Final eval (200 games) | **137.87 pts** |
+
+**Analyse** : Malgré la meilleure val accuracy de toutes les architectures (95.9%), le score de jeu est le pire (-14.4 vs GT Direct). Le filtrage ≥180 pts a réduit la diversité des données et le decay exponentiel fixe est trop rigide comparé à l'attention apprise. High accuracy + low game score = le modèle mémorise les coups faciles mais rate les décisions critiques.
+
+### Tableau Comparatif (6 architectures)
+
+| Architecture | Params | Epoch 10 | Final | vs GT Direct | Epoch Time |
+|---|---|---|---|---|---|
+| **GT Direct** | ~137K | — | **~152.3** | baseline | — |
+| Sheaf | 548K | 146.9 | 147.5 | **-4.8** | ~100s |
+| Sheaf+Attention | 852K | 143.2 | killed | **< GT** | ~130s |
+| Perceiver | 871K | 138.7 | killed | **< GT** | ~275s |
+| RetNet | 1,150K | — | 137.9 | **-14.4** | ~fast (petit dataset) |
+| Mamba SSM | 2,190K | 140.4 | killed | **< GT** | ~813s |
+| KAN | 3,992K | 141.5 | killed | **< GT** | ~286s |
 
 ### Conclusions
 
-1. **Aucune architecture alternative ne bat GT Direct** sur cette tâche. Le Graph Transformer reste optimal.
+1. **Aucune des 6 architectures alternatives ne bat GT Direct**. Le Graph Transformer (137K params) reste optimal.
 
-2. **Plus de paramètres ≠ meilleur score** : Mamba (2.19M) < Sheaf (548K) < GT (137K). La structure inductive (attention sur graphe hexagonal) est plus importante que la capacité brute.
+2. **Plus de paramètres ≠ meilleur score** : KAN (3.99M) < Mamba (2.19M) < RetNet (1.15M) < Perceiver (871K) < Sheaf (548K) — aucun ne dépasse GT (137K). La structure inductive (attention sur graphe hexagonal) est plus importante que la capacité.
 
-3. **Le Sheaf Laplacien a une intuition correcte** (propager l'info le long des lignes de scoring) mais manque la flexibilité de l'attention pour pondérer les interactions. Son pic à 153.9 (epoch 20) montre qu'il capture quelque chose, mais ne généralise pas.
+3. **Le Sheaf Laplacien reste le plus proche** (-4.8 pts) : l'intuition de propager l'info le long des lignes de scoring est correcte, mais manque la flexibilité de l'attention.
 
-4. **Mamba est inadapté** : le scan séquentiel sur 19 positions (court) n'exploite pas l'avantage de Mamba (séquences longues). De plus, le "routing" par direction de scoring est artificiel — les 19 positions n'ont pas d'ordre naturel sur une grille hexagonale.
+4. **Mamba et RetNet sont inadaptés** : les mécanismes séquentiels (SSM scan, retention decay) supposent un ordre naturel des positions — inexistant sur une grille hexagonale.
 
-5. **L'attention reste le bon inductive bias** pour les graphes : elle gère nativement les relations N-to-N entre positions, pondérées par pertinence apprise.
+5. **Le Perceiver perd de l'information** : le bottleneck latent (8 tokens) comprime trop les 19 positions.
+
+6. **KAN n'apporte rien** : le problème est structurel (topologie du graphe), pas fonctionnel (non-linéarités des activations).
+
+7. **L'attention sur graphe reste le bon inductive bias** : relations N-to-N entre positions, pondérées par pertinence apprise, sans ordre séquentiel imposé.
 
 ### Fichiers
 
@@ -943,7 +1003,10 @@ MambaLayer :
 |---------|-------------|
 | `src/neural/sheaf_network.rs` | SheafPolicyNet + SheafAttentionPolicyNet |
 | `src/neural/mamba_network.rs` | MambaPolicyNet (Selective SSM) |
-| `src/bin/train_sheaf.rs` | Multi-arch trainer (`--arch sheaf\|sheaf-attn\|mamba`) |
+| `src/neural/kan_network.rs` | KANPolicyNet (Kolmogorov-Arnold Network) |
+| `src/neural/perceiver_network.rs` | PerceiverPolicyNet (Cross-Attention Latent) |
+| `src/neural/retnet_network.rs` | RetNetPolicyNet (Retentive Network) |
+| `src/bin/train_sheaf.rs` | Multi-arch trainer (`--arch sheaf\|sheaf-attn\|mamba\|kan\|perceiver\|retnet`) |
 | `scripts/vastai_setup.sh` | Setup GPU Vast.ai |
 
 ---
@@ -972,6 +1035,78 @@ Après 5 mois de recherche (novembre 2025 — mars 2026) :
 **Meilleur 1-ply** : **~157.5 pts** (1-ply Expectimax hybride t≥8)
 **Meilleur policy pur** : **~154.0 pts** (Distilled Expectimax, déployable partout)
 
+## 18. Enriched 62ch Features (mars 2026)
+
+**Résultat** : 151.5 pts — **pas d'amélioration** vs GT Direct (~152.3 pts)
+
+### Concept
+Ajouter 15 channels de probabilité de complétion de ligne (une par ligne du plateau) aux 47 channels existants, donnant un encodage 62ch. La probabilité est calculée comme P = Π(compat_i / (deck_remaining - i)) pour chaque case vide d'une ligne.
+
+### Résultat
+- Implémenté dans `src/neural/tensor_conversion.rs` (`convert_plateau_for_gat_enriched`)
+- Entraîné avec `train_sheaf --arch gt --enriched`
+- 151.5 pts final — légèrement en dessous du baseline
+- Le GT apprend déjà implicitement ces probabilités via l'attention
+
+### Conclusion
+Les features enrichies n'apportent rien — le GT extrait déjà l'information nécessaire des 47 channels de base.
+
+---
+
+## 19. D3 Hexagonal Symmetry Augmentation (mars 2026)
+
+**Résultat** : 152.3 pts (200 games) — **identique** au baseline GT Direct
+
+### Concept
+Le plateau hexagonal a une symétrie D3 (3 rotations × 2 miroirs = 6 transformations). Chaque partie génère 5 variantes supplémentaires (×6 au total), toutes avec le même score.
+
+### Implémentation
+- Vérifié sur 500 plateaux complets : 0 mismatches de score (test_symmetry.rs)
+- 3M samples originaux × 6 = 18.3M samples augmentés
+- Position permutations + tile face value permutations (a,b,c → rotations/reflections)
+
+### Training
+- `train_sheaf --arch gt --augment --load-games data/gt_direct_200k.tsv`
+- Meilleur game score : 154.6 pts à epoch 5 (pic statistique)
+- Early stop epoch 16, éval finale 200 games : **152.3 pts**
+- Val loss continue de baisser mais le game score ne suit pas
+
+### Conclusion
+×6 data mais pas de nouvelle information. Le GT avec 3M samples a déjà convergé ; la symétrie ne diversifie pas les stratégies. L'augmentation pourrait bénéficier au value net ou à la distillation (en cours de test).
+
+---
+
+## 20. Fix Value Net tanh + Distillation Itérative V2 (mars 2026) — EN COURS
+
+### Bug trouvé : tanh sature le value net
+Le value net utilisait `tanh()` en sortie, bornant la prédiction à [-1, 1].
+Avec normalisation (score-140)/40, les scores > 180 (13.5% des données) étaient **impossibles à prédire**.
+Fix : suppression du tanh → sortie linéaire.
+
+- V1 (tanh) : MAE ~17 pts
+- V2 (no tanh) : MAE **15.5 pts** (-8%)
+
+### Évaluation V2 (500 games, policy GT Direct original)
+
+| Config | V1 (tanh) | V2 (no tanh) | Delta |
+|--------|-----------|-------------|-------|
+| 1-ply t>=8 | 157.5 | **158.3** | +0.8 |
+| 2-ply t>=8 | 159.2 | 159.2 | = |
+| 3-ply t>=8 | 159.7 | 159.3 | -0.4 |
+
+Gain marginal : le ranking relatif importait plus que la calibration absolue.
+
+### Distillation itérative — RÉSULTAT
+
+Étapes :
+1. ✅ V1 : GT Direct (153 pts) → expectimax → distilled (154 pts)
+2. ✅ Value net V2 (no tanh, MAE 15.5) entraîné sur 3M samples TSV
+3. ✅ **Distillé V2 : 159.5 pts** (200 games) — **nouveau record policy pur !**
+   - 10k games 2-ply expectimax (167k samples) + augmentation D3 ×6 = 987k samples
+   - Fine-tune depuis GT Direct, early stop epoch 25, val acc 88.6%
+   - **+5.5 pts vs V1 distillé** (154 → 159.5)
+   - Modèle : `model_weights/distilled_v2_policy.safetensors`
+
 ### Pistes à explorer
 
 | Piste | Difficulté | Probabilité de gain | Détails |
@@ -981,12 +1116,15 @@ Après 5 mois de recherche (novembre 2025 — mars 2026) :
 | ~~**Sheaf Neural Network**~~ | ~~Moyenne~~ | ~~Faible~~ | ✅ **Testé** : 147.5 pts (-4.8 vs GT), overfitting après epoch 20 (section 17) |
 | ~~**Sheaf + Attention hybrid**~~ | ~~Moyenne~~ | ~~Faible~~ | ✅ **Testé** : 148.7 pts à epoch 20, tué (section 17) |
 | ~~**Mamba SSM**~~ | ~~Moyenne~~ | ~~Faible~~ | ✅ **Testé** : 140.4 pts à epoch 10, tué — trop lent, inadapté (section 17) |
+| ~~**KAN (Kolmogorov-Arnold)**~~ | ~~Moyenne~~ | ~~Faible~~ | ✅ **Testé** : 141.5 pts à epoch 10, tué — 4M params, pas d'avantage (section 17) |
+| ~~**Perceiver (latent bottleneck)**~~ | ~~Moyenne~~ | ~~Faible~~ | ✅ **Testé** : 138.7 pts à epoch 10, tué — perte d'info positionnelle (section 17) |
+| ~~**RetNet (retention multi-dir)**~~ | ~~Moyenne~~ | ~~Faible~~ | ✅ **Testé** : 137.9 pts final — pire résultat, decay fixe inadapté (section 17) |
 | **Entraîner V sur les positions de l'expectimax** (itératif) | Moyenne | Moyenne | V actuel entraîné sur GT Direct, pas sur les états expectimax |
 | ~~**Policy distillation depuis expectimax**~~ | ~~Moyenne~~ | ~~Moyenne~~ | ✅ **Fait** : 154.0 pts (+3.4), 93.8% accuracy (section 15) |
-| **Distillation itérative** (V2) | Moyenne | Moyenne | Re-entraîner V sur les positions du distillé, puis re-distiller |
+| **Distillation itérative** (V2) | Moyenne | Moyenne | 🔄 En cours — value net V2 sur données augmentées score≥180 |
 | **Déployer distilled policy en production** | Faible | Certain | Remplacer le policy net actuel par le distillé (+3.4 pts gratuit) |
 
 ---
 
-*Document mis à jour le 8 mars 2026*
+*Document mis à jour le 11 mars 2026*
 *Auteurs: Claude Opus 4.5/4.6 + équipe de développement*

@@ -11,12 +11,14 @@
 use clap::Parser;
 use rand::prelude::*;
 use rand::rngs::StdRng;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::time::Instant;
 use tch::{nn, nn::OptimizerConfig, Device, IndexOp, Kind, Tensor};
 
 use take_it_easy::game::create_deck::create_deck;
+use take_it_easy::game::deck::Deck;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::{create_plateau_empty, Plateau};
 use take_it_easy::game::remove_tile_from_deck::replace_tile_in_deck;
@@ -30,7 +32,7 @@ use take_it_easy::neural::mamba_network::MambaPolicyNet;
 use take_it_easy::neural::perceiver_network::PerceiverPolicyNet;
 use take_it_easy::neural::retnet_network::RetNetPolicyNet;
 use take_it_easy::neural::sheaf_network::{SheafAttentionPolicyNet, SheafPolicyNet};
-use take_it_easy::neural::tensor_conversion::convert_plateau_for_gat_47ch;
+use take_it_easy::neural::tensor_conversion::{convert_plateau_for_gat_47ch, convert_plateau_for_gat_enriched};
 use take_it_easy::scoring::scoring::result;
 use take_it_easy::strategy::gt_boost::line_boost;
 
@@ -131,6 +133,26 @@ struct Args {
     /// CSV data directory (when gen-games == 0)
     #[arg(long, default_value = "data")]
     data_dir: String,
+
+    /// Save generated samples to file for reuse
+    #[arg(long)]
+    save_games: Option<String>,
+
+    /// Load samples from file instead of generating
+    #[arg(long)]
+    load_games: Option<String>,
+
+    /// Initialize weights from existing model (fine-tune)
+    #[arg(long)]
+    init_from: Option<String>,
+
+    /// Use enriched 62-channel encoding (47 base + 15 line completion probabilities)
+    #[arg(long)]
+    enriched: bool,
+
+    /// Apply D3 hexagonal symmetry augmentation (×6 data)
+    #[arg(long)]
+    augment: bool,
 }
 
 enum PolicyNet {
@@ -141,6 +163,7 @@ enum PolicyNet {
     Perceiver(PerceiverPolicyNet),
     RetNet(RetNetPolicyNet),
     EdgeGT(EdgeAwareGTPolicyNet),
+    GT(GraphTransformerPolicyNet),
 }
 
 impl PolicyNet {
@@ -153,6 +176,7 @@ impl PolicyNet {
             PolicyNet::Perceiver(net) => net.forward(x, train),
             PolicyNet::RetNet(net) => net.forward(x, train),
             PolicyNet::EdgeGT(net) => net.forward(x, train),
+            PolicyNet::GT(net) => net.forward(x, train),
         }
     }
 }
@@ -167,6 +191,186 @@ struct Sample {
     weight: f64,
 }
 
+/// Hash key for deduplication: (plateau, tile, position)
+fn sample_key(s: &Sample) -> (Vec<i32>, (i32, i32, i32), usize) {
+    (s.plateau.to_vec(), s.tile, s.position)
+}
+
+/// Save samples to a text file (one sample per line, tab-separated)
+fn save_samples(samples: &[Sample], path: &str) -> std::io::Result<()> {
+    let file = std::fs::File::create(path)?;
+    let mut w = BufWriter::new(file);
+    writeln!(w, "# plateau(19)\ttile(3)\tposition\tturn\tfinal_score\tweight")?;
+    for s in samples {
+        let plateau_str: Vec<String> = s.plateau.iter().map(|v| v.to_string()).collect();
+        writeln!(
+            w,
+            "{}\t{},{},{}\t{}\t{}\t{}\t{:.6}",
+            plateau_str.join(","),
+            s.tile.0, s.tile.1, s.tile.2,
+            s.position, s.turn, s.final_score, s.weight
+        )?;
+    }
+    Ok(())
+}
+
+/// Load samples from a text file, apply min_score filter and recompute weights
+fn load_samples(path: &str, min_score: i32, weight_power: f64) -> Vec<Sample> {
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Cannot open {}: {}", path, e);
+            return Vec::new();
+        }
+    };
+    let reader = BufReader::new(file);
+    let mut samples = Vec::new();
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        if line.starts_with('#') || line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 6 {
+            continue;
+        }
+        let plateau: Vec<i32> = parts[0].split(',').filter_map(|v| v.parse().ok()).collect();
+        if plateau.len() != 19 {
+            continue;
+        }
+        let tile_parts: Vec<i32> = parts[1].split(',').filter_map(|v| v.parse().ok()).collect();
+        if tile_parts.len() != 3 {
+            continue;
+        }
+        let position: usize = parts[2].parse().unwrap_or(0);
+        let turn: usize = parts[3].parse().unwrap_or(0);
+        let final_score: i32 = parts[4].parse().unwrap_or(0);
+
+        if final_score < min_score {
+            continue;
+        }
+
+        let weight = (final_score as f64 / 100.0).powf(weight_power);
+        let mut p = [0i32; 19];
+        p.copy_from_slice(&plateau);
+
+        samples.push(Sample {
+            plateau: p,
+            tile: (tile_parts[0], tile_parts[1], tile_parts[2]),
+            position,
+            turn,
+            final_score,
+            weight,
+        });
+    }
+    samples
+}
+
+/// Deduplicate samples by (plateau, tile, position)
+fn dedup_samples(samples: &mut Vec<Sample>) -> usize {
+    let before = samples.len();
+    let mut seen = HashSet::new();
+    samples.retain(|s| {
+        // Use a compact hash: plateau as bytes + tile + position
+        let key = format!(
+            "{:?}|{},{},{}|{}",
+            &s.plateau, s.tile.0, s.tile.1, s.tile.2, s.position
+        );
+        seen.insert(key)
+    });
+    before - samples.len()
+}
+
+// ── D3 Hexagonal Symmetry Augmentation ──
+// The hex board has 6 symmetries: identity + 2 rotations + 3 reflections.
+// Each transforms positions and tile face values while preserving the score.
+
+// Hex axial coordinates for positions 0-18
+const HEX_COORDS: [(i32, i32); 19] = [
+    (0,-2),(1,-2),(2,-2),(-1,-1),(0,-1),(1,-1),(2,-1),
+    (-2,0),(-1,0),(0,0),(1,0),(2,0),(-2,1),(-1,1),(0,1),(1,1),
+    (-2,2),(-1,2),(0,2),
+];
+
+fn coord_to_pos(q: i32, r: i32) -> usize {
+    HEX_COORDS.iter().position(|&(cq, cr)| cq == q && cr == r).unwrap()
+}
+
+fn make_pos_perm(transform: fn(i32, i32) -> (i32, i32)) -> [usize; 19] {
+    let mut perm = [0usize; 19];
+    for i in 0..19 {
+        let (q, r) = HEX_COORDS[i];
+        let (nq, nr) = transform(q, r);
+        perm[i] = coord_to_pos(nq, nr);
+    }
+    perm
+}
+
+type TileFn = fn((i32, i32, i32)) -> (i32, i32, i32);
+
+fn symmetry_transforms() -> Vec<([usize; 19], TileFn)> {
+    // Rot 120° CW: (q,r)→(-r, q+r), tile (a,b,c)→(b,c,a)
+    let rot120 = make_pos_perm(|q, r| (-r, q + r));
+    // Rot 240° CW: (q,r)→(-q-r, q), tile (a,b,c)→(c,a,b)
+    let rot240 = make_pos_perm(|q, r| (-q - r, q));
+    // Reflection A: (q,r)→(q, -q-r), tile (a,b,c)→(b,a,c)
+    let refa = make_pos_perm(|q, r| (q, -q - r));
+    // Reflection B = rot120 ∘ refA
+    let mut refb = [0usize; 19];
+    for i in 0..19 { refb[i] = rot120[refa[i]]; }
+    // Reflection C = rot240 ∘ refA
+    let mut refc = [0usize; 19];
+    for i in 0..19 { refc[i] = rot240[refa[i]]; }
+
+    vec![
+        (rot120, (|t: (i32,i32,i32)| (t.1, t.2, t.0)) as TileFn),
+        (rot240, (|t: (i32,i32,i32)| (t.2, t.0, t.1)) as TileFn),
+        (refa,   (|t: (i32,i32,i32)| (t.1, t.0, t.2)) as TileFn),
+        (refb,   (|t: (i32,i32,i32)| (t.0, t.2, t.1)) as TileFn),
+        (refc,   (|t: (i32,i32,i32)| (t.2, t.1, t.0)) as TileFn),
+    ]
+}
+
+fn encode_tile_i32(t: &Tile) -> i32 {
+    if *t == Tile(0, 0, 0) { 0 } else { t.0 * 100 + t.1 * 10 + t.2 }
+}
+
+fn augment_samples(samples: &mut Vec<Sample>) -> usize {
+    let transforms = symmetry_transforms();
+    let original_len = samples.len();
+    let mut new_samples = Vec::with_capacity(original_len * 5);
+
+    for s in samples.iter() {
+        for (pos_perm, tile_fn) in &transforms {
+            let mut new_plateau = [0i32; 19];
+            for i in 0..19 {
+                if s.plateau[i] != 0 {
+                    let t = decode_tile(s.plateau[i]);
+                    let (a, b, c) = tile_fn((t.0, t.1, t.2));
+                    new_plateau[pos_perm[i]] = encode_tile_i32(&Tile(a, b, c));
+                }
+            }
+            let new_tile = tile_fn(s.tile);
+            let new_pos = pos_perm[s.position];
+
+            new_samples.push(Sample {
+                plateau: new_plateau,
+                tile: new_tile,
+                position: new_pos,
+                turn: s.turn,
+                final_score: s.final_score,
+                weight: s.weight,
+            });
+        }
+    }
+
+    samples.extend(new_samples);
+    samples.len() - original_len
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -179,6 +383,8 @@ fn main() {
     };
     check_cuda();
 
+    let in_ch: i64 = if args.enriched { 62 } else { 47 };
+
     let arch_name = match args.arch.as_str() {
         "sheaf-attn" => format!("Sheaf+Attention (heads={})", args.heads),
         "mamba" => format!("Mamba SSM (d_state={})", args.d_state),
@@ -186,6 +392,7 @@ fn main() {
         "perceiver" => format!("Perceiver (latents={}, heads={})", args.num_latents, args.heads),
         "retnet" => format!("RetNet (heads={})", args.heads),
         "edge-gt" => format!("Edge-Aware GT (heads={})", args.heads),
+        "gt" => format!("Graph Transformer (heads={})", args.heads),
         _ => "Sheaf Neural Network (direction-aware Laplacian)".to_string(),
     };
 
@@ -204,6 +411,10 @@ fn main() {
     println!("  Weight decay: {}", args.weight_decay);
     println!("  Epochs:       {}", args.epochs);
     println!("  LR:           {} ({})", args.lr, args.lr_scheduler);
+    println!("  Input ch:     {} ({})", in_ch, if args.enriched { "enriched +15 prob" } else { "standard" });
+    if args.augment {
+        println!("  Augmentation: D3 hex symmetry (×6 data)");
+    }
     println!("  Weight power: {:.1}", args.weight_power);
     if args.gen_games > 0 {
         println!(
@@ -220,7 +431,12 @@ fn main() {
     }
 
     // Load or generate data
-    let samples = if args.gen_games > 0 {
+    let mut samples = if let Some(ref load_path) = args.load_games {
+        println!("\n Loading cached games from {}...", load_path);
+        let s = load_samples(load_path, args.min_score, args.weight_power);
+        println!("   Loaded {} samples (score >= {})", s.len(), args.min_score);
+        s
+    } else if args.gen_games > 0 {
         generate_selfplay_data(&args, device)
     } else {
         println!("\n Loading data from {}...", args.data_dir);
@@ -228,6 +444,27 @@ fn main() {
         println!("   Loaded {} samples (score >= {})", s.len(), args.min_score);
         s
     };
+
+    // Deduplicate
+    let removed = dedup_samples(&mut samples);
+    if removed > 0 {
+        println!("   Removed {} duplicate samples, {} remaining", removed, samples.len());
+    }
+
+    // D3 symmetry augmentation (×6 data)
+    if args.augment {
+        let added = augment_samples(&mut samples);
+        println!("   Augmented with D3 symmetry: +{} samples ({} total, ×{:.1})",
+            added, samples.len(), samples.len() as f64 / (samples.len() - added) as f64);
+    }
+
+    // Save if requested
+    if let Some(ref save_path) = args.save_games {
+        match save_samples(&samples, save_path) {
+            Ok(()) => println!("   Saved {} samples to {}", samples.len(), save_path),
+            Err(e) => eprintln!("   Warning: failed to save games: {}", e),
+        }
+    }
 
     if samples.is_empty() {
         println!("No samples found!");
@@ -249,21 +486,20 @@ fn main() {
     );
     println!("   Total weight: {:.1}", total_weight);
 
-    // Pre-compute all features on device
-    println!("\n Pre-computing features on {:?}...", device);
+    // Pre-compute all features on CPU (to avoid GPU OOM with large datasets)
+    println!("\n Pre-computing features on Cpu...");
     let precompute_start = Instant::now();
     let n = samples.len();
-    let all_features: Vec<Tensor> = samples.iter().map(|s| sample_to_features(s)).collect();
+    let enriched = args.enriched;
+    let all_features: Vec<Tensor> = samples.iter().map(|s| sample_to_features(s, enriched)).collect();
     let all_masks: Vec<Tensor> = samples.iter().map(|s| get_available_mask(s)).collect();
     let all_targets: Vec<i64> = samples.iter().map(|s| s.position as i64).collect();
     let all_weights: Vec<f64> = samples.iter().map(|s| s.weight).collect();
 
-    let features_gpu = Tensor::stack(&all_features, 0).to_device(device);
-    let masks_gpu = Tensor::stack(&all_masks, 0).to_device(device);
-    let targets_gpu = Tensor::from_slice(&all_targets).to_device(device);
-    let weights_gpu = Tensor::from_slice(&all_weights)
-        .to_kind(Kind::Float)
-        .to_device(device);
+    let features_cpu = Tensor::stack(&all_features, 0); // stay on CPU
+    let masks_cpu = Tensor::stack(&all_masks, 0);
+    let targets_cpu = Tensor::from_slice(&all_targets);
+    let weights_cpu = Tensor::from_slice(&all_weights).to_kind(Kind::Float);
     drop(all_features);
     drop(all_masks);
     println!(
@@ -290,34 +526,47 @@ fn main() {
     let mut vs = nn::VarStore::new(device);
     let policy_net = match args.arch.as_str() {
         "sheaf-attn" => PolicyNet::SheafAttn(SheafAttentionPolicyNet::new(
-            &vs, 47, args.embed_dim, args.stalk_dim,
+            &vs, in_ch, args.embed_dim, args.stalk_dim,
             args.num_layers, args.heads, args.dropout,
         )),
         "mamba" => PolicyNet::Mamba(MambaPolicyNet::new(
-            &vs, 47, args.embed_dim, args.d_state,
+            &vs, in_ch, args.embed_dim, args.d_state,
             args.num_layers, args.dropout,
         )),
         "kan" => PolicyNet::KAN(KANPolicyNet::new(
-            &vs, 47, args.embed_dim, args.num_layers,
+            &vs, in_ch, args.embed_dim, args.num_layers,
             args.grid_size, args.dropout,
         )),
         "perceiver" => PolicyNet::Perceiver(PerceiverPolicyNet::new(
-            &vs, 47, args.embed_dim, args.num_latents,
+            &vs, in_ch, args.embed_dim, args.num_latents,
             args.num_layers, args.heads, args.dropout,
         )),
         "retnet" => PolicyNet::RetNet(RetNetPolicyNet::new(
-            &vs, 47, args.embed_dim, args.num_layers,
+            &vs, in_ch, args.embed_dim, args.num_layers,
             args.heads, args.dropout,
         )),
         "edge-gt" => PolicyNet::EdgeGT(EdgeAwareGTPolicyNet::new(
-            &vs, 47, args.embed_dim, args.num_layers,
+            &vs, in_ch, args.embed_dim, args.num_layers,
+            args.heads, args.dropout,
+        )),
+        "gt" => PolicyNet::GT(GraphTransformerPolicyNet::new(
+            &vs, in_ch, args.embed_dim, args.num_layers,
             args.heads, args.dropout,
         )),
         _ => PolicyNet::Sheaf(SheafPolicyNet::new(
-            &vs, 47, args.embed_dim, args.stalk_dim,
+            &vs, in_ch, args.embed_dim, args.stalk_dim,
             args.num_layers, args.dropout,
         )),
     };
+
+    // Fine-tune: load pre-trained weights
+    if let Some(ref init_path) = args.init_from {
+        if let Err(e) = load_varstore(&mut vs, init_path) {
+            eprintln!("Warning: failed to load init weights from {}: {}", init_path, e);
+        } else {
+            println!("   Initialized from {} (fine-tune)", init_path);
+        }
+    }
 
     let param_count: i64 = vs.variables().values().map(|t| t.numel() as i64).sum();
     println!(
@@ -361,12 +610,12 @@ fn main() {
             let start = batch_i * args.batch_size;
             let end = start + args.batch_size;
             let batch_idx: Vec<i64> = train_idx[start..end].iter().map(|&i| i as i64).collect();
-            let idx_tensor = Tensor::from_slice(&batch_idx).to_device(device);
+            let idx_tensor = Tensor::from_slice(&batch_idx);
 
-            let features = features_gpu.index_select(0, &idx_tensor);
-            let targets = targets_gpu.index_select(0, &idx_tensor);
-            let masks = masks_gpu.index_select(0, &idx_tensor);
-            let weights = weights_gpu.index_select(0, &idx_tensor);
+            let features = features_cpu.index_select(0, &idx_tensor).to_device(device);
+            let targets = targets_cpu.index_select(0, &idx_tensor).to_device(device);
+            let masks = masks_cpu.index_select(0, &idx_tensor).to_device(device);
+            let weights = weights_cpu.index_select(0, &idx_tensor).to_device(device);
 
             let logits = policy_net.forward(&features, true);
             let masked_logits = logits + &masks;
@@ -393,9 +642,9 @@ fn main() {
         // Validation
         let (val_loss, val_acc) = evaluate_gpu(
             &policy_net,
-            &features_gpu,
-            &targets_gpu,
-            &masks_gpu,
+            &features_cpu,
+            &targets_cpu,
+            &masks_cpu,
             &val_indices,
             args.batch_size,
             device,
@@ -406,7 +655,7 @@ fn main() {
         // Game evaluation every 5 epochs
         let should_eval = epoch % 5 == 4 || epoch == args.epochs - 1;
         let game_score = if should_eval {
-            let (score, _) = eval_games(&policy_net, 200, &mut rng, device);
+            let (score, _) = eval_games(&policy_net, 200, &mut rng, device, enriched);
             score
         } else {
             0.0
@@ -478,7 +727,7 @@ fn main() {
 
     // Final evaluation
     println!("\n Evaluating by playing 200 games...\n");
-    let (sheaf_avg, sheaf_scores) = eval_games(&policy_net, 200, &mut rng, device);
+    let (sheaf_avg, sheaf_scores) = eval_games(&policy_net, 200, &mut rng, device, enriched);
 
     println!("  Sheaf Network:       {:.2} pts", sheaf_avg);
     println!("  Reference GT Direct: ~152.3 pts (baseline)");
@@ -736,7 +985,26 @@ fn decode_tile(encoded: i32) -> Tile {
     Tile(encoded / 100, (encoded / 10) % 10, encoded % 10)
 }
 
-fn sample_to_features(sample: &Sample) -> Tensor {
+fn reconstruct_deck(plateau: &Plateau) -> Deck {
+    let mut deck = create_deck();
+    // Remove placed tiles from deck
+    for t in &plateau.tiles {
+        if *t != Tile(0, 0, 0) {
+            deck = replace_tile_in_deck(&deck, t);
+        }
+    }
+    deck
+}
+
+fn encode_features(plateau: &Plateau, tile: &Tile, deck: &Deck, turn: usize, enriched: bool) -> Tensor {
+    if enriched {
+        convert_plateau_for_gat_enriched(plateau, tile, deck, turn, 19)
+    } else {
+        convert_plateau_for_gat_47ch(plateau, tile, deck, turn, 19)
+    }
+}
+
+fn sample_to_features(sample: &Sample, enriched: bool) -> Tensor {
     let mut plateau = Plateau {
         tiles: vec![Tile(0, 0, 0); 19],
     };
@@ -744,8 +1012,8 @@ fn sample_to_features(sample: &Sample) -> Tensor {
         plateau.tiles[i] = decode_tile(sample.plateau[i]);
     }
     let tile = Tile(sample.tile.0, sample.tile.1, sample.tile.2);
-    let deck = create_deck();
-    convert_plateau_for_gat_47ch(&plateau, &tile, &deck, sample.turn, 19)
+    let deck = reconstruct_deck(&plateau);
+    encode_features(&plateau, &tile, &deck, sample.turn, enriched)
 }
 
 fn get_available_mask(sample: &Sample) -> Tensor {
@@ -771,9 +1039,9 @@ fn compute_lr(base_lr: f64, epoch: usize, total: usize, scheduler: &str, min_rat
 
 fn evaluate_gpu(
     net: &PolicyNet,
-    features_gpu: &Tensor,
-    targets_gpu: &Tensor,
-    masks_gpu: &Tensor,
+    features_cpu: &Tensor,
+    targets_cpu: &Tensor,
+    masks_cpu: &Tensor,
     indices: &[usize],
     batch_size: usize,
     device: Device,
@@ -790,11 +1058,11 @@ fn evaluate_gpu(
         let start = batch_i * batch_size;
         let end = start + batch_size;
         let batch_idx: Vec<i64> = indices[start..end].iter().map(|&i| i as i64).collect();
-        let idx_tensor = Tensor::from_slice(&batch_idx).to_device(device);
+        let idx_tensor = Tensor::from_slice(&batch_idx);
 
-        let features = features_gpu.index_select(0, &idx_tensor);
-        let targets = targets_gpu.index_select(0, &idx_tensor);
-        let masks = masks_gpu.index_select(0, &idx_tensor);
+        let features = features_cpu.index_select(0, &idx_tensor).to_device(device);
+        let targets = targets_cpu.index_select(0, &idx_tensor).to_device(device);
+        let masks = masks_cpu.index_select(0, &idx_tensor).to_device(device);
 
         let logits = tch::no_grad(|| net.forward(&features, false));
         let masked_logits = &logits + &masks;
@@ -820,6 +1088,7 @@ fn eval_games(
     n_games: usize,
     rng: &mut StdRng,
     device: Device,
+    enriched: bool,
 ) -> (f64, Vec<i32>) {
     use take_it_easy::game::remove_tile_from_deck::get_available_tiles;
 
@@ -842,7 +1111,7 @@ fn eval_games(
                 break;
             }
 
-            let features = convert_plateau_for_gat_47ch(&plateau, &tile, &deck, turn, 19);
+            let features = encode_features(&plateau, &tile, &deck, turn, enriched);
             let feat_device = features.unsqueeze(0).to_device(device);
             let logits = tch::no_grad(|| net.forward(&feat_device, false))
                 .squeeze_dim(0)

@@ -83,7 +83,7 @@ pub fn expectimax_select(
     let values = tch::no_grad(|| value_net.forward(&batch, false))
         .to_device(Device::Cpu); // [n, 1]
 
-    // Denormalize: tanh output in [-1, 1] -> real score
+    // Denormalize: normalized output -> real score
     let values_flat: Vec<f64> = Vec::<f64>::try_from(
         &values.squeeze_dim(1).to_kind(Kind::Double),
     )

@@ -19,6 +19,7 @@ use std::time::Instant;
 use tch::{nn, nn::OptimizerConfig, Device, Kind, Tensor};
 
 use take_it_easy::game::create_deck::create_deck;
+use take_it_easy::game::deck::Deck;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
 use take_it_easy::game::plateau::{create_plateau_empty, Plateau};
 use take_it_easy::game::remove_tile_from_deck::replace_tile_in_deck;
@@ -129,6 +130,14 @@ struct Args {
     /// Path to existing value net for 2-ply data generation (V-iteration)
     #[arg(long)]
     gen_value_path: Option<String>,
+
+    /// Load training data from TSV file (same format as train_sheaf --save-games)
+    #[arg(long)]
+    load_games: Option<String>,
+
+    /// Apply D3 hexagonal symmetry augmentation (×6 data)
+    #[arg(long)]
+    augment: bool,
 }
 
 struct Sample {
@@ -174,7 +183,7 @@ fn main() {
     }
 
     // ── Eval-only shortcut ──
-    let eval_only = args.num_games == 0 && args.data_dir.is_none();
+    let eval_only = args.num_games == 0 && args.data_dir.is_none() && args.load_games.is_none();
     if eval_only && args.eval_games == 0 {
         println!("Nothing to do (num_games=0, eval_games=0).");
         return;
@@ -185,7 +194,33 @@ fn main() {
     println!("\n--- Phase 1: Data ---\n");
     let gen_start = Instant::now();
 
-    let samples = if let Some(ref data_dir) = args.data_dir {
+    let samples = if let Some(ref tsv_path) = args.load_games {
+        println!("Loading TSV data from {}...", tsv_path);
+        let mut tsv_samples = load_tsv_for_value(tsv_path, args.min_score);
+        println!("Loaded {} samples (score >= {})", tsv_samples.len(), args.min_score);
+        if args.augment {
+            let before = tsv_samples.len();
+            augment_tsv_samples(&mut tsv_samples);
+            println!("Augmented with D3 symmetry: {} → {} samples (×{:.1})",
+                before, tsv_samples.len(), tsv_samples.len() as f64 / before as f64);
+        }
+        // Convert to tensor features
+        tsv_samples
+            .iter()
+            .map(|s| {
+                let mut plateau = Plateau { tiles: vec![Tile(0, 0, 0); 19] };
+                for i in 0..19 {
+                    plateau.tiles[i] = decode_tile(s.plateau[i]);
+                }
+                let tile = Tile(s.tile.0, s.tile.1, s.tile.2);
+                let deck = reconstruct_deck(&plateau);
+                Sample {
+                    features: convert_plateau_for_gat_47ch(&plateau, &tile, &deck, s.turn, 19),
+                    final_score: s.final_score,
+                }
+            })
+            .collect::<Vec<_>>()
+    } else if let Some(ref data_dir) = args.data_dir {
         println!("Loading CSV data from {}...", data_dir);
         let csv_samples = load_all_csv(data_dir, args.min_score);
         println!("Loaded {} CSV rows (score >= {})", csv_samples.len(), args.min_score);
@@ -903,4 +938,122 @@ fn decode_tile(encoded: i32) -> Tile {
         return Tile(0, 0, 0);
     }
     Tile(encoded / 100, (encoded / 10) % 10, encoded % 10)
+}
+
+fn encode_tile(t: &Tile) -> i32 {
+    if *t == Tile(0, 0, 0) { 0 } else { t.0 * 100 + t.1 * 10 + t.2 }
+}
+
+fn reconstruct_deck(plateau: &Plateau) -> Deck {
+    let mut deck = create_deck();
+    for t in &plateau.tiles {
+        if *t != Tile(0, 0, 0) {
+            deck = replace_tile_in_deck(&deck, t);
+        }
+    }
+    deck
+}
+
+// ── TSV loading ──
+
+struct TsvSample {
+    plateau: [i32; 19],
+    tile: (i32, i32, i32),
+    turn: usize,
+    final_score: i32,
+}
+
+fn load_tsv_for_value(path: &str, min_score: i32) -> Vec<TsvSample> {
+    let file = File::open(path).expect(&format!("Cannot open {}", path));
+    let reader = BufReader::new(file);
+    let mut samples = Vec::new();
+    for line in reader.lines() {
+        let line = line.unwrap();
+        if line.starts_with('#') || line.is_empty() { continue; }
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 6 { continue; }
+        let plat_vals: Vec<i32> = parts[0].split(',').map(|v| v.parse().unwrap_or(0)).collect();
+        let mut plateau = [0i32; 19];
+        for (i, &v) in plat_vals.iter().enumerate().take(19) {
+            plateau[i] = v;
+        }
+        let tile_vals: Vec<i32> = parts[1].split(',').map(|v| v.parse().unwrap_or(0)).collect();
+        let tile = (tile_vals[0], tile_vals[1], tile_vals[2]);
+        let turn: usize = parts[3].parse().unwrap_or(0);
+        let score: i32 = parts[4].parse().unwrap_or(0);
+        if score < min_score { continue; }
+        samples.push(TsvSample { plateau, tile, turn, final_score: score });
+    }
+    samples
+}
+
+// ── D3 hexagonal symmetry augmentation ──
+
+const HEX_COORDS: [(i32, i32); 19] = [
+    (0,-2),(1,-2),(2,-2),(-1,-1),(0,-1),(1,-1),(2,-1),
+    (-2,0),(-1,0),(0,0),(1,0),(2,0),(-2,1),(-1,1),(0,1),(1,1),
+    (-2,2),(-1,2),(0,2),
+];
+
+type TileFn = fn(i32, i32, i32) -> (i32, i32, i32);
+
+fn coord_to_pos(q: i32, r: i32) -> Option<usize> {
+    HEX_COORDS.iter().position(|&(cq, cr)| cq == q && cr == r)
+}
+
+fn make_perm(f: fn(i32, i32) -> (i32, i32)) -> [usize; 19] {
+    let mut perm = [0usize; 19];
+    for i in 0..19 {
+        let (q, r) = HEX_COORDS[i];
+        let (nq, nr) = f(q, r);
+        perm[i] = coord_to_pos(nq, nr).unwrap();
+    }
+    perm
+}
+
+fn symmetry_transforms() -> Vec<([usize; 19], TileFn)> {
+    let rot120 = make_perm(|q, r| (-r, q + r));
+    let rot240 = make_perm(|q, r| (-q - r, q));
+    let ref_a  = make_perm(|q, r| (q, -q - r));
+    // refB = rot120 ∘ refA, refC = rot240 ∘ refA
+    let mut ref_b = [0usize; 19];
+    let mut ref_c = [0usize; 19];
+    for i in 0..19 {
+        ref_b[i] = rot120[ref_a[i]];
+        ref_c[i] = rot240[ref_a[i]];
+    }
+    vec![
+        (rot120, (|a, b, c| (b, c, a)) as TileFn),
+        (rot240, (|a, b, c| (c, a, b)) as TileFn),
+        (ref_a,  (|a, b, c| (b, a, c)) as TileFn),
+        (ref_b,  (|a, b, c| (a, c, b)) as TileFn),
+        (ref_c,  (|a, b, c| (c, b, a)) as TileFn),
+    ]
+}
+
+fn augment_tsv_samples(samples: &mut Vec<TsvSample>) {
+    let transforms = symmetry_transforms();
+    let orig_len = samples.len();
+    let mut augmented = Vec::with_capacity(orig_len * 5);
+    for idx in 0..orig_len {
+        let s = &samples[idx];
+        for (perm, tile_fn) in &transforms {
+            let mut new_plat = [0i32; 19];
+            for i in 0..19 {
+                if s.plateau[i] != 0 {
+                    let t = decode_tile(s.plateau[i]);
+                    let (a, b, c) = tile_fn(t.0, t.1, t.2);
+                    new_plat[perm[i]] = encode_tile(&Tile(a, b, c));
+                }
+            }
+            let new_tile = tile_fn(s.tile.0, s.tile.1, s.tile.2);
+            augmented.push(TsvSample {
+                plateau: new_plat,
+                tile: new_tile,
+                turn: s.turn,
+                final_score: s.final_score,
+            });
+        }
+    }
+    samples.extend(augmented);
 }

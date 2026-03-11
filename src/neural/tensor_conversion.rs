@@ -533,3 +533,219 @@ pub fn convert_plateau_for_gat_47ch(
 
     Tensor::from_slice(&features).view([GRAPH_NODE_COUNT as i64, CHANNELS as i64])
 }
+
+// ── Enriched encoding: 47 base + 15 line completion probabilities = 62 channels ──
+
+const CHANNELS_ENRICHED: usize = 62;
+
+/// Compute line completion probability for each of the 15 scoring lines.
+///
+/// For a line with `empty` positions to fill, `compat` compatible tiles remaining
+/// in a deck of `total` tiles, we approximate:
+///   P(complete) ≈ Π_{i=0}^{empty-1} max(0, compat - i) / (total - i)
+///
+/// This is the probability that `empty` random draws from the deck are ALL compatible.
+/// It's a lower bound (in practice the player draws more tiles and can choose placement),
+/// but it captures the key signal: how likely is this line to complete given remaining tiles.
+fn compute_line_completion_probs(plateau: &Plateau, deck: &Deck, current_tile: &Tile) -> [f32; 15] {
+    // Count remaining tiles in deck (excluding current tile)
+    let mut deck_remaining = 0usize;
+    let mut current_found = false;
+    let mut remaining_tiles: Vec<&Tile> = Vec::new();
+    for t in &deck.tiles {
+        if *t == Tile(0, 0, 0) {
+            continue;
+        }
+        if !current_found && *t == *current_tile {
+            current_found = true;
+            continue;
+        }
+        remaining_tiles.push(t);
+        deck_remaining += 1;
+    }
+
+    let mut probs = [0.0f32; 15];
+
+    for (line_idx, (positions, direction)) in LINE_DEFS.iter().enumerate() {
+        // Analyze line state
+        let mut empty_count = 0usize;
+        let mut dominant_value: Option<i32> = None;
+        let mut blocked = false;
+
+        for &pos in *positions {
+            let t = &plateau.tiles[pos];
+            if *t == Tile(0, 0, 0) {
+                empty_count += 1;
+            } else {
+                let v = match direction {
+                    0 => t.0,
+                    1 => t.1,
+                    2 => t.2,
+                    _ => 0,
+                };
+                match dominant_value {
+                    None => dominant_value = Some(v),
+                    Some(dv) if dv != v => {
+                        blocked = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if blocked {
+            probs[line_idx] = 0.0;
+            continue;
+        }
+
+        if empty_count == 0 {
+            // Line is already complete
+            probs[line_idx] = 1.0;
+            continue;
+        }
+
+        // Determine what value we need for the empty positions
+        let needed_value = dominant_value.unwrap_or_else(|| {
+            // Line is fully empty — use the current tile's value for this direction
+            // as a proxy (if placed here, this would be the line's value)
+            match direction {
+                0 => current_tile.0,
+                1 => current_tile.1,
+                2 => current_tile.2,
+                _ => 0,
+            }
+        });
+
+        // Count compatible tiles in remaining deck
+        let compat = remaining_tiles
+            .iter()
+            .filter(|t| {
+                let v = match direction {
+                    0 => t.0,
+                    1 => t.1,
+                    2 => t.2,
+                    _ => 0,
+                };
+                v == needed_value
+            })
+            .count();
+
+        // If current tile is compatible, one fewer empty to fill
+        let current_tile_val = match direction {
+            0 => current_tile.0,
+            1 => current_tile.1,
+            2 => current_tile.2,
+            _ => 0,
+        };
+        let effective_empty = if current_tile_val == needed_value && empty_count > 0 {
+            empty_count - 1 // current tile could fill one spot
+        } else {
+            empty_count
+        };
+
+        if effective_empty == 0 {
+            // Current tile completes the line (if placed here)
+            probs[line_idx] = 1.0;
+            continue;
+        }
+
+        if compat < effective_empty || deck_remaining == 0 {
+            probs[line_idx] = 0.0;
+            continue;
+        }
+
+        // P = Π_{i=0}^{effective_empty-1} (compat - i) / (deck_remaining - i)
+        let mut p = 1.0f64;
+        for i in 0..effective_empty {
+            let num = (compat - i) as f64;
+            let den = (deck_remaining - i) as f64;
+            if den <= 0.0 {
+                p = 0.0;
+                break;
+            }
+            p *= num / den;
+        }
+
+        probs[line_idx] = p as f32;
+    }
+
+    probs
+}
+
+/// Enriched 62-channel encoding: base 47ch + 15 line completion probabilities.
+/// The probability features give the model direct access to analytical deck statistics
+/// that it would otherwise need to learn implicitly from raw bag counts.
+pub fn convert_plateau_for_gat_enriched(
+    plateau: &Plateau,
+    tile: &Tile,
+    deck: &Deck,
+    current_turn: usize,
+    total_turns: usize,
+) -> Tensor {
+    let mut features = vec![0.0f32; GRAPH_NODE_COUNT * CHANNELS_ENRICHED];
+
+    let num_placed = plateau
+        .tiles
+        .iter()
+        .filter(|&&t| t != Tile(0, 0, 0))
+        .count();
+    let turn_progress = num_placed as f32 / 19.0;
+
+    let bag_counts = compute_bag_value_counts(deck, tile);
+    let line_features = compute_line_features(plateau, tile);
+    let line_probs = compute_line_completion_probs(plateau, deck, tile);
+
+    for hex_pos in 0..GRAPH_NODE_COUNT {
+        let base = hex_pos * CHANNELS_ENRICHED;
+        let plateau_tile = &plateau.tiles[hex_pos];
+
+        // Ch 0-3: Tile values and empty mask (same as 47ch)
+        if *plateau_tile == Tile(0, 0, 0) {
+            features[base + 3] = 1.0;
+        } else {
+            features[base] = plateau_tile.0 as f32 / 9.0;
+            features[base + 1] = plateau_tile.1 as f32 / 9.0;
+            features[base + 2] = plateau_tile.2 as f32 / 9.0;
+        }
+
+        // Ch 4-6: Current tile (broadcast)
+        features[base + 4] = tile.0 as f32 / 9.0;
+        features[base + 5] = tile.1 as f32 / 9.0;
+        features[base + 6] = tile.2 as f32 / 9.0;
+
+        // Ch 7: Turn progress
+        features[base + 7] = turn_progress;
+
+        // Ch 8-16: Bag counts (broadcast)
+        features[base + 8] = bag_counts.dir1[0];
+        features[base + 9] = bag_counts.dir1[1];
+        features[base + 10] = bag_counts.dir1[2];
+        features[base + 11] = bag_counts.dir2[0];
+        features[base + 12] = bag_counts.dir2[1];
+        features[base + 13] = bag_counts.dir2[2];
+        features[base + 14] = bag_counts.dir3[0];
+        features[base + 15] = bag_counts.dir3[1];
+        features[base + 16] = bag_counts.dir3[2];
+
+        // Ch 17-46: Line features (potential + compatibility, same as 47ch)
+        for (line_idx, (potential, compatibility)) in line_features.iter().enumerate() {
+            let positions = LINE_DEFS[line_idx].0;
+            if positions.contains(&hex_pos) {
+                features[base + 17 + line_idx * 2] = *potential;
+                features[base + 18 + line_idx * 2] = *compatibility;
+            }
+        }
+
+        // Ch 47-61: Line completion probabilities (NEW)
+        // For each line passing through this position, set the probability
+        for (line_idx, _) in LINE_DEFS.iter().enumerate() {
+            let positions = LINE_DEFS[line_idx].0;
+            if positions.contains(&hex_pos) {
+                features[base + 47 + line_idx] = line_probs[line_idx];
+            }
+        }
+    }
+
+    Tensor::from_slice(&features).view([GRAPH_NODE_COUNT as i64, CHANNELS_ENRICHED as i64])
+}

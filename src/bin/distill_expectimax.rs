@@ -11,6 +11,8 @@
 use clap::Parser;
 use rand::prelude::*;
 use rand::rngs::StdRng;
+use std::collections::HashSet;
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::time::Instant;
 use tch::{nn, nn::OptimizerConfig, Device, Kind, Tensor};
@@ -139,14 +141,50 @@ struct Args {
     /// Temperature for soft target softmax (lower = harder, more peaked)
     #[arg(long, default_value_t = 0.1)]
     temperature: f64,
+
+    /// Save generated samples to TSV file for reuse (compatible with train_sheaf --load-games)
+    #[arg(long)]
+    save_games: Option<String>,
 }
 
 struct Sample {
     features: Tensor,           // [19, 47]
+    plateau_raw: [i32; 19],     // raw board state (for TSV save)
+    tile_raw: (i32, i32, i32),  // tile played (for TSV save)
+    turn: usize,                // turn number
+    final_score: i32,           // game final score
     position: usize,            // chosen position (0-18)
     mask: Vec<f64>,             // legal move mask (0.0 or -inf)
     weight: f64,                // score-based weight
     soft_targets: Option<Vec<f64>>, // [19] probability distribution (soft distillation)
+}
+
+/// Save samples to TSV file (compatible with train_sheaf --load-games)
+fn save_samples_tsv(samples: &[Sample], path: &str) -> std::io::Result<usize> {
+    let file = std::fs::File::create(path)?;
+    let mut w = BufWriter::new(file);
+    writeln!(w, "# plateau(19)\ttile(3)\tposition\tturn\tfinal_score\tweight")?;
+    let mut seen = HashSet::new();
+    let mut written = 0;
+    for s in samples {
+        let key = format!(
+            "{:?}|{},{},{}|{}",
+            &s.plateau_raw, s.tile_raw.0, s.tile_raw.1, s.tile_raw.2, s.position
+        );
+        if !seen.insert(key) {
+            continue; // skip duplicate
+        }
+        let plateau_str: Vec<String> = s.plateau_raw.iter().map(|v| v.to_string()).collect();
+        writeln!(
+            w,
+            "{}\t{},{},{}\t{}\t{}\t{}\t{:.6}",
+            plateau_str.join(","),
+            s.tile_raw.0, s.tile_raw.1, s.tile_raw.2,
+            s.position, s.turn, s.final_score, s.weight
+        )?;
+        written += 1;
+    }
+    Ok(written)
 }
 
 fn main() {
@@ -217,6 +255,14 @@ fn main() {
     let total_weight: f64 = scores.iter().sum();
     println!("{} samples ready ({:.1}s)", samples.len(), gen_time);
     println!("Total weight: {:.0}, avg weight: {:.2}", total_weight, total_weight / samples.len() as f64);
+
+    // Save to TSV if requested
+    if let Some(ref save_path) = args.save_games {
+        match save_samples_tsv(&samples, save_path) {
+            Ok(written) => println!("Saved {} unique samples to {} (deduped from {})", written, save_path, samples.len()),
+            Err(e) => eprintln!("Warning: failed to save games: {}", e),
+        }
+    }
 
     // ── Phase 2: Train student policy ──
     println!("\n--- Phase 2: Training ---\n");
@@ -503,11 +549,12 @@ fn generate_data(
     let mut rng = StdRng::seed_from_u64(args.seed);
     let mut samples = Vec::with_capacity(args.num_games * 19);
     let mut score_sum = 0i64;
+    let gen_start = Instant::now();
 
     for game_idx in 0..args.num_games {
         let mut plateau = create_plateau_empty();
         let mut deck = create_deck();
-        let mut game_samples: Vec<(Tensor, usize, Vec<f64>, Option<Vec<f64>>)> = Vec::with_capacity(19);
+        let mut game_samples: Vec<(Tensor, [i32; 19], (i32, i32, i32), usize, usize, Vec<f64>, Option<Vec<f64>>)> = Vec::with_capacity(19);
 
         let tile_seq = random_tile_sequence(&mut rng);
 
@@ -517,6 +564,18 @@ fn generate_data(
             if legal.is_empty() {
                 break;
             }
+
+            // Record raw plateau state BEFORE the move
+            let mut plateau_raw = [0i32; 19];
+            for i in 0..19 {
+                let t = plateau.tiles[i];
+                if t == Tile(0, 0, 0) {
+                    plateau_raw[i] = 0;
+                } else {
+                    plateau_raw[i] = t.0 * 100 + t.1 * 10 + t.2;
+                }
+            }
+            let tile_raw = (tile.0, tile.1, tile.2);
 
             // Record features BEFORE the move
             let feat = convert_plateau_for_gat_47ch(&plateau, &tile, &deck, turn, 19);
@@ -556,7 +615,7 @@ fn generate_data(
                 (expectimax_select(&plateau, &tile, &deck, turn, policy_net, value_net, ex_config), None)
             };
 
-            game_samples.push((feat, pos, mask, soft));
+            game_samples.push((feat, plateau_raw, tile_raw, turn, pos, mask, soft));
             plateau.tiles[pos] = tile;
         }
 
@@ -564,9 +623,13 @@ fn generate_data(
         score_sum += final_score as i64;
         let weight = (final_score as f64 / 100.0).powf(args.weight_power);
 
-        for (feat, pos, mask, soft) in game_samples {
+        for (feat, p_raw, t_raw, turn, pos, mask, soft) in game_samples {
             samples.push(Sample {
                 features: feat,
+                plateau_raw: p_raw,
+                tile_raw: t_raw,
+                turn,
+                final_score,
                 position: pos,
                 mask,
                 weight,
@@ -574,11 +637,13 @@ fn generate_data(
             });
         }
 
-        if (game_idx + 1) % 1000 == 0 {
+        if (game_idx + 1) % 100 == 0 {
             let avg_score = score_sum as f64 / (game_idx + 1) as f64;
+            let elapsed = gen_start.elapsed().as_secs_f32();
+            let rate = (game_idx + 1) as f32 / elapsed;
             println!(
-                "  Generated {}/{} games (avg: {:.1}, last: {})",
-                game_idx + 1, args.num_games, avg_score, final_score
+                "  Generated {}/{} games (avg: {:.1}, last: {}, {:.2} g/s)",
+                game_idx + 1, args.num_games, avg_score, final_score, rate
             );
         }
     }

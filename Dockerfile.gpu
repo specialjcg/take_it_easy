@@ -39,6 +39,7 @@ RUN mkdir -p .cargo && printf '[env]\nLIBTORCH = { value = "/opt/libtorch", forc
 RUN cargo build --release \
     --bin train_graph_transformer \
     --bin train_hypergraph \
+    --bin train_sheaf \
     --bin train_value_net \
     --bin distill_expectimax \
     --bin benchmark_mcts_gpu \
@@ -59,6 +60,7 @@ ENV LD_LIBRARY_PATH=/opt/libtorch/lib:$LD_LIBRARY_PATH
 WORKDIR /app
 COPY --from=builder /app/target/release/train_graph_transformer ./target/release/
 COPY --from=builder /app/target/release/train_hypergraph ./target/release/
+COPY --from=builder /app/target/release/train_sheaf ./target/release/
 COPY --from=builder /app/target/release/train_value_net ./target/release/
 COPY --from=builder /app/target/release/distill_expectimax ./target/release/
 COPY --from=builder /app/target/release/benchmark_mcts_gpu ./target/release/

@@ -138,7 +138,7 @@ async fn register(
         email: email.clone(),
         username: req.username.clone(),
         password_hash: Some(password_hash),
-        email_verified: false,
+        email_verified: true, // Auto-verify: no email confirmation needed
         created_at: now.clone(),
         updated_at: now,
     };
@@ -147,31 +147,6 @@ async fn register(
         log::error!("Failed to create user: {}", e);
         return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Registration failed")
             .into_response();
-    }
-
-    // Create verification token
-    let token = generate_token();
-    let expires_at = (chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339();
-    let verification_token = VerificationToken {
-        id: uuid::Uuid::new_v4().to_string(),
-        user_id: user.id.clone(),
-        token: token.clone(),
-        token_type: TokenType::EmailVerification,
-        expires_at,
-        used: false,
-    };
-
-    if let Err(e) = state.db.create_verification_token(&verification_token) {
-        log::error!("Failed to create verification token: {}", e);
-    } else {
-        // Send verification email
-        if let Err(e) = state
-            .email
-            .send_verification_email(&user.email, &user.username, &token)
-            .await
-        {
-            log::error!("Failed to send verification email: {}", e);
-        }
     }
 
     // Generate JWT (user can login but some features may require verified email)

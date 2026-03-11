@@ -19,6 +19,7 @@ case "${1:-help}" in
   docker run --gpus all IMAGE cuda-check
   docker run --gpus all -v data:/app/model_weights IMAGE train-gt [ARGS...]
   docker run --gpus all -v data:/app/model_weights IMAGE train-hyper [ARGS...]
+  docker run --gpus all -v data:/app/model_weights IMAGE train-sheaf [ARGS...]
   docker run --gpus all -v data:/app/model_weights IMAGE train-value [ARGS...]
   docker run --gpus all -v data:/app/model_weights IMAGE distill [ARGS...]
   docker run --gpus all -v data:/app/model_weights IMAGE benchmark [ARGS...]
@@ -39,6 +40,10 @@ EOF
     train-hyper)
         shift; cuda_check
         exec ./target/release/train_hypergraph --device cuda "$@"
+        ;;
+    train-sheaf)
+        shift; cuda_check
+        exec ./target/release/train_sheaf --device cuda "$@"
         ;;
     train-value)
         shift; cuda_check
