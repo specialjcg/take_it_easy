@@ -5,7 +5,7 @@ edition = "2021"
 description = "A comprehensive Take It Easy board game implementation with AI capabilities, MCTS engine, and multiplayer support"
 
 [dependencies]
-rand = "0.10.0-rc.5"
+rand = "0.10.0"
 rand_distr = "0.6.0-rc.0"  # For Dirichlet noise in AlphaGo Zero self-play (compatible with rand 0.10.0-rc.5)
 tokio = { version = "1.49.0", features = ["rt", "rt-multi-thread", "macros", "time", "fs"] }
 serde_json = "1.0.148"
