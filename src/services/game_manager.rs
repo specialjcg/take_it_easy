@@ -23,9 +23,7 @@ use crate::neural::policy_value_net::{PolicyNet, ValueNet};
 use crate::neural::qvalue_net::QValueNet;
 use crate::recording::{get_recorder, PlayerType as RecorderPlayerType};
 use crate::scoring::scoring::result;
-use crate::strategy::gt_boost::gt_beam_v1_select;
-use rand::rngs::StdRng;
-use rand::{thread_rng, Rng, SeedableRng};
+use rand::Rng;
 // ============================================================================
 // ADAPTATION DE VOS TYPES EXISTANTS VERS LE SYSTÈME FONCTIONNEL
 // ============================================================================
@@ -360,6 +358,89 @@ pub async fn process_mcts_turn(
 
 /// Process AI turn using GT Direct strategy (distilled expectimax policy, argmax)
 /// Achieves ~154 pts with distilled model, <10ms per move
+/// Count total blocked lines on a plateau (lines with >=2 filled tiles and no consistent face).
+fn count_blocked_lines(plateau: &Plateau) -> usize {
+    use crate::strategy::gt_boost::LINES;
+    let mut blocked = 0;
+    for &(line_positions, _direction) in &LINES {
+        let mut filled: Vec<[i32; 3]> = Vec::new();
+        for &pos in line_positions {
+            let t = &plateau.tiles[pos];
+            if t.0 != 0 || t.1 != 0 || t.2 != 0 {
+                filled.push([t.0, t.1, t.2]);
+            }
+        }
+        if filled.len() < 2 {
+            continue;
+        }
+        let all_blocked = (0..3usize).all(|face| {
+            let vals: Vec<i32> = filled.iter().map(|t| t[face]).collect();
+            vals.iter().any(|v| *v != vals[0])
+        });
+        if all_blocked {
+            blocked += 1;
+        }
+    }
+    blocked
+}
+
+/// Expected blocked lines per turn (average from normal games).
+fn expected_blocked(turn: usize) -> f64 {
+    const EXPECTED: [f64; 19] = [
+        0.0, 0.0, 0.0, 0.1, 0.2, 0.4, 0.6, 0.9,
+        1.2, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5,
+        5.0, 5.5, 6.0,
+    ];
+    EXPECTED[turn.min(18)]
+}
+
+/// Lazy-loaded defensive model for ensemble play.
+/// Uses std::sync::Mutex (not tokio) since forward pass is CPU-bound and fast.
+fn with_defensive_net<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&crate::neural::graph_transformer::GraphTransformerPolicyNet) -> R,
+{
+    use std::sync::{Mutex, OnceLock};
+    use crate::neural::graph_transformer::GraphTransformerPolicyNet;
+    use crate::neural::model_io::load_varstore;
+
+    // We store VarStore + Net behind a std::sync::Mutex to satisfy Send+Sync
+    static DEFENSIVE: OnceLock<Option<Mutex<(tch::nn::VarStore, GraphTransformerPolicyNet)>>> = OnceLock::new();
+
+    let slot = DEFENSIVE.get_or_init(|| {
+        let defensive_path = match std::env::var("DEFENSIVE_MODEL_PATH") {
+            Ok(p) => p,
+            Err(_) => return None,
+        };
+        if !std::path::Path::new(&defensive_path).exists() {
+            log::info!("No defensive model at {}", defensive_path);
+            return None;
+        }
+        let mut vs = tch::nn::VarStore::new(tch::Device::Cpu);
+        let net = GraphTransformerPolicyNet::new(&vs, 47, 128, 2, 4, 0.0);
+        match load_varstore(&mut vs, &defensive_path) {
+            Ok(_) => {
+                log::info!("✅ Defensive model loaded from {}", defensive_path);
+                Some(Mutex::new((vs, net)))
+            }
+            Err(e) => {
+                log::warn!("Failed to load defensive model: {}", e);
+                None
+            }
+        }
+    });
+
+    slot.as_ref().map(|mtx| {
+        let guard = mtx.lock().unwrap();
+        f(&guard.1)
+    })
+}
+
+fn has_defensive_net() -> bool {
+    // Check env var without loading (to avoid first-call overhead in hot path)
+    std::env::var("DEFENSIVE_MODEL_PATH").is_ok()
+}
+
 pub async fn process_ai_turn_direct(
     mut game_state: TakeItEasyGameState,
     policy_net: &Mutex<PolicyNet>,
@@ -383,26 +464,56 @@ pub async fn process_ai_turn_direct(
         return Err("NO_LEGAL_MOVES_FOR_AI".to_string());
     }
 
-    // GT Direct: argmax over policy logits (distilled expectimax model)
-    let t0 = std::time::Instant::now();
-    let policy_locked = policy_net.lock().await;
-    let gt_net = policy_locked
-        .as_graph_transformer()
-        .ok_or("GT Direct requires GraphTransformer architecture")?;
+    // Ensemble: switch to defensive model if board is in danger
+    let turn = game_state.current_turn;
+    let blocked = count_blocked_lines(ai_plateau);
+    let use_defensive = has_defensive_net()
+        && turn >= 6
+        && blocked as f64 > expected_blocked(turn);
 
-    let feat = convert_plateau_for_gat_47ch(
-        ai_plateau,
-        &current_tile,
-        &game_state.deck,
-        game_state.current_turn,
-        19,
-    )
-    .unsqueeze(0)
-    .to_device(tch::Device::Cpu);
-    let logits = tch::no_grad(|| gt_net.forward(&feat, false))
-        .squeeze_dim(0)
+    let t0 = std::time::Instant::now();
+
+    let (logit_values, mode_label) = if use_defensive {
+        let feat = convert_plateau_for_gat_47ch(
+            ai_plateau, &current_tile, &game_state.deck, turn, 19,
+        )
+        .unsqueeze(0)
         .to_device(tch::Device::Cpu);
-    let logit_values: Vec<f64> = Vec::<f64>::try_from(&logits).unwrap();
+        let vals = with_defensive_net(|def_gt| {
+            let logits = tch::no_grad(|| def_gt.forward(&feat, false))
+                .squeeze_dim(0)
+                .to_device(tch::Device::Cpu);
+            Vec::<f64>::try_from(&logits).unwrap()
+        });
+        match vals {
+            Some(v) => (v, "Defensive"),
+            None => {
+                // Fallback to V2 if defensive load failed
+                let policy_locked = policy_net.lock().await;
+                let gt_net = policy_locked.as_graph_transformer()
+                    .ok_or("GT Direct requires GraphTransformer")?;
+                let logits = tch::no_grad(|| gt_net.forward(&feat, false))
+                    .squeeze_dim(0).to_device(tch::Device::Cpu);
+                drop(policy_locked);
+                (Vec::<f64>::try_from(&logits).unwrap(), "V2-fallback")
+            }
+        }
+    } else {
+        let policy_locked = policy_net.lock().await;
+        let gt_net = policy_locked
+            .as_graph_transformer()
+            .ok_or("GT Direct requires GraphTransformer architecture")?;
+        let feat = convert_plateau_for_gat_47ch(
+            ai_plateau, &current_tile, &game_state.deck, turn, 19,
+        )
+        .unsqueeze(0)
+        .to_device(tch::Device::Cpu);
+        let logits = tch::no_grad(|| gt_net.forward(&feat, false))
+            .squeeze_dim(0)
+            .to_device(tch::Device::Cpu);
+        drop(policy_locked);
+        (Vec::<f64>::try_from(&logits).unwrap(), "V2")
+    };
 
     let mut best_position = legal_moves[0];
     let mut best_val = f64::NEG_INFINITY;
@@ -412,11 +523,13 @@ pub async fn process_ai_turn_direct(
             best_position = pos;
         }
     }
-    drop(policy_locked);
     let elapsed = t0.elapsed();
 
     log::info!(
-        "🎯 AI GT Direct: tile {:?} → position {} in {:.0?}",
+        "🎯 AI {} (blk={}/exp={:.0}): tile {:?} → position {} in {:.0?}",
+        mode_label,
+        blocked,
+        expected_blocked(turn),
         current_tile,
         best_position,
         elapsed,

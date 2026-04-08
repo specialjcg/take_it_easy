@@ -11,7 +11,7 @@ use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::path::Path;
 use std::time::Instant;
-use tch::{nn, nn::OptimizerConfig, Device, Kind, Tensor};
+use tch::{nn, nn::OptimizerConfig, Kind, Tensor};
 
 use take_it_easy::game::create_deck::create_deck;
 use take_it_easy::neural::device_util::parse_device;

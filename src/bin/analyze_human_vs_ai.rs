@@ -442,7 +442,7 @@ fn load_all_games(dir: &str) -> Vec<GameMove> {
     for entry in std::fs::read_dir(path).unwrap() {
         let entry = entry.unwrap();
         let file_path = entry.path();
-        if file_path.extension().map_or(false, |e| e == "csv") {
+        if file_path.extension().is_some_and(|e| e == "csv") {
             moves.extend(load_csv(&file_path));
         }
     }

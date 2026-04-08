@@ -26,12 +26,6 @@ use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::device_util::{check_cuda, parse_device};
 use take_it_easy::neural::graph_transformer::GraphTransformerPolicyNet;
 use take_it_easy::neural::model_io::{load_varstore, save_varstore};
-use take_it_easy::neural::edge_aware_gt::EdgeAwareGTPolicyNet;
-use take_it_easy::neural::kan_network::KANPolicyNet;
-use take_it_easy::neural::mamba_network::MambaPolicyNet;
-use take_it_easy::neural::perceiver_network::PerceiverPolicyNet;
-use take_it_easy::neural::retnet_network::RetNetPolicyNet;
-use take_it_easy::neural::sheaf_network::{SheafAttentionPolicyNet, SheafPolicyNet};
 use take_it_easy::neural::tensor_conversion::{convert_plateau_for_gat_47ch, convert_plateau_for_gat_enriched};
 use take_it_easy::scoring::scoring::result;
 use take_it_easy::strategy::gt_boost::line_boost;
@@ -60,30 +54,11 @@ struct Args {
     #[arg(long, default_value_t = 128)]
     embed_dim: i64,
 
-    #[arg(long, default_value_t = 64)]
-    stalk_dim: i64,
-
     #[arg(long, default_value_t = 3)]
     num_layers: usize,
 
     #[arg(long, default_value_t = 4)]
     heads: i64,
-
-    /// SSM state dimension (Mamba)
-    #[arg(long, default_value_t = 16)]
-    d_state: i64,
-
-    /// KAN grid size (RBF centers)
-    #[arg(long, default_value_t = 8)]
-    grid_size: i64,
-
-    /// Perceiver latent tokens
-    #[arg(long, default_value_t = 8)]
-    num_latents: i64,
-
-    /// Architecture: "sheaf", "sheaf-attn", "mamba", "kan", "perceiver", "retnet", "edge-gt"
-    #[arg(long, default_value = "sheaf")]
-    arch: String,
 
     #[arg(long, default_value_t = 0.1)]
     dropout: f64,
@@ -156,26 +131,12 @@ struct Args {
 }
 
 enum PolicyNet {
-    Sheaf(SheafPolicyNet),
-    SheafAttn(SheafAttentionPolicyNet),
-    Mamba(MambaPolicyNet),
-    KAN(KANPolicyNet),
-    Perceiver(PerceiverPolicyNet),
-    RetNet(RetNetPolicyNet),
-    EdgeGT(EdgeAwareGTPolicyNet),
     GT(GraphTransformerPolicyNet),
 }
 
 impl PolicyNet {
     fn forward(&self, x: &Tensor, train: bool) -> Tensor {
         match self {
-            PolicyNet::Sheaf(net) => net.forward(x, train),
-            PolicyNet::SheafAttn(net) => net.forward(x, train),
-            PolicyNet::Mamba(net) => net.forward(x, train),
-            PolicyNet::KAN(net) => net.forward(x, train),
-            PolicyNet::Perceiver(net) => net.forward(x, train),
-            PolicyNet::RetNet(net) => net.forward(x, train),
-            PolicyNet::EdgeGT(net) => net.forward(x, train),
             PolicyNet::GT(net) => net.forward(x, train),
         }
     }
@@ -189,11 +150,6 @@ struct Sample {
     turn: usize,
     final_score: i32,
     weight: f64,
-}
-
-/// Hash key for deduplication: (plateau, tile, position)
-fn sample_key(s: &Sample) -> (Vec<i32>, (i32, i32, i32), usize) {
-    (s.plateau.to_vec(), s.tile, s.position)
 }
 
 /// Save samples to a text file (one sample per line, tab-separated)
@@ -272,14 +228,9 @@ fn load_samples(path: &str, min_score: i32, weight_power: f64) -> Vec<Sample> {
 /// Deduplicate samples by (plateau, tile, position)
 fn dedup_samples(samples: &mut Vec<Sample>) -> usize {
     let before = samples.len();
-    let mut seen = HashSet::new();
+    let mut seen: HashSet<([i32; 19], (i32, i32, i32), usize)> = HashSet::new();
     samples.retain(|s| {
-        // Use a compact hash: plateau as bytes + tile + position
-        let key = format!(
-            "{:?}|{},{},{}|{}",
-            &s.plateau, s.tile.0, s.tile.1, s.tile.2, s.position
-        );
-        seen.insert(key)
+        seen.insert((s.plateau, s.tile, s.position))
     });
     before - samples.len()
 }
@@ -385,16 +336,7 @@ fn main() {
 
     let in_ch: i64 = if args.enriched { 62 } else { 47 };
 
-    let arch_name = match args.arch.as_str() {
-        "sheaf-attn" => format!("Sheaf+Attention (heads={})", args.heads),
-        "mamba" => format!("Mamba SSM (d_state={})", args.d_state),
-        "kan" => format!("KAN (grid_size={})", args.grid_size),
-        "perceiver" => format!("Perceiver (latents={}, heads={})", args.num_latents, args.heads),
-        "retnet" => format!("RetNet (heads={})", args.heads),
-        "edge-gt" => format!("Edge-Aware GT (heads={})", args.heads),
-        "gt" => format!("Graph Transformer (heads={})", args.heads),
-        _ => "Sheaf Neural Network (direction-aware Laplacian)".to_string(),
-    };
+    let arch_name = format!("Graph Transformer (heads={})", args.heads);
 
     println!("================================================================");
     println!("         {} Training", arch_name);
@@ -404,7 +346,7 @@ fn main() {
     println!("  Device:       {:?}", device);
     println!("  Architecture: {}", arch_name);
     println!("  Embed dim:    {}", args.embed_dim);
-    println!("  Stalk dim:    {} (restriction map bottleneck)", args.stalk_dim);
+
     println!("  Layers:       {}", args.num_layers);
     println!("  FF dim:       {} (4x embed)", args.embed_dim * 4);
     println!("  Dropout:      {}", args.dropout);
@@ -524,40 +466,10 @@ fn main() {
 
     // Initialize network
     let mut vs = nn::VarStore::new(device);
-    let policy_net = match args.arch.as_str() {
-        "sheaf-attn" => PolicyNet::SheafAttn(SheafAttentionPolicyNet::new(
-            &vs, in_ch, args.embed_dim, args.stalk_dim,
-            args.num_layers, args.heads, args.dropout,
-        )),
-        "mamba" => PolicyNet::Mamba(MambaPolicyNet::new(
-            &vs, in_ch, args.embed_dim, args.d_state,
-            args.num_layers, args.dropout,
-        )),
-        "kan" => PolicyNet::KAN(KANPolicyNet::new(
-            &vs, in_ch, args.embed_dim, args.num_layers,
-            args.grid_size, args.dropout,
-        )),
-        "perceiver" => PolicyNet::Perceiver(PerceiverPolicyNet::new(
-            &vs, in_ch, args.embed_dim, args.num_latents,
-            args.num_layers, args.heads, args.dropout,
-        )),
-        "retnet" => PolicyNet::RetNet(RetNetPolicyNet::new(
-            &vs, in_ch, args.embed_dim, args.num_layers,
-            args.heads, args.dropout,
-        )),
-        "edge-gt" => PolicyNet::EdgeGT(EdgeAwareGTPolicyNet::new(
-            &vs, in_ch, args.embed_dim, args.num_layers,
-            args.heads, args.dropout,
-        )),
-        "gt" => PolicyNet::GT(GraphTransformerPolicyNet::new(
-            &vs, in_ch, args.embed_dim, args.num_layers,
-            args.heads, args.dropout,
-        )),
-        _ => PolicyNet::Sheaf(SheafPolicyNet::new(
-            &vs, in_ch, args.embed_dim, args.stalk_dim,
-            args.num_layers, args.dropout,
-        )),
-    };
+    let policy_net = PolicyNet::GT(GraphTransformerPolicyNet::new(
+        &vs, in_ch, args.embed_dim, args.num_layers,
+        args.heads, args.dropout,
+    ));
 
     // Fine-tune: load pre-trained weights
     if let Some(ref init_path) = args.init_from {
@@ -587,6 +499,7 @@ fn main() {
     let mut evals_without_improvement = 0usize;
 
     println!("\n Training {}...\n", arch_name);
+    let mut train_idx = train_indices.clone();
     for epoch in 0..args.epochs {
         let epoch_start = Instant::now();
 
@@ -599,7 +512,8 @@ fn main() {
         );
         opt.set_lr(current_lr);
 
-        let mut train_idx = train_indices.clone();
+        train_idx.clear();
+        train_idx.extend_from_slice(&train_indices);
         train_idx.shuffle(&mut rng);
 
         let mut train_loss = 0.0;
@@ -711,7 +625,7 @@ fn main() {
     println!("                     TRAINING COMPLETE");
     println!("================================================================");
     println!("\n  Architecture: {}", arch_name);
-    println!("  Embed dim: {}, Stalk dim: {}", args.embed_dim, args.stalk_dim);
+    println!("  Embed dim: {}", args.embed_dim);
     println!("  Best validation accuracy: {:.2}%", best_val_acc * 100.0);
     println!("  Best game score: {:.2} pts", best_game_score);
 
@@ -818,8 +732,7 @@ fn generate_selfplay_data(args: &Args, device: Device) -> Vec<Sample> {
             deck = replace_tile_in_deck(&deck, &tile);
 
             let mut plat_encoded = [0i32; 19];
-            for i in 0..19 {
-                let t = &plateau.tiles[i];
+            for (i, t) in plateau.tiles.iter().enumerate() {
                 if *t != Tile(0, 0, 0) {
                     plat_encoded[i] = t.0 * 100 + t.1 * 10 + t.2;
                 }
@@ -907,7 +820,7 @@ fn load_all_csv_weighted(dir: &str, min_score: i32, weight_power: f64) -> Vec<Sa
     for entry in std::fs::read_dir(path).unwrap() {
         let entry = entry.unwrap();
         let file_path = entry.path();
-        if file_path.extension().map_or(false, |e| e == "csv") {
+        if file_path.extension().is_some_and(|e| e == "csv") {
             samples.extend(load_csv_weighted(&file_path, min_score, weight_power));
         }
     }
@@ -1008,8 +921,8 @@ fn sample_to_features(sample: &Sample, enriched: bool) -> Tensor {
     let mut plateau = Plateau {
         tiles: vec![Tile(0, 0, 0); 19],
     };
-    for i in 0..19 {
-        plateau.tiles[i] = decode_tile(sample.plateau[i]);
+    for (i, &encoded) in sample.plateau.iter().enumerate() {
+        plateau.tiles[i] = decode_tile(encoded);
     }
     let tile = Tile(sample.tile.0, sample.tile.1, sample.tile.2);
     let deck = reconstruct_deck(&plateau);
@@ -1018,8 +931,8 @@ fn sample_to_features(sample: &Sample, enriched: bool) -> Tensor {
 
 fn get_available_mask(sample: &Sample) -> Tensor {
     let mut mask = vec![f64::NEG_INFINITY; 19];
-    for i in 0..19 {
-        if sample.plateau[i] == 0 {
+    for (i, &encoded) in sample.plateau.iter().enumerate() {
+        if encoded == 0 {
             mask[i] = 0.0;
         }
     }

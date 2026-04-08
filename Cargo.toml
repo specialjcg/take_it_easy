@@ -39,9 +39,9 @@ argon2 = "0.5"              # Password hashing
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }  # JWT tokens
 oauth2 = "4"                # OAuth2 client
 rusqlite = { version = "0.31", features = ["bundled"] }  # SQLite database
-lettre = { version = "0.11", features = ["tokio1-native-tls"] }  # Email sending
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "smtp-transport", "hostname"] }  # Email via rustls (no openssl)
 base64 = "0.22"             # Token encoding
-reqwest = { version = "0.12", features = ["json"] }  # HTTP client for OAuth
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }  # HTTP client via rustls
 getrandom = "0.2"        # Secure random bytes
 
 [build-dependencies]

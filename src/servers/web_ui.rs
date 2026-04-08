@@ -5,6 +5,7 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -107,7 +108,9 @@ impl WebUiServer {
             .route("/api/launch-mode", post(api_launch_mode))
             .route("/api/stop-all", post(api_stop_all))
             .route("/api/logs", get(api_logs))
-            .route("/api/recording-stats", get(api_recording_stats));
+            .route("/api/recording-stats", get(api_recording_stats))
+            .route("/api/player-stats", get(api_player_stats))
+            .route("/stats", get(serve_stats_page));
 
         // Add auth routes if auth is enabled
         if let Some(auth_state) = &self.auth_state {
@@ -120,9 +123,11 @@ impl WebUiServer {
             .fallback_service(ServeDir::new("web"))
             .layer(
                 CorsLayer::new()
-                    .allow_origin(AllowOrigin::exact(
+                    .allow_origin(AllowOrigin::list([
+                        "https://eigenplay.com".parse().unwrap(),
+                        "https://www.eigenplay.com".parse().unwrap(),
                         "https://takeitasy.mooo.com".parse().unwrap(),
-                    ))
+                    ]))
                     .allow_methods([
                         http::Method::GET,
                         http::Method::POST,
@@ -447,4 +452,192 @@ mod tests {
         assert_eq!(request.mode, "training");
         assert!(request.options.is_none());
     }
+}
+
+// ─── Player Stats API ──────────────────────────────────────────
+
+#[derive(Serialize, Debug)]
+struct PlayerGameResult {
+    date: String,
+    human_score: i32,
+    ai_score: i32,
+    human_won: bool,
+}
+
+#[derive(Serialize, Debug)]
+struct PlayerSummary {
+    username: String,
+    games_played: usize,
+    wins: usize,
+    winrate: f64,
+    avg_score: f64,
+    best_score: i32,
+    avg_ai_score: f64,
+    games: Vec<PlayerGameResult>,
+}
+
+#[derive(Serialize, Debug)]
+struct StatsResponse {
+    players: Vec<PlayerSummary>,
+    total_games: usize,
+}
+
+/// Parse all recorded game CSVs and return per-player stats.
+fn load_all_game_stats() -> StatsResponse {
+    use std::io::BufRead;
+
+    let recording_dir = std::env::var("RECORDING_DIR")
+        .unwrap_or_else(|_| "/opt/takeitasy/data/recorded_games".to_string());
+    log::info!("Loading stats from: {} (exists={})", recording_dir, std::path::Path::new(&recording_dir).exists());
+    let dir_entries: Vec<_> = std::fs::read_dir(&recording_dir)
+        .map(|rd| rd.filter_map(|e| e.ok()).collect())
+        .unwrap_or_default();
+    let csv_count = dir_entries.iter().filter(|e| e.path().extension().map_or(false, |ext| ext == "csv")).count();
+    log::info!("Found {} dir entries, {} CSV files", dir_entries.len(), csv_count);
+
+    // Load user mapping from auth.db
+    let user_map: HashMap<String, String> = {
+        let db_path = std::env::var("AUTH_DB_PATH")
+            .unwrap_or_else(|_| "/opt/takeitasy/data/auth.db".to_string());
+        let mut map = HashMap::new();
+        if let Ok(conn) = rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY) {
+            if let Ok(mut stmt) = conn.prepare("SELECT id, username FROM users") {
+                let rows = stmt.query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                });
+                if let Ok(rows) = rows {
+                    for row in rows.flatten() {
+                        map.insert(row.0, row.1);
+                    }
+                }
+            }
+        }
+        log::info!("Loaded {} users from auth.db", map.len());
+        map
+    };
+
+    let mut player_games: HashMap<String, Vec<PlayerGameResult>> = HashMap::new();
+    let mut total_games = 0usize;
+
+    // Read all CSV files (reuse dir_entries from debug above)
+    for entry in &dir_entries {
+        let path = entry.path();
+        if path.extension().map_or(true, |ext| ext != "csv") {
+            continue;
+        }
+        let date = path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .replace("games_", "");
+
+        let file = match std::fs::File::open(&path) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        let reader = std::io::BufReader::new(file);
+
+        // Track games: game_id -> {player_type -> (last_turn, final_score, human_won, player_id)}
+        let mut games: HashMap<String, HashMap<String, (usize, i32, bool, String)>> = HashMap::new();
+
+        for line in reader.lines().skip(1) {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => continue,
+            };
+            let fields: Vec<&str> = line.split(',').collect();
+            if fields.len() < 28 {
+                continue;
+            }
+
+            let game_id = fields[0].to_string();
+            let turn: usize = fields[1].parse().unwrap_or(0);
+            let player_type = fields[2].to_string();
+            let final_score: i32 = fields[26].parse().unwrap_or(0);
+            let human_won: bool = fields[27].trim_end().parse::<i32>().unwrap_or(0) == 1;
+            // New column: player_id (index 28, may not exist in old CSVs)
+            let player_id = fields.get(28).unwrap_or(&"").trim().to_string();
+
+            let game = games.entry(game_id).or_default();
+            let entry = game.entry(player_type).or_insert((0, 0, false, String::new()));
+            if turn >= entry.0 {
+                *entry = (turn, final_score, human_won, player_id);
+            }
+        }
+
+        // Process completed games
+        for (_gid, players) in &games {
+            let human = players.iter().find(|(k, _)| k.as_str() != "MCTS" && k.as_str() != "mcts_ai");
+            let ai = players.get("MCTS").or_else(|| players.get("mcts_ai"));
+
+            if let (Some((_ptype, (_, h_score, h_won, player_id))), Some((_, ai_score, _, _))) = (human, ai) {
+                if *h_score < 30 && *ai_score < 30 {
+                    continue;
+                }
+                total_games += 1;
+
+                // Resolve username: player_id -> auth.db -> username, fallback to "Unknown"
+                let username = if !player_id.is_empty() {
+                    user_map.get(player_id).cloned().unwrap_or_else(|| "Unknown".to_string())
+                } else {
+                    "Unknown".to_string()
+                };
+
+                let result = PlayerGameResult {
+                    date: date.clone(),
+                    human_score: *h_score,
+                    ai_score: *ai_score,
+                    human_won: *h_won,
+                };
+                player_games.entry(username).or_default().push(result);
+            }
+        }
+    }
+
+    // Build summaries
+    let mut players: Vec<PlayerSummary> = player_games
+        .into_iter()
+        .filter(|(name, _)| name != "MCTS" && name != "mcts_ai")
+        .map(|(username, games)| {
+            let games_played = games.len();
+            let wins = games.iter().filter(|g| g.human_won).count();
+            let avg_score = if games_played > 0 {
+                games.iter().map(|g| g.human_score as f64).sum::<f64>() / games_played as f64
+            } else { 0.0 };
+            let best_score = games.iter().map(|g| g.human_score).max().unwrap_or(0);
+            let avg_ai_score = if games_played > 0 {
+                games.iter().map(|g| g.ai_score as f64).sum::<f64>() / games_played as f64
+            } else { 0.0 };
+            let winrate = if games_played > 0 { wins as f64 / games_played as f64 * 100.0 } else { 0.0 };
+
+            PlayerSummary {
+                username,
+                games_played,
+                wins,
+                winrate,
+                avg_score,
+                best_score,
+                avg_ai_score,
+                games,
+            }
+        })
+        .collect();
+
+    players.sort_by(|a, b| b.games_played.cmp(&a.games_played));
+
+    StatsResponse {
+        players,
+        total_games,
+    }
+}
+
+async fn api_player_stats() -> ResponseJson<StatsResponse> {
+    ResponseJson(load_all_game_stats())
+}
+
+async fn serve_stats_page() -> Html<String> {
+    let html = tokio::fs::read_to_string("web/stats.html")
+        .await
+        .or_else(|_| std::fs::read_to_string("frontend-elm/public/stats.html"))
+        .unwrap_or_else(|_| "<h1>Stats page not found</h1><p>Place stats.html in web/ or frontend-elm/public/</p>".to_string());
+    Html(html)
 }

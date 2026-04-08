@@ -209,8 +209,8 @@ fn main() {
             .iter()
             .map(|s| {
                 let mut plateau = Plateau { tiles: vec![Tile(0, 0, 0); 19] };
-                for i in 0..19 {
-                    plateau.tiles[i] = decode_tile(s.plateau[i]);
+                for (i, &encoded) in s.plateau.iter().enumerate() {
+                    plateau.tiles[i] = decode_tile(encoded);
                 }
                 let tile = Tile(s.tile.0, s.tile.1, s.tile.2);
                 let deck = reconstruct_deck(&plateau);
@@ -233,8 +233,8 @@ fn main() {
             .iter()
             .map(|s| {
                 let mut plateau = Plateau { tiles: vec![Tile(0, 0, 0); 19] };
-                for i in 0..19 {
-                    plateau.tiles[i] = decode_tile(s.plateau[i]);
+                for (i, &encoded) in s.plateau.iter().enumerate() {
+                    plateau.tiles[i] = decode_tile(encoded);
                 }
                 let tile = Tile(s.tile.0, s.tile.1, s.tile.2);
                 let deck = create_deck();
@@ -311,6 +311,7 @@ fn main() {
     let train_start = Instant::now();
     let mut best_val_loss = f64::INFINITY;
 
+    let mut train_perm = train_indices.clone();
     for epoch in 0..args.epochs {
         let epoch_start = Instant::now();
 
@@ -323,7 +324,8 @@ fn main() {
         let mut train_mae_sum = 0.0;
         let mut train_count = 0usize;
 
-        let mut train_perm = train_indices.clone();
+        train_perm.clear();
+        train_perm.extend_from_slice(&train_indices);
         train_perm.shuffle(&mut rng);
 
         for batch_start in (0..train_perm.len()).step_by(args.batch_size) {
@@ -877,7 +879,7 @@ fn load_all_csv(dir: &str, min_score: i32) -> Vec<CsvSample> {
     for entry in std::fs::read_dir(path).unwrap() {
         let entry = entry.unwrap();
         let file_path = entry.path();
-        if file_path.extension().map_or(false, |e| e == "csv") {
+        if file_path.extension().is_some_and(|e| e == "csv") {
             samples.extend(load_csv(&file_path, min_score));
         }
     }

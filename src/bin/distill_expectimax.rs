@@ -12,7 +12,7 @@ use clap::Parser;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::collections::HashSet;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::time::Instant;
 use tch::{nn, nn::OptimizerConfig, Device, Kind, Tensor};
@@ -145,6 +145,23 @@ struct Args {
     /// Save generated samples to TSV file for reuse (compatible with train_sheaf --load-games)
     #[arg(long)]
     save_games: Option<String>,
+
+    /// Load pre-generated TSV samples instead of generating new ones
+    #[arg(long)]
+    load_tsv: Option<String>,
+
+    /// Risk-aware weighting mode: "standard" (score^power), "risk" (boost low scores),
+    /// "cvar" (only keep bottom α%), "uniform" (all equal)
+    #[arg(long, default_value = "standard")]
+    weight_mode: String,
+
+    /// CVaR alpha: fraction of worst games to focus on (e.g. 0.2 = bottom 20%)
+    #[arg(long, default_value_t = 0.2)]
+    cvar_alpha: f64,
+
+    /// Risk pivot: scores below this get boosted (for "risk" mode)
+    #[arg(long, default_value_t = 140.0)]
+    risk_pivot: f64,
 }
 
 struct Sample {
@@ -164,14 +181,10 @@ fn save_samples_tsv(samples: &[Sample], path: &str) -> std::io::Result<usize> {
     let file = std::fs::File::create(path)?;
     let mut w = BufWriter::new(file);
     writeln!(w, "# plateau(19)\ttile(3)\tposition\tturn\tfinal_score\tweight")?;
-    let mut seen = HashSet::new();
+    let mut seen: HashSet<([i32; 19], (i32, i32, i32), usize)> = HashSet::new();
     let mut written = 0;
     for s in samples {
-        let key = format!(
-            "{:?}|{},{},{}|{}",
-            &s.plateau_raw, s.tile_raw.0, s.tile_raw.1, s.tile_raw.2, s.position
-        );
-        if !seen.insert(key) {
+        if !seen.insert((s.plateau_raw, s.tile_raw, s.position)) {
             continue; // skip duplicate
         }
         let plateau_str: Vec<String> = s.plateau_raw.iter().map(|v| v.to_string()).collect();
@@ -185,6 +198,151 @@ fn save_samples_tsv(samples: &[Sample], path: &str) -> std::io::Result<usize> {
         written += 1;
     }
     Ok(written)
+}
+
+/// Load samples from a pre-generated TSV file.
+fn load_samples_from_tsv(path: &str, device: Device, args: &Args) -> Vec<Sample> {
+    use std::io::BufRead;
+    let file = std::fs::File::open(path).expect("Cannot open TSV file");
+    let reader = std::io::BufReader::new(file);
+    let mut samples = Vec::new();
+
+    for line in reader.lines() {
+        let line = line.unwrap();
+        if line.starts_with('#') || line.is_empty() {
+            continue;
+        }
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() < 6 {
+            continue;
+        }
+
+        let plateau_vals: Vec<i32> = fields[0].split(',').map(|v| v.parse().unwrap()).collect();
+        let tile_vals: Vec<i32> = fields[1].split(',').map(|v| v.parse().unwrap()).collect();
+        let position: usize = fields[2].parse().unwrap();
+        let turn: usize = fields[3].parse().unwrap();
+        let final_score: i32 = fields[4].parse().unwrap();
+        let weight: f64 = fields[5].parse().unwrap();
+
+        let mut plateau_raw = [0i32; 19];
+        for (i, &v) in plateau_vals.iter().enumerate().take(19) {
+            plateau_raw[i] = v;
+        }
+        let tile_raw = (tile_vals[0], tile_vals[1], tile_vals[2]);
+        let tile = Tile(tile_vals[0], tile_vals[1], tile_vals[2]);
+
+        // Reconstruct deck from plateau
+        let mut deck = create_deck();
+        for &v in &plateau_vals {
+            if v != 0 {
+                let t = Tile(v / 100, (v % 100) / 10, v % 10);
+                deck = replace_tile_in_deck(&deck, &t);
+            }
+        }
+        deck = replace_tile_in_deck(&deck, &tile);
+
+        // Reconstruct plateau
+        let mut plateau = create_plateau_empty();
+        for (i, &v) in plateau_vals.iter().enumerate() {
+            if v != 0 {
+                plateau.tiles[i] = Tile(v / 100, (v % 100) / 10, v % 10);
+            }
+        }
+
+        let features = convert_plateau_for_gat_47ch(&plateau, &tile, &deck, turn, 19);
+        let legal = get_legal_moves(&plateau);
+        let mut mask = vec![f64::NEG_INFINITY; 19];
+        for &m in &legal {
+            mask[m] = 0.0;
+        }
+
+        samples.push(Sample {
+            features,
+            plateau_raw,
+            tile_raw,
+            turn,
+            final_score,
+            position,
+            mask,
+            weight,
+            soft_targets: None,
+        });
+    }
+
+    println!("Loaded {} samples from {}", samples.len(), path);
+    samples
+}
+
+/// Re-weight samples based on the chosen weighting mode.
+fn reweight_samples(samples: &mut [Sample], args: &Args) {
+    match args.weight_mode.as_str() {
+        "standard" => {
+            // Keep original: (score/100)^power
+            for s in samples.iter_mut() {
+                s.weight = (s.final_score as f64 / 100.0).powf(args.weight_power);
+            }
+        }
+        "risk" => {
+            // Boost low scores: weight = 1 + max(0, (pivot - score) / 30)^2
+            // Scores below pivot get exponentially more weight
+            for s in samples.iter_mut() {
+                let deficit = (args.risk_pivot - s.final_score as f64).max(0.0) / 30.0;
+                s.weight = 1.0 + deficit * deficit;
+            }
+        }
+        "cvar" => {
+            // Only keep bottom alpha% of games (by score)
+            // First find the score threshold
+            let mut scores: Vec<i32> = samples.iter().map(|s| s.final_score).collect();
+            scores.sort();
+            scores.dedup(); // unique game scores
+            let game_scores: Vec<i32> = {
+                let mut gs: Vec<i32> = samples.iter().map(|s| s.final_score).collect();
+                gs.sort();
+                gs.dedup();
+                gs
+            };
+            // Approximate: find cutoff at alpha percentile
+            let cutoff_idx = ((game_scores.len() as f64 * args.cvar_alpha) as usize).max(1);
+            let score_cutoff = game_scores[cutoff_idx.min(game_scores.len() - 1)];
+            println!("CVaR α={:.0}%: score cutoff = {} ({} unique scores)",
+                args.cvar_alpha * 100.0, score_cutoff, game_scores.len());
+            for s in samples.iter_mut() {
+                if s.final_score <= score_cutoff {
+                    s.weight = 1.0;
+                } else {
+                    s.weight = 0.0; // exclude
+                }
+            }
+            // Remove zero-weight samples
+        }
+        "uniform" => {
+            for s in samples.iter_mut() {
+                s.weight = 1.0;
+            }
+        }
+        "inverse" => {
+            // Inverse of standard: low scores get highest weight
+            for s in samples.iter_mut() {
+                s.weight = (250.0 / (s.final_score as f64).max(50.0)).powf(args.weight_power);
+            }
+        }
+        "bimodal" => {
+            // High weight for both extremes (learn from best AND worst)
+            for s in samples.iter_mut() {
+                let score = s.final_score as f64;
+                let low_boost = ((args.risk_pivot - score).max(0.0) / 30.0).powi(2);
+                let high_boost = ((score - 160.0).max(0.0) / 30.0).powi(2);
+                s.weight = 1.0 + low_boost + high_boost;
+            }
+        }
+        other => {
+            eprintln!("Unknown weight mode: {}. Using standard.", other);
+            for s in samples.iter_mut() {
+                s.weight = (s.final_score as f64 / 100.0).powf(args.weight_power);
+            }
+        }
+    }
 }
 
 fn main() {
@@ -234,9 +392,7 @@ fn main() {
     }
     println!("Loaded value net from {}", args.value_path);
 
-    // ── Phase 1: Generate data with hybrid strategy ──
-    println!("\n--- Phase 1: Data Generation ({} games) ---\n", args.num_games);
-
+    // ── Phase 1: Generate or Load data ──
     let ex_config = ExpectimaxConfig {
         device,
         boost: args.boost,
@@ -247,22 +403,32 @@ fn main() {
         top_k_ply2: 2,
     };
 
-    let gen_start = Instant::now();
-    let samples = generate_data(&teacher_policy, &value_net, &ex_config, device, &args);
-    let gen_time = gen_start.elapsed().as_secs_f32();
-
-    let scores: Vec<f64> = samples.iter().map(|s| s.weight).collect();
-    let total_weight: f64 = scores.iter().sum();
-    println!("{} samples ready ({:.1}s)", samples.len(), gen_time);
-    println!("Total weight: {:.0}, avg weight: {:.2}", total_weight, total_weight / samples.len() as f64);
-
-    // Save to TSV if requested
-    if let Some(ref save_path) = args.save_games {
-        match save_samples_tsv(&samples, save_path) {
-            Ok(written) => println!("Saved {} unique samples to {} (deduped from {})", written, save_path, samples.len()),
-            Err(e) => eprintln!("Warning: failed to save games: {}", e),
+    let mut samples = if let Some(ref tsv_path) = args.load_tsv {
+        println!("\n--- Phase 1: Loading TSV from {} ---\n", tsv_path);
+        load_samples_from_tsv(tsv_path, device, &args)
+    } else {
+        println!("\n--- Phase 1: Data Generation ({} games) ---\n", args.num_games);
+        let gen_start = Instant::now();
+        let s = generate_data(&teacher_policy, &value_net, &ex_config, device, &args);
+        let gen_time = gen_start.elapsed().as_secs_f32();
+        println!("{} samples generated ({:.1}s)", s.len(), gen_time);
+        // Save to TSV if requested
+        if let Some(ref save_path) = args.save_games {
+            match save_samples_tsv(&s, save_path) {
+                Ok(written) => println!("Saved {} unique samples to {}", written, save_path),
+                Err(e) => eprintln!("Warning: failed to save games: {}", e),
+            }
         }
-    }
+        s
+    };
+
+    // Apply weight mode
+    reweight_samples(&mut samples, &args);
+
+    let total_weight: f64 = samples.iter().map(|s| s.weight).sum();
+    println!("{} samples ready", samples.len());
+    println!("Weight mode: {} | Total weight: {:.0}, avg: {:.2}",
+        args.weight_mode, total_weight, total_weight / samples.len().max(1) as f64);
 
     // ── Phase 2: Train student policy ──
     println!("\n--- Phase 2: Training ---\n");
@@ -315,6 +481,7 @@ fn main() {
     let mut best_val_loss = f64::INFINITY;
     let mut best_val_acc = 0.0;
 
+    let mut train_perm = train_indices.clone();
     for epoch in 0..args.epochs {
         let epoch_start = Instant::now();
         let lr = compute_lr(args.lr, epoch, args.epochs, args.min_lr_ratio);
@@ -325,7 +492,8 @@ fn main() {
         let mut train_correct = 0usize;
         let mut train_count = 0usize;
 
-        let mut train_perm = train_indices.clone();
+        train_perm.clear();
+        train_perm.extend_from_slice(&train_indices);
         train_perm.shuffle(&mut rng);
 
         for batch_start in (0..train_perm.len()).step_by(args.batch_size) {

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eigenplay - Player Stats</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }
+        h1 { text-align: center; margin: 20px 0; font-size: 1.8em; color: #38bdf8; }
+        h2 { margin: 30px 0 15px; color: #94a3b8; font-size: 1.2em; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        .back-link { text-align: center; margin-bottom: 20px; }
+        .back-link a { color: #38bdf8; text-decoration: none; }
+        .back-link a:hover { text-decoration: underline; }
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+        .stat-card { background: #1e293b; border-radius: 8px; padding: 16px; text-align: center; }
+        .stat-card .value { font-size: 2em; font-weight: bold; color: #38bdf8; }
+        .stat-card .label { font-size: 0.85em; color: #94a3b8; margin-top: 4px; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #334155; }
+        th { background: #1e293b; color: #94a3b8; font-size: 0.85em; text-transform: uppercase; }
+        td { font-size: 0.95em; }
+        tr:hover { background: #1e293b; }
+        .win { color: #4ade80; }
+        .loss { color: #f87171; }
+        .chart-container { background: #1e293b; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .player-section { margin: 30px 0; padding: 20px; background: #1e293b; border-radius: 8px; }
+        .player-name { font-size: 1.3em; color: #38bdf8; margin-bottom: 5px; }
+        .player-meta { color: #94a3b8; font-size: 0.9em; margin-bottom: 15px; }
+        .loading { text-align: center; padding: 60px; color: #94a3b8; }
+        select { background: #1e293b; color: #e2e8f0; border: 1px solid #475569; border-radius: 6px; padding: 8px 12px; font-size: 1em; }
+    </style>
+</head>
+<body>
+    <h1>Take It Easy - Player Stats</h1>
+    <div class="back-link"><a href="/">Back to game</a></div>
+
+    <div id="loading" class="loading">Loading stats...</div>
+    <div id="content" style="display:none">
+        <div class="summary-grid" id="summary"></div>
+
+        <h2>Leaderboard</h2>
+        <table id="leaderboard">
+            <thead>
+                <tr>
+                    <th>Player</th>
+                    <th>Games</th>
+                    <th>Wins</th>
+                    <th>Winrate</th>
+                    <th>Avg Score</th>
+                    <th>Best</th>
+                    <th>AI Avg</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <h2>Player Details</h2>
+        <select id="player-select" onchange="showPlayer(this.value)">
+            <option value="">Select a player...</option>
+        </select>
+
+        <div id="player-details"></div>
+    </div>
+
+    <script>
+    let statsData = null;
+
+    async function loadStats() {
+        try {
+            const resp = await fetch('/api/player-stats');
+            statsData = await resp.json();
+            renderAll();
+        } catch(e) {
+            document.getElementById('loading').textContent = 'Error loading stats: ' + e.message;
+        }
+    }
+
+    function renderAll() {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+
+        // Summary cards
+        const totalGames = statsData.total_games;
+        const totalPlayers = statsData.players.length;
+        const totalWins = statsData.players.reduce((s, p) => s + p.wins, 0);
+        const overallWinrate = totalGames > 0 ? (totalWins / totalGames * 100).toFixed(1) : 0;
+
+        document.getElementById('summary').innerHTML = `
+            <div class="stat-card"><div class="value">${totalGames}</div><div class="label">Total Games</div></div>
+            <div class="stat-card"><div class="value">${totalPlayers}</div><div class="label">Players</div></div>
+            <div class="stat-card"><div class="value">${overallWinrate}%</div><div class="label">Human Winrate</div></div>
+            <div class="stat-card"><div class="value">${totalWins}</div><div class="label">Human Wins</div></div>
+        `;
+
+        // Leaderboard
+        const tbody = document.querySelector('#leaderboard tbody');
+        tbody.innerHTML = statsData.players.map(p => `
+            <tr>
+                <td><strong>${p.username}</strong></td>
+                <td>${p.games_played}</td>
+                <td class="win">${p.wins}</td>
+                <td>${p.winrate.toFixed(1)}%</td>
+                <td>${p.avg_score.toFixed(1)}</td>
+                <td>${p.best_score}</td>
+                <td>${p.avg_ai_score.toFixed(1)}</td>
+            </tr>
+        `).join('');
+
+        // Player select
+        const select = document.getElementById('player-select');
+        select.innerHTML = '<option value="">Select a player...</option>' +
+            statsData.players.map(p =>
+                `<option value="${p.username}">${p.username} (${p.games_played} games)</option>`
+            ).join('');
+
+        // Auto-show first player with enough games
+        const firstPlayer = statsData.players.find(p => p.games_played >= 3);
+        if (firstPlayer) {
+            select.value = firstPlayer.username;
+            showPlayer(firstPlayer.username);
+        }
+    }
+
+    function showPlayer(username) {
+        const container = document.getElementById('player-details');
+        if (!username) { container.innerHTML = ''; return; }
+
+        const player = statsData.players.find(p => p.username === username);
+        if (!player || player.games.length === 0) {
+            container.innerHTML = '<p>No games found.</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="player-section">
+                <div class="player-name">${player.username}</div>
+                <div class="player-meta">
+                    ${player.games_played} games | ${player.wins} wins (${player.winrate.toFixed(1)}%) |
+                    Avg: ${player.avg_score.toFixed(1)} pts | Best: ${player.best_score} pts
+                </div>
+                <div class="chart-container">
+                    <canvas id="chart-scores"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="chart-winrate"></canvas>
+                </div>
+                <h2>Game History</h2>
+                <table>
+                    <thead><tr><th>#</th><th>Date</th><th>Human</th><th>AI</th><th>Result</th><th>Delta</th></tr></thead>
+                    <tbody>
+                        ${player.games.map((g, i) => `
+                            <tr>
+                                <td>${i + 1}</td>
+                                <td>${g.date}</td>
+                                <td>${g.human_score}</td>
+                                <td>${g.ai_score}</td>
+                                <td class="${g.human_won ? 'win' : 'loss'}">${g.human_won ? 'WIN' : 'LOSS'}</td>
+                                <td class="${g.human_score > g.ai_score ? 'win' : 'loss'}">${g.human_score - g.ai_score > 0 ? '+' : ''}${g.human_score - g.ai_score}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        renderCharts(player);
+    }
+
+    function renderCharts(player) {
+        const labels = player.games.map((_, i) => i + 1);
+        const humanScores = player.games.map(g => g.human_score);
+        const aiScores = player.games.map(g => g.ai_score);
+
+        // Score chart
+        new Chart(document.getElementById('chart-scores'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: player.username,
+                        data: humanScores,
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                    },
+                    {
+                        label: 'AI',
+                        data: aiScores,
+                        borderColor: '#f87171',
+                        backgroundColor: 'rgba(248, 113, 113, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'Score per Game', color: '#e2e8f0' },
+                    legend: { labels: { color: '#94a3b8' } }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Game #', color: '#94a3b8' }, ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
+                    y: { title: { display: true, text: 'Score', color: '#94a3b8' }, ticks: { color: '#64748b' }, grid: { color: '#334155' }, min: 0 }
+                }
+            }
+        });
+
+        // Cumulative winrate chart
+        let cumWins = 0;
+        const winrates = player.games.map((g, i) => {
+            if (g.human_won) cumWins++;
+            return (cumWins / (i + 1) * 100);
+        });
+
+        new Chart(document.getElementById('chart-winrate'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Cumulative Winrate %',
+                    data: winrates,
+                    borderColor: '#4ade80',
+                    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'Cumulative Winrate', color: '#e2e8f0' },
+                    legend: { labels: { color: '#94a3b8' } }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Game #', color: '#94a3b8' }, ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
+                    y: { title: { display: true, text: 'Winrate %', color: '#94a3b8' }, ticks: { color: '#64748b' }, grid: { color: '#334155' }, min: 0, max: 100 }
+                }
+            }
+        });
+    }
+
+    loadStats();
+    </script>
+</body>
+</html>

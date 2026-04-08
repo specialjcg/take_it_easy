@@ -195,7 +195,7 @@ fn main() {
                     println!("   📁 New best! Saved to {}", path);
                 }
             }
-        } else if epoch % 1 == 0 {
+        } else {
             println!(
                 "Epoch {:3}/{:3} | Loss: {:.4} | {:.1}s",
                 epoch + 1,

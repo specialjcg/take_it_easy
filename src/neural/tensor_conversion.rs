@@ -680,8 +680,8 @@ pub fn convert_plateau_for_gat_enriched(
     plateau: &Plateau,
     tile: &Tile,
     deck: &Deck,
-    current_turn: usize,
-    total_turns: usize,
+    _current_turn: usize,
+    _total_turns: usize,
 ) -> Tensor {
     let mut features = vec![0.0f32; GRAPH_NODE_COUNT * CHANNELS_ENRICHED];
 

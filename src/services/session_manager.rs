@@ -158,6 +158,14 @@ pub fn add_player_to_session(
     session: GameSession,
     player_name: String,
 ) -> Result<(GameSession, String), String> {
+    add_player_to_session_with_id(session, player_name, None)
+}
+
+pub fn add_player_to_session_with_id(
+    session: GameSession,
+    player_name: String,
+    auth_user_id: Option<String>,
+) -> Result<(GameSession, String), String> {
     if session.players.len() >= session.max_players as usize {
         return Err("SESSION_FULL".to_string());
     }
@@ -166,7 +174,8 @@ pub fn add_player_to_session(
         return Err("GAME_IN_PROGRESS".to_string());
     }
 
-    let player_id = Uuid::new_v4().to_string();
+    // Use authenticated user_id if available, otherwise generate random UUID
+    let player_id = auth_user_id.unwrap_or_else(|| Uuid::new_v4().to_string());
 
     // ✅ Le créateur (premier joueur) est automatiquement prêt
     let is_first_player = session.players.is_empty();

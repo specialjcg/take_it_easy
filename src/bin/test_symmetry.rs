@@ -35,8 +35,7 @@ fn coord_to_pos(q: i32, r: i32) -> Option<usize> {
 /// Tile: (a,b,c) → (b,c,a)
 fn rotation_120() -> ([usize; 19], fn(i32, i32, i32) -> (i32, i32, i32)) {
     let mut perm = [0usize; 19];
-    for i in 0..19 {
-        let (q, r) = HEX_COORDS[i];
+    for (i, &(q, r)) in HEX_COORDS.iter().enumerate() {
         let new_q = -r;
         let new_r = q + r;
         perm[i] = coord_to_pos(new_q, new_r).expect(&format!("rot120 failed for pos {}", i));
@@ -48,9 +47,7 @@ fn rotation_120() -> ([usize; 19], fn(i32, i32, i32) -> (i32, i32, i32)) {
 /// Tile: (a,b,c) → (c,a,b)
 fn rotation_240() -> ([usize; 19], fn(i32, i32, i32) -> (i32, i32, i32)) {
     let mut perm = [0usize; 19];
-    for i in 0..19 {
-        let (q, r) = HEX_COORDS[i];
-        // Apply 120° twice: (q,r) → (-r, q+r) → (-(q+r), -r+q+r) = (-q-r, q)
+    for (i, &(q, r)) in HEX_COORDS.iter().enumerate() {
         let new_q = -q - r;
         let new_r = q;
         perm[i] = coord_to_pos(new_q, new_r).expect(&format!("rot240 failed for pos {}", i));
@@ -63,8 +60,7 @@ fn rotation_240() -> ([usize; 19], fn(i32, i32, i32) -> (i32, i32, i32)) {
 /// Tile: (a,b,c) → (b,a,c)
 fn reflection_a() -> ([usize; 19], fn(i32, i32, i32) -> (i32, i32, i32)) {
     let mut perm = [0usize; 19];
-    for i in 0..19 {
-        let (q, r) = HEX_COORDS[i];
+    for (i, &(q, r)) in HEX_COORDS.iter().enumerate() {
         let new_q = q;
         let new_r = -q - r;
         perm[i] = coord_to_pos(new_q, new_r).expect(&format!("refA failed for pos {}", i));
@@ -220,7 +216,7 @@ fn main() {
         let mut scores: Vec<i32> = samples.iter().map(|s| s.4).collect();
         scores.sort();
         scores.dedup();
-        let total_games_approx = samples.len() / 19; // rough estimate
+        let _total_games_approx = samples.len() / 19; // rough estimate
 
         // Verify scoring on a few complete game end-states
         // Find samples at turn 18 (last turn) - these have full boards

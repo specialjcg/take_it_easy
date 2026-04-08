@@ -13,7 +13,7 @@ use crate::generated::takeiteasygame::v1::*;
 
 use crate::auth::{try_authenticate_request, JwtManager};
 use crate::services::session_manager::{
-    add_player_to_session, all_players_ready, create_session_functional_with_manager,
+    add_player_to_session, add_player_to_session_with_id, all_players_ready, create_session_functional_with_manager,
     get_session_by_code_with_manager, get_session_by_id_with_manager, get_store_from_manager,
     session_to_game_state, set_player_ready_in_session_with_min, start_game,
     transform_session_in_store, update_session_with_manager, SessionManager,
@@ -167,13 +167,14 @@ async fn create_session_logic_with_manager(
     player_name: String,
     max_players: i32,
     game_mode: String,
+    auth_user_id: Option<String>,
 ) -> Result<Response<CreateSessionResponse>, Status> {
     let manager = &service.session_manager;
     match create_session_functional_with_manager(manager, max_players, game_mode).await {
         Ok(session_code) => {
             if let Some(session) = get_session_by_code_with_manager(manager, &session_code).await {
-                // Ajouter le joueur humain
-                match add_player_to_session(session.clone(), player_name.clone()) {
+                // Ajouter le joueur humain (with auth user_id if available)
+                match add_player_to_session_with_id(session.clone(), player_name.clone(), auth_user_id.clone()) {
                     Ok((mut updated_session, player_id)) => {
                         // 🤖 AJOUTER MCTS AUTOMATIQUEMENT POUR LES MODES SINGLE-PLAYER ET MULTIPLAYER
                         if updated_session.game_mode.starts_with("single-player")
@@ -264,6 +265,7 @@ async fn join_session_logic(
     service: &SessionServiceImpl,
     session_code: String,
     player_name: String,
+    auth_user_id: Option<String>,
 ) -> Result<Response<JoinSessionResponse>, Status> {
     let manager = &service.session_manager;
 
@@ -347,7 +349,7 @@ async fn join_session_logic(
         }
     }
 
-    match add_player_to_session(session, player_name.clone()) {
+    match add_player_to_session_with_id(session, player_name.clone(), auth_user_id) {
         Ok((mut updated_session, player_id)) => {
             // ✅ AJOUTER MCTS AUTOMATIQUEMENT EN MODE SOLO
             if updated_session.game_mode.starts_with("single-player")
@@ -535,7 +537,7 @@ impl SessionService for SessionServiceImpl {
 
         let player_name = req.player_name;
 
-        create_session_logic_with_manager(self, player_name, req.max_players, req.game_mode).await
+        create_session_logic_with_manager(self, player_name, req.max_players, req.game_mode, user_id).await
     }
 
     async fn join_session(
@@ -554,7 +556,7 @@ impl SessionService for SessionServiceImpl {
             req.session_code,
             req.player_name
         );
-        join_session_logic(self, req.session_code, req.player_name).await
+        join_session_logic(self, req.session_code, req.player_name, user_id).await
     }
 
     async fn set_ready(

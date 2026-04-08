@@ -83,8 +83,8 @@ impl CsvWriter {
         // Tile columns
         header.push_str(",tile_0,tile_1,tile_2");
 
-        // Position and scores
-        header.push_str(",position,final_score,human_won");
+        // Position, scores, and player identification
+        header.push_str(",position,final_score,human_won,player_id");
 
         writeln!(writer, "{}", header)
     }
@@ -117,12 +117,13 @@ impl CsvWriter {
             move_record.tile.0, move_record.tile.1, move_record.tile.2
         ));
 
-        // Position and scores
+        // Position, scores, and player ID
         row.push_str(&format!(
-            ",{},{},{}",
+            ",{},{},{},{}",
             move_record.position,
             final_score,
-            if human_won { 1 } else { 0 }
+            if human_won { 1 } else { 0 },
+            move_record.player_id
         ));
 
         writeln!(writer, "{}", row)

@@ -15,9 +15,8 @@ use std::time::Instant;
 use tch::{nn, nn::OptimizerConfig, Device, Kind, Tensor};
 
 use take_it_easy::game::create_deck::create_deck;
-use take_it_easy::game::deck::Deck;
 use take_it_easy::game::get_legal_moves::get_legal_moves;
-use take_it_easy::game::plateau::{create_plateau_empty, Plateau};
+use take_it_easy::game::plateau::create_plateau_empty;
 use take_it_easy::game::remove_tile_from_deck::replace_tile_in_deck;
 use take_it_easy::game::tile::Tile;
 use take_it_easy::neural::graph_transformer::GraphTransformerPolicyNet;
@@ -327,7 +326,7 @@ fn prepare_batch(samples: &[&Sample]) -> (Tensor, Tensor, Tensor, Tensor) {
 
         // Create mask (occupied positions = -inf)
         // We'll use a simple heuristic since we don't have the full plateau info
-        let mut mask = [0.0f32; 19];
+        let mask = [0.0f32; 19];
         // Mark illegal (but we don't have this info directly, so just use default)
         masks_vec.push(Tensor::from_slice(&mask));
     }
