@@ -26,6 +26,11 @@ const GRPC_WEB_URL = IS_PRODUCTION
     ? `${window.location.protocol}//${window.location.host}`  // Production: nginx proxy
     : 'http://localhost:50052';  // Development: direct gRPC-Web
 
+function authMeta(): { meta: Record<string, string> } {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    return token ? { meta: { authorization: `Bearer ${token}` } } : { meta: {} };
+}
+
 class GrpcClient {
     private sessionClient: SessionServiceClient;
     private gameClient: GameServiceClient;
@@ -50,7 +55,7 @@ class GrpcClient {
                 gameMode
             };
 
-            const { response } = await this.sessionClient.createSession(request);
+            const { response } = await this.sessionClient.createSession(request, authMeta());
 
             if (response.result.oneofKind === "success") {
                 const success = response.result.success;
@@ -81,7 +86,7 @@ class GrpcClient {
                 playerName
             };
 
-            const { response } = await this.sessionClient.joinSession(request);
+            const { response } = await this.sessionClient.joinSession(request, authMeta());
 
             if (response.result.oneofKind === "success") {
                 const success = response.result.success;

@@ -5533,6 +5533,10 @@
   // src/grpc-client.ts
   var IS_PRODUCTION = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
   var GRPC_WEB_URL = IS_PRODUCTION ? `${window.location.protocol}//${window.location.host}` : "http://localhost:50052";
+  function authMeta() {
+    const token = typeof localStorage !== "undefined" ? localStorage.getItem("auth_token") : null;
+    return token ? { meta: { authorization: `Bearer ${token}` } } : { meta: {} };
+  }
   var GrpcClient = class {
     sessionClient;
     gameClient;
@@ -5553,7 +5557,7 @@
           maxPlayers: 4,
           gameMode
         };
-        const { response } = await this.sessionClient.createSession(request);
+        const { response } = await this.sessionClient.createSession(request, authMeta());
         if (response.result.oneofKind === "success") {
           const success = response.result.success;
           return {
@@ -5581,7 +5585,7 @@
           sessionCode: sessionCode.toUpperCase(),
           playerName
         };
-        const { response } = await this.sessionClient.joinSession(request);
+        const { response } = await this.sessionClient.joinSession(request, authMeta());
         if (response.result.oneofKind === "success") {
           const success = response.result.success;
           return {

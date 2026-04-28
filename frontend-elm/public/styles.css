@@ -564,6 +564,14 @@ body {
     margin-bottom: 0.75rem;
 }
 
+.leaderboard-note {
+    text-align: center;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
 @media (max-width: 768px) {
     .scores-section {
         grid-template-columns: 1fr;
@@ -653,6 +661,25 @@ body {
 .header p {
     color: rgba(255, 255, 255, 0.7);
     font-size: 1.1rem;
+}
+
+.stats-link {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 8px 20px;
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    color: #0f172a;
+    text-decoration: none;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 8px rgba(56, 189, 248, 0.3);
+}
+
+.stats-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(56, 189, 248, 0.5);
 }
 
 .modes-grid {

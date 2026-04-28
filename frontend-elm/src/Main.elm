@@ -677,12 +677,8 @@ update msg model =
 
         -- Game Mode
         SelectGameMode mode ->
-            if String.startsWith "single-player" mode.id then
-                -- Solo: launch immediately
-                update StartGame { model | selectedGameMode = Just mode }
-
-            else
-                ( { model | selectedGameMode = Just mode }, Cmd.none )
+            -- All modes launch immediately (no "Commencer" button)
+            update StartGame { model | selectedGameMode = Just mode }
 
         StartGame ->
             case model.selectedGameMode of
@@ -2653,6 +2649,8 @@ viewModeSelection model =
         , div [ class "header" ]
             [ h1 [] [ text "Take It Easy" ]
             , p [] [ text "Choisissez votre mode de jeu" ]
+            , a [ Html.Attributes.href "/stats", Html.Attributes.target "_blank", class "stats-link" ]
+                [ text "Stats & Classement" ]
             ]
         , div [ class "modes-grid" ]
             (List.map (viewModeCard model.selectedGameMode) model.gameModes)
@@ -2660,21 +2658,6 @@ viewModeSelection model =
         , div [ class "challenge-grid" ]
             (List.map viewChallengeCard challengeOptions)
         , viewScoresSection model
-        , case model.selectedGameMode of
-            Just mode ->
-                div [ class "action-panel" ]
-                    [ div [ class "selected-mode-info" ]
-                        [ h3 [] [ text (mode.icon ++ " " ++ mode.name) ]
-                        , p [] [ text mode.description ]
-                        ]
-                    , button [ class "start-button", onClick StartGame ]
-                        [ text "Commencer"
-                        , span [ class "start-icon" ] [ text " →" ]
-                        ]
-                    ]
-
-            Nothing ->
-                text ""
         ]
 
 
@@ -2687,16 +2670,41 @@ viewScoresSection model =
         top5 =
             List.take 5 model.myScores
 
+        winrateOf entry =
+            if entry.gamesPlayed > 0 then
+                toFloat entry.gamesWon / toFloat entry.gamesPlayed
+
+            else
+                0
+
+        rankKey entry =
+            -- Min 3 games to qualify for winrate ranking; below that, bucket last
+            ( if entry.gamesPlayed >= 3 then 0 else 1
+            , -(winrateOf entry)
+            , -entry.gamesPlayed
+            )
+
+        sortedLeaderboard =
+            List.sortBy rankKey model.leaderboard
+
+        formatWinrate entry =
+            if entry.gamesPlayed == 0 then
+                "—"
+
+            else
+                String.fromInt (round (winrateOf entry * 100)) ++ "%"
+
         leaderboardPanel =
             div [ class "scores-panel glass-container" ]
-                [ h3 [] [ text "Classement mondial" ]
+                [ h3 [] [ text "Classement mondial — Taux victoire vs IA" ]
                 , table [ class "scores-table" ]
                     [ thead []
                         [ tr []
                             [ th [] [ text "#" ]
                             , th [] [ text "Joueur" ]
+                            , th [] [ text "Taux" ]
+                            , th [] [ text "V/J" ]
                             , th [] [ text "Meilleur" ]
-                            , th [] [ text "Parties" ]
                             ]
                         ]
                     , tbody []
@@ -2705,13 +2713,16 @@ viewScoresSection model =
                                 tr []
                                     [ td [ class "rank-cell" ] [ text (String.fromInt (i + 1)) ]
                                     , td [] [ text entry.username ]
-                                    , td [ class "score-cell" ] [ text (String.fromInt entry.bestScore) ]
-                                    , td [] [ text (String.fromInt entry.gamesPlayed) ]
+                                    , td [ class "score-cell" ] [ text (formatWinrate entry) ]
+                                    , td [] [ text (String.fromInt entry.gamesWon ++ "/" ++ String.fromInt entry.gamesPlayed) ]
+                                    , td [] [ text (String.fromInt entry.bestScore) ]
                                     ]
                             )
-                            model.leaderboard
+                            sortedLeaderboard
                         )
                     ]
+                , p [ class "leaderboard-note" ]
+                    [ text "Min. 3 parties pour figurer en haut" ]
                 ]
     in
     if not hasLeaderboard then
