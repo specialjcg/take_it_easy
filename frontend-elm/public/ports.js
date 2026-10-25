@@ -194,6 +194,9 @@ async function handleRegister(app, email, username, password) {
 
 function handleLogout(app) {
     clearAuth();
+    // Also ends the session of the other eigenplay games (cookie)
+    fetch(`${AUTH_API_BASE}/logout`, { method: 'POST', credentials: 'include' })
+        .catch(e => console.error('Logout error:', e));
 }
 
 async function handleCheckAuth(app) {

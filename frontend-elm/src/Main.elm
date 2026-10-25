@@ -150,6 +150,7 @@ type alias Model =
     , passwordInput : String
     , confirmPasswordInput : String
     , resetToken : String
+    , returnUrl : Maybe String
     , resetMessage : String
 
     -- Game Mode Selection
@@ -230,6 +231,7 @@ initialModel key url =
     , passwordInput = ""
     , confirmPasswordInput = ""
     , resetToken = ""
+    , returnUrl = Nothing
     , resetMessage = ""
 
     -- Game Mode Selection
@@ -617,7 +619,7 @@ update msg model =
                 , currentView = ModeSelectionView
                 , playerName = user.username
               }
-            , fetchScoresAndLeaderboard
+            , Cmd.batch [ fetchScoresAndLeaderboard, returnTo model.returnUrl ]
             )
 
         LoginFailure error ->
@@ -633,7 +635,7 @@ update msg model =
                 , currentView = ModeSelectionView
                 , playerName = user.username
               }
-            , fetchScoresAndLeaderboard
+            , Cmd.batch [ fetchScoresAndLeaderboard, returnTo model.returnUrl ]
             )
 
         RegisterFailure error ->
@@ -669,7 +671,7 @@ update msg model =
                 , currentView = ModeSelectionView
                 , playerName = user.username
               }
-            , fetchScoresAndLeaderboard
+            , Cmd.batch [ fetchScoresAndLeaderboard, returnTo model.returnUrl ]
             )
 
         CheckAuthFailure ->
@@ -4294,12 +4296,56 @@ init _ url key =
                 Nothing ->
                     baseModel
     in
-    ( modelWithResetToken
+    ( { modelWithResetToken | returnUrl = url.query |> Maybe.andThen extractReturnUrl }
     , Cmd.batch
         [ sendToJs <| Encode.object [ ( "type", Encode.string "checkAuth" ) ]
         , fetchLeaderboard
         ]
     )
+
+
+{-| Site of eigenplay to go back to once logged in, from `?return=<url>`.
+Only https pages of eigenplay.com and its subdomains are followed.
+-}
+extractReturnUrl : String -> Maybe String
+extractReturnUrl query =
+    query
+        |> String.split "&"
+        |> List.filterMap
+            (\param ->
+                case String.split "=" param of
+                    [ "return", value ] ->
+                        Url.percentDecode value
+
+                    _ ->
+                        Nothing
+            )
+        |> List.head
+        |> Maybe.andThen safeReturnUrl
+
+
+safeReturnUrl : String -> Maybe String
+safeReturnUrl candidate =
+    case Url.fromString candidate of
+        Just url ->
+            if url.protocol == Url.Https && (url.host == "eigenplay.com" || String.endsWith ".eigenplay.com" url.host) then
+                Just (Url.toString url)
+
+            else
+                Nothing
+
+        Nothing ->
+            Nothing
+
+
+returnTo : Maybe String -> Cmd msg
+returnTo returnUrl =
+    case returnUrl of
+        Just url ->
+            Nav.load url
+
+        Nothing ->
+            Cmd.none
 
 
 extractResetToken : String -> Maybe String
