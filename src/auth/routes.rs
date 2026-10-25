@@ -2,8 +2,8 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
-    response::IntoResponse,
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::{
+    cookie::{cleared_cookie, cookie_domain, session_cookie},
     database::AuthDatabase,
     email::EmailSender,
     jwt::{JwtConfig, JwtManager},
@@ -54,6 +55,7 @@ pub fn auth_router(state: Arc<AuthState>) -> Router {
         // Basic auth
         .route("/register", post(register))
         .route("/login", post(login))
+        .route("/logout", post(logout))
         .route("/verify-email", get(verify_email))
         .route("/forgot-password", post(forgot_password))
         .route("/reset-password", post(reset_password))
@@ -73,6 +75,18 @@ pub fn auth_router(state: Arc<AuthState>) -> Router {
 #[derive(Serialize)]
 struct ErrorResponse {
     error: String,
+}
+
+/// `response` setting the session cookie shared with the other eigenplay games
+fn with_session_cookie(state: &AuthState, token: &str, response: impl IntoResponse) -> Response {
+    let cookie = session_cookie(token, state.jwt.lifetime_secs(), cookie_domain().as_deref());
+    ([(header::SET_COOKIE, cookie)], response).into_response()
+}
+
+/// POST /auth/logout - Remove the session cookie
+async fn logout() -> impl IntoResponse {
+    let cookie = cleared_cookie(cookie_domain().as_deref());
+    ([(header::SET_COOKIE, cookie)], StatusCode::NO_CONTENT)
 }
 
 fn error_response(status: StatusCode, message: &str) -> impl IntoResponse {
@@ -162,14 +176,14 @@ async fn register(
         }
     };
 
-    (
+    let response = (
         StatusCode::CREATED,
         Json(AuthResponse {
-            token: jwt_token,
+            token: jwt_token.clone(),
             user,
         }),
-    )
-        .into_response()
+    );
+    with_session_cookie(&state, &jwt_token, response)
 }
 
 /// POST /auth/login - Login with email/password
@@ -227,7 +241,11 @@ async fn login(
         }
     };
 
-    Json(AuthResponse { token, user }).into_response()
+    let response = Json(AuthResponse {
+        token: token.clone(),
+        user,
+    });
+    with_session_cookie(&state, &token, response)
 }
 
 /// GET /auth/verify-email?token=xxx - Verify email
@@ -528,7 +546,8 @@ async fn oauth_callback(
         user.username
     );
 
-    axum::response::Redirect::temporary(&redirect_url).into_response()
+    let response = axum::response::Redirect::temporary(&redirect_url);
+    with_session_cookie(&state, &token, response)
 }
 
 /// GET /auth/providers - List configured OAuth providers
@@ -585,7 +604,8 @@ async fn get_current_user(
 
     // Get user from database
     match state.db.find_user_by_id(&claims.sub) {
-        Ok(Some(user)) => Json(user).into_response(),
+        // Sets the cookie for sessions opened before it existed
+        Ok(Some(user)) => with_session_cookie(&state, token, Json(user)),
         Ok(None) => error_response(StatusCode::NOT_FOUND, "User not found").into_response(),
         Err(e) => {
             log::error!("Database error: {}", e);
@@ -709,4 +729,80 @@ fn generate_token() -> String {
     let mut bytes = [0u8; 32];
     getrandom::getrandom(&mut bytes).expect("Failed to generate random bytes");
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn router_with_temp_db(dir: &tempfile::TempDir) -> Router {
+        let db_path = dir.path().join("auth.db");
+        let state = AuthState::new(db_path.to_str().expect("utf-8 path")).expect("auth state");
+        auth_router(Arc::new(state))
+    }
+
+    #[tokio::test]
+    async fn logout_clears_the_session_cookie() {
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        let response = router_with_temp_db(&dir)
+            .oneshot(
+                Request::post("/logout")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let cookie = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .expect("a cookie is set");
+        assert!(cookie.starts_with("eigenplay_session=;"));
+        assert!(cookie.contains("Max-Age=0"));
+    }
+
+    #[tokio::test]
+    async fn me_sets_the_session_cookie_of_a_valid_token() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("auth.db");
+        let state = AuthState::new(db_path.to_str().expect("utf-8 path")).expect("auth state");
+        let user = User {
+            id: "user-1".to_string(),
+            email: "ann@example.com".to_string(),
+            username: "ann".to_string(),
+            password_hash: None,
+            email_verified: true,
+            created_at: "2026-10-25T00:00:00Z".to_string(),
+            updated_at: "2026-10-25T00:00:00Z".to_string(),
+        };
+        state.db.create_user(&user).expect("user created");
+        let token = state
+            .jwt
+            .create_token(&user.id, &user.email, &user.username)
+            .expect("token");
+
+        let response = auth_router(Arc::new(state))
+            .oneshot(
+                Request::get("/me")
+                    .header("Authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .expect("a cookie is set");
+        assert!(cookie.starts_with(&format!("eigenplay_session={token};")));
+    }
 }

@@ -47,6 +47,11 @@ impl JwtManager {
         Self { config }
     }
 
+    /// Seconds a new token stays valid
+    pub fn lifetime_secs(&self) -> u64 {
+        self.config.expiration_hours * 3600
+    }
+
     /// Create a new JWT token for a user
     pub fn create_token(
         &self,

@@ -8,6 +8,7 @@
 //! - JWT token-based sessions
 //! - gRPC authentication middleware
 
+pub mod cookie;
 pub mod database;
 pub mod email;
 pub mod grpc_middleware;
