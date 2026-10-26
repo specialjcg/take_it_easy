@@ -63,7 +63,7 @@ jobs:
 
       # --- Build frontend ---
       - name: Install Elm
-        run: npm install -g elm
+        run: npm install -g elm@0.19.1-6
 
       - name: Install frontend deps and build gRPC client
         run: |
